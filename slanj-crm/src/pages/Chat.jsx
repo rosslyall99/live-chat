@@ -9,11 +9,18 @@ export default function Chat() {
     const [me, setMe] = React.useState(null);
     const [text, setText] = React.useState("");
     const [error, setError] = React.useState("");
+    const [claiming, setClaiming] = React.useState(false);
+    const [sending, setSending] = React.useState(false);
 
     async function load() {
         setError("");
-        const { data: { user } } = await supabase.auth.getUser();
-        setMe(user);
+
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr) {
+            setError(userErr.message);
+            return;
+        }
+        setMe(userData?.user ?? null);
 
         const { data: c, error: cErr } = await supabase
             .from("conversations")
@@ -33,7 +40,10 @@ export default function Chat() {
             .eq("conversation_id", id)
             .order("created_at", { ascending: true });
 
-        if (mErr) setError(mErr.message);
+        if (mErr) {
+            setError(mErr.message);
+            return;
+        }
         setMsgs(m || []);
     }
 
@@ -54,43 +64,107 @@ export default function Chat() {
             )
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
+        return () => {
+            supabase.removeChannel(channel);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
+
+    async function claimChat() {
+        if (!me) return;
+        setError("");
+        setClaiming(true);
+
+        try {
+            // 1) Atomic claim via RPC: returns [] if someone else claimed first
+            const { data: claimRows, error: claimErr } = await supabase.rpc(
+                "claim_conversation",
+                { p_conversation_id: id }
+            );
+
+            if (claimErr) {
+                setError(claimErr.message);
+                return;
+            }
+
+            if (!claimRows || claimRows.length === 0) {
+                setError("Already claimed by someone else.");
+                await load();
+                return;
+            }
+
+            // 2) Notify Teams (JWT ON function) - invoke adds headers automatically
+            const { error: notifyErr } = await supabase.functions.invoke(
+                "staff_notify_claimed",
+                { body: { conversation_id: id } }
+            );
+
+            if (notifyErr) {
+                console.error("staff_notify_claimed failed", notifyErr);
+                // Don't block UX if Teams notification fails
+            }
+
+            await load();
+        } finally {
+            setClaiming(false);
+        }
+    }
+
 
     async function send() {
         setError("");
         const msg = text.trim();
         if (!msg) return;
+        if (!me) return;
 
-        const { error } = await supabase.from("messages").insert({
-            conversation_id: id,
-            sender_type: "staff",
-            sender_user_id: me.id,
-            body: msg,
-        });
+        // Only allow sending if:
+        // - chat is unassigned (any staff can reply), OR
+        // - assigned_to is you
+        const assignedTo = convo?.assigned_to;
+        const canSend = !assignedTo || assignedTo === me.id;
 
-        if (error) {
-            setError(error.message);
+        if (!canSend) {
+            setError("This chat is assigned to someone else.");
             return;
         }
 
-        setText("");
+        setSending(true);
+        try {
+            const { error: insErr } = await supabase.from("messages").insert({
+                conversation_id: id,
+                sender_type: "staff",
+                sender_user_id: me.id,
+                body: msg,
+            });
+
+            if (insErr) {
+                setError(insErr.message);
+                return;
+            }
+
+            setText("");
+        } finally {
+            setSending(false);
+        }
     }
 
     async function closeChat() {
-        const { error } = await supabase
+        setError("");
+
+        const { error: updErr } = await supabase
             .from("conversations")
             .update({ status: "closed" })
             .eq("id", id);
 
-        if (error) setError(error.message);
+        if (updErr) setError(updErr.message);
     }
 
     if (error) return <div style={{ padding: 16 }}>Error: {error}</div>;
     if (!convo) return <div style={{ padding: 16 }}>Loading…</div>;
 
     const isMine = convo.assigned_to && convo.assigned_to === me?.id;
+    const isUnassigned = !convo.assigned_to;
+    const canSend = convo.status === "open" && (isUnassigned || isMine);
 
     return (
         <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
@@ -105,13 +179,34 @@ export default function Chat() {
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "start" }}>
-                    {/* Claim button will be replaced with staff_claim_chat function call next */}
-                    <button disabled={!!convo.assigned_to}>Claim (next step)</button>
+                    <button
+                        onClick={claimChat}
+                        disabled={!!convo.assigned_to || convo.status !== "open" || claiming}
+                        title={convo.assigned_to ? "Already assigned" : "Claim this chat"}
+                    >
+                        {claiming ? "Claiming…" : "Claim"}
+                    </button>
+
                     <button onClick={closeChat} disabled={convo.status !== "open"}>
                         Close
                     </button>
                 </div>
             </div>
+
+            {!canSend && convo.status === "open" && !isUnassigned && !isMine && (
+                <div
+                    style={{
+                        marginTop: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "#fff3cd",
+                        border: "1px solid #ffeeba",
+                        color: "#111"
+                    }}
+                >
+                    This chat is assigned to someone else. You can view it, but only the assigned staff member can reply.
+                </div>
+            )}
 
             <div
                 style={{
@@ -122,6 +217,7 @@ export default function Chat() {
                     height: 420,
                     overflow: "auto",
                     background: "#fafafa",
+                    color: "#111",
                 }}
             >
                 {msgs.map((m) => (
@@ -138,11 +234,15 @@ export default function Chat() {
                 <input
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="Type reply…"
+                    placeholder={canSend ? "Type reply…" : "You can’t reply to this chat"}
                     style={{ flex: 1, padding: 10 }}
+                    disabled={!canSend || sending}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") send();
+                    }}
                 />
-                <button onClick={send} disabled={convo.status !== "open"}>
-                    Send
+                <button onClick={send} disabled={!canSend || sending}>
+                    {sending ? "Sending…" : "Send"}
                 </button>
             </div>
         </div>
