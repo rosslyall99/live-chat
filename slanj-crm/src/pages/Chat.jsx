@@ -11,6 +11,7 @@ export default function Chat() {
     const [error, setError] = React.useState("");
     const [claiming, setClaiming] = React.useState(false);
     const [sending, setSending] = React.useState(false);
+    const [canned, setCanned] = React.useState([]);
 
     async function load() {
         setError("");
@@ -33,6 +34,7 @@ export default function Chat() {
             return;
         }
         setConvo(c);
+        await loadCanned(c.site_id);
 
         const { data: m, error: mErr } = await supabase
             .from("messages")
@@ -45,6 +47,22 @@ export default function Chat() {
             return;
         }
         setMsgs(m || []);
+    }
+
+    async function loadCanned(siteId) {
+        // global (site_id is null) OR matching site_id
+        const { data, error } = await supabase
+            .from("canned_replies")
+            .select("id, title, body, site_id, sort_order")
+            .or(`site_id.is.null,site_id.eq.${siteId}`)
+            .order("sort_order", { ascending: true });
+
+        if (error) {
+            console.error("canned_replies load failed", error);
+            setCanned([]);
+            return;
+        }
+        setCanned(data || []);
     }
 
     React.useEffect(() => {
@@ -150,13 +168,43 @@ export default function Chat() {
 
     async function closeChat() {
         setError("");
+        if (!me) return;
 
+        const assignedTo = convo?.assigned_to;
+        const canClose = convo?.status === "open" && (!assignedTo || assignedTo === me?.id);
+
+        if (!canClose) {
+            setError("This chat is assigned to someone else.");
+            return;
+        }
+
+        // 1) Update conversation
         const { error: updErr } = await supabase
             .from("conversations")
-            .update({ status: "closed" })
+            .update({
+                status: "closed",
+                assigned_to: null,
+                closed_at: new Date().toISOString(),
+            })
             .eq("id", id);
 
-        if (updErr) setError(updErr.message);
+        if (updErr) {
+            setError(updErr.message);
+            return;
+        }
+
+        // 2) Notify Teams (don’t block UX if it fails)
+        const { error: notifyErr } = await supabase.functions.invoke(
+            "staff_notify_closed",
+            { body: { conversation_id: id } }
+        );
+
+        if (notifyErr) {
+            console.error("staff_notify_closed failed", notifyErr);
+        }
+
+        setText("");
+        await load();
     }
 
     if (error) return <div style={{ padding: 16 }}>Error: {error}</div>;
@@ -167,7 +215,7 @@ export default function Chat() {
     const canSend = convo.status === "open" && (isUnassigned || isMine);
 
     return (
-        <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
+        <div style={{ maxWidth: 1100, margin: "20px auto", padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div>
                     <Link to="/">← Inbox</Link>
@@ -187,7 +235,7 @@ export default function Chat() {
                         {claiming ? "Claiming…" : "Claim"}
                     </button>
 
-                    <button onClick={closeChat} disabled={convo.status !== "open"}>
+                    <button onClick={closeChat} disabled={convo.status !== "open" || (!isUnassigned && !isMine)}>
                         Close
                     </button>
                 </div>
@@ -201,49 +249,119 @@ export default function Chat() {
                         borderRadius: 10,
                         background: "#fff3cd",
                         border: "1px solid #ffeeba",
-                        color: "#111"
+                        color: "#111",
                     }}
                 >
                     This chat is assigned to someone else. You can view it, but only the assigned staff member can reply.
                 </div>
             )}
 
+            {convo.status === "closed" && (
+                <div
+                    style={{
+                        marginTop: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "#e9ecef",
+                        border: "1px solid #ced4da",
+                        color: "#111",
+                    }}
+                >
+                    This chat is closed.
+                </div>
+            )}
+
             <div
                 style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 300px",
+                    gap: 12,
                     marginTop: 16,
-                    border: "1px solid #ddd",
-                    borderRadius: 10,
-                    padding: 12,
-                    height: 420,
-                    overflow: "auto",
-                    background: "#fafafa",
-                    color: "#111",
                 }}
             >
-                {msgs.map((m) => (
-                    <div key={m.id} style={{ marginBottom: 10 }}>
-                        <div style={{ fontSize: 12, opacity: 0.6 }}>
-                            {m.sender_type} • {new Date(m.created_at).toLocaleString()}
-                        </div>
-                        <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+                {/* Left: messages + input */}
+                <div>
+                    <div
+                        style={{
+                            border: "1px solid #ddd",
+                            borderRadius: 10,
+                            padding: 12,
+                            height: 420,
+                            overflow: "auto",
+                            background: "#fafafa",
+                            color: "#111",
+                        }}
+                    >
+                        {msgs.map((m) => (
+                            <div key={m.id} style={{ marginBottom: 10 }}>
+                                <div style={{ fontSize: 12, opacity: 0.6 }}>
+                                    {m.sender_type} • {new Date(m.created_at).toLocaleString()}
+                                </div>
+                                <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <input
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder={canSend ? "Type reply…" : "You can’t reply to this chat"}
-                    style={{ flex: 1, padding: 10 }}
-                    disabled={!canSend || sending}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") send();
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <input
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            placeholder={canSend ? "Type reply…" : "You can’t reply to this chat"}
+                            style={{ flex: 1, padding: 10 }}
+                            disabled={!canSend || sending}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") send();
+                            }}
+                        />
+                        <button onClick={send} disabled={!canSend || sending}>
+                            {sending ? "Sending…" : "Send"}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Right: canned replies */}
+                <div
+                    style={{
+                        border: "1px solid #ddd",
+                        borderRadius: 10,
+                        padding: 12,
+                        background: "#fff",
+                        height: 420 + 12 + 42, // roughly match left area height
+                        overflow: "auto",
+                        color: "#111",
                     }}
-                />
-                <button onClick={send} disabled={!canSend || sending}>
-                    {sending ? "Sending…" : "Send"}
-                </button>
+                >
+                    <div style={{ fontWeight: 700, marginBottom: 10 }}>Canned replies</div>
+
+                    {canned.length === 0 ? (
+                        <div style={{ fontSize: 13, opacity: 0.7 }}>No canned replies yet.</div>
+                    ) : (
+                        <div style={{ display: "grid", gap: 8 }}>
+                            {canned.map((r) => (
+                                <button
+                                    key={r.id}
+                                    onClick={() => setText(r.body)}
+                                    style={{
+                                        textAlign: "left",
+                                        padding: 10,
+                                        borderRadius: 10,
+                                        border: "1px solid #eee",
+                                        background: "#fafafa",
+                                        cursor: "pointer",
+                                        color: "#111",
+                                    }}
+                                    title={r.body}
+                                    disabled={!canSend}
+                                >
+                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.title}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                                        {r.site_id ? `Site: ${r.site_id}` : "Global"}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

@@ -7,21 +7,52 @@ export default function Inbox() {
     const [rows, setRows] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [me, setMe] = React.useState(null);
+    const [role, setRole] = React.useState(null);
 
     async function load() {
         setLoading(true);
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        if (userErr) {
+            console.error(userErr);
+            setRows([]);
+            setLoading(false);
+            return;
+        }
         setMe(user);
+        const { data: profile } = await supabase
+            .from("staff_profiles")
+            .select("role, is_active")
+            .eq("user_id", user.id)
+            .single();
+
+        setRole(profile?.is_active ? profile?.role : null);
+
 
         let q = supabase
             .from("conversations")
-            .select("id, site_id, customer_name, status, assigned_to, last_message_at")
-            .eq("status", "open")
-            .order("last_message_at", { ascending: false });
+            .select("id, site_id, customer_name, status, assigned_to, last_message_at, closed_at");
 
-        if (tab === "unassigned") q = q.is("assigned_to", null);
-        if (tab === "mine") q = q.eq("assigned_to", user.id);
+        if (tab === "unassigned") {
+            q = q
+                .eq("status", "open")
+                .is("assigned_to", null)
+                .order("last_message_at", { ascending: false });
+        }
+
+        if (tab === "mine") {
+            q = q
+                .eq("status", "open")
+                .eq("assigned_to", user.id)
+                .order("last_message_at", { ascending: false });
+        }
+
+        if (tab === "closed") {
+            q = q
+                .eq("status", "closed")
+                .order("closed_at", { ascending: false })
+                .order("last_message_at", { ascending: false });
+        }
 
         const { data, error } = await q;
 
@@ -34,6 +65,7 @@ export default function Inbox() {
 
         setLoading(false);
     }
+
 
     React.useEffect(() => {
         load();
@@ -66,11 +98,24 @@ export default function Inbox() {
 
     return (
         <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <h2>Live Chat Inbox</h2>
-                <button onClick={signOut}>Sign out</button>
-            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ margin: 0 }}>Live Chat Inbox</h2>
 
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    {role === "admin" && (
+                        <Link to="/admin/canned" style={{ fontSize: 13 }}>
+                            Admin: Canned Replies
+                        </Link>
+                    )}
+                    {role === "admin" && (
+                        <Link to="/admin/users" style={{ fontSize: 13 }}>
+                            Admin: Users
+                        </Link>
+                    )}
+                    <Link to="/change-pin" style={{ fontSize: 13 }}>Change PIN</Link>
+                    <button onClick={signOut}>Sign out</button>
+                </div>
+            </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <button
                     onClick={() => setTab("unassigned")}
@@ -84,6 +129,13 @@ export default function Inbox() {
                 >
                     Mine
                 </button>
+                <button
+                    onClick={() => setTab("closed")}
+                    style={{ fontWeight: tab === "closed" ? "700" : "400" }}
+                >
+                    Closed
+                </button>
+
             </div>
 
             {loading ? (
@@ -109,10 +161,11 @@ export default function Inbox() {
                                     <div style={{ fontWeight: 700 }}>{c.customer_name}</div>
                                     <div style={{ fontSize: 12, opacity: 0.75 }}>
                                         Site: {c.site_id} • Status: {c.status}
+                                        {tab === "closed" && c.closed_at ? ` • Closed: ${new Date(c.closed_at).toLocaleString()}` : ""}
                                     </div>
                                 </div>
                                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                                    {new Date(c.last_message_at).toLocaleString()}
+                                    {new Date((tab === "closed" ? (c.closed_at || c.last_message_at) : c.last_message_at)).toLocaleString()}
                                 </div>
                             </div>
                             <div style={{ marginTop: 8, fontSize: 13, opacity: 0.85 }}>

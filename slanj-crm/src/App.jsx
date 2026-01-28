@@ -4,6 +4,9 @@ import Login from "./pages/Login.jsx";
 import Inbox from "./pages/Inbox.jsx";
 import Chat from "./pages/Chat.jsx";
 import { supabase } from "./supabaseClient";
+import CannedRepliesAdmin from "./pages/CannedRepliesAdmin";
+import UsersAdmin from "./pages/UsersAdmin";
+import ChangePin from "./pages/ChangePin";
 
 function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
@@ -49,6 +52,9 @@ export default function App() {
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/admin/canned" element={<CannedRepliesAdmin />} />
+      <Route path="/admin/users" element={<UsersAdmin />} />
+      <Route path="/change-pin" element={<ChangePin />} />
     </Routes>
   );
 }
