@@ -6,7 +6,7 @@ import Chat from "./pages/Chat.jsx";
 import { supabase } from "./supabaseClient";
 import CannedRepliesAdmin from "./pages/CannedRepliesAdmin";
 import UsersAdmin from "./pages/UsersAdmin";
-import ChangePin from "./pages/ChangePin";
+import ChangePin from "./pages/changePin.jsx";
 
 function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
