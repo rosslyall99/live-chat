@@ -8,6 +8,7 @@ import CannedRepliesAdmin from "./pages/CannedRepliesAdmin";
 import UsersAdmin from "./pages/UsersAdmin";
 import ChangePin from "./pages/changePin.jsx";
 import AdminLive from "./pages/AdminLive";
+import AdminInsights from "./pages/AdminInsights";
 
 function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
@@ -57,6 +58,7 @@ export default function App() {
       <Route path="/admin/users" element={<UsersAdmin />} />
       <Route path="/change-pin" element={<ChangePin />} />
       <Route path="/admin/live" element={<AdminLive />} />
+      <Route path="/admin/insights" element={<AdminInsights />} />
     </Routes>
   );
 }
