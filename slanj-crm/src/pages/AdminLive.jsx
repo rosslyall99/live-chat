@@ -2,6 +2,30 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
 
+function Badge({ children, bg = "#eee", color = "#111" }) {
+    return (
+        <span
+            style={{
+                display: "inline-block",
+                padding: "4px 8px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 600,
+                background: bg,
+                color,
+                lineHeight: 1,
+            }}
+        >
+            {children}
+        </span>
+    );
+}
+
+function minutesSince(isoOrNull, fallbackIso) {
+    const t = new Date(isoOrNull || fallbackIso).getTime();
+    return Math.max(0, Math.floor((Date.now() - t) / 60000));
+}
+
 async function invokeAdmin(fn, body = {}) {
     const { data: sessionData, error: sessErr } = await supabase.auth.getSession();
     if (sessErr) throw new Error(sessErr.message);
@@ -31,6 +55,8 @@ export default function AdminLive() {
     const [error, setError] = React.useState("");
 
     const [rows, setRows] = React.useState([]);
+    const [now, setNow] = React.useState(Date.now());
+
 
     // for filters / name mapping
     const [staff, setStaff] = React.useState([]); // staff_profiles
@@ -83,6 +109,7 @@ export default function AdminLive() {
     React.useEffect(() => {
         load();
 
+        // Realtime updates
         const channel = supabase
             .channel("admin-live")
             .on(
@@ -97,7 +124,15 @@ export default function AdminLive() {
             )
             .subscribe();
 
-        return () => supabase.removeChannel(channel);
+        // Timer for "Waiting X m" / "Active X m"
+        const timer = setInterval(() => {
+            setNow(Date.now());
+        }, 30 * 1000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(timer);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -116,6 +151,14 @@ export default function AdminLive() {
 
             // Optional: notify Teams using your existing function
             // await supabase.functions.invoke("staff_notify_claimed", { body: { conversation_id } });
+
+            // Audit trail (shows in the chat transcript)
+            await supabase.from("messages").insert({
+                conversation_id,
+                sender_type: "staff",
+                sender_user_id: me.id,
+                body: `SYSTEM: Admin took over this chat.`,
+            });
 
             await load();
         } catch (e) {
@@ -165,6 +208,18 @@ export default function AdminLive() {
         if (assigneeFilter === "all") return true;
         if (assigneeFilter === "unassigned") return !c.assigned_to;
         return c.assigned_to === assigneeFilter;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+        // Unassigned first
+        const aU = a.assigned_to ? 1 : 0;
+        const bU = b.assigned_to ? 1 : 0;
+        if (aU !== bU) return aU - bU;
+
+        // Then most recent activity
+        const aT = new Date(a.last_message_at || a.created_at).getTime();
+        const bT = new Date(b.last_message_at || b.created_at).getTime();
+        return bT - aT;
     });
 
     return (
@@ -235,7 +290,7 @@ export default function AdminLive() {
                         <div style={{ padding: 10, fontWeight: 700 }}>Actions</div>
                     </div>
 
-                    {filtered.map((c) => {
+                    {sorted.map((c) => {
                         const assigned = c.assigned_to ? staffMap[c.assigned_to] : null;
                         const assignedLabel = c.assigned_to
                             ? (assigned?.display_name || assigned?.username || "Assigned")
@@ -246,23 +301,81 @@ export default function AdminLive() {
                         return (
                             <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1fr 0.9fr 1.4fr", borderBottom: "1px solid #eee" }}>
                                 <div style={{ padding: 10 }}>
-                                    <div style={{ fontWeight: 700 }}>{c.customer_name}</div>
+                                    <div style={{ fontWeight: 700, display: "flex", gap: 6, alignItems: "center" }}>
+                                        {c.customer_name}
+                                        {!c.assigned_to && (
+                                            <Badge bg="#fff3cd" color="#856404">New</Badge>
+                                        )}
+                                    </div>
                                     <div style={{ fontSize: 12, opacity: 0.75 }}>{c.id}</div>
                                 </div>
 
                                 <div style={{ padding: 10 }}>{c.site_id || "-"}</div>
 
                                 <div style={{ padding: 10 }}>
-                                    <div>{assignedLabel}</div>
+                                    {!c.assigned_to ? (
+                                        <Badge bg="#fff3cd" color="#856404">Unassigned</Badge>
+                                    ) : (
+                                        <Badge bg="#e7f3ff" color="#084298">
+                                            Assigned to {assignedLabel}
+                                        </Badge>
+                                    )}
+
                                     {c.assigned_to && assigned?.role === "admin" && (
-                                        <div style={{ fontSize: 12, opacity: 0.7 }}>Admin</div>
+                                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                                            Admin
+                                        </div>
                                     )}
                                 </div>
 
                                 <div style={{ padding: 10, fontSize: 13, opacity: 0.85 }}>
-                                    {c.last_message_at
-                                        ? new Date(c.last_message_at).toLocaleString()
-                                        : new Date(c.created_at).toLocaleString()}
+                                    {(() => {
+                                        const mins = Math.max(
+                                            0,
+                                            Math.floor((now - new Date(c.last_message_at || c.created_at).getTime()) / 60000)
+                                        );
+                                        return (
+                                            <div>
+                                                <div style={{ fontSize: 13, opacity: 0.85 }}>
+                                                    {new Date(c.last_message_at || c.created_at).toLocaleString()}
+                                                </div>
+                                                {(() => {
+                                                    const isUnassigned = !c.assigned_to;
+                                                    let bg = "#f1f3f5";
+                                                    let color = "#111";
+
+                                                    if (isUnassigned) {
+                                                        if (mins >= 10) {
+                                                            bg = "#f8d7da";  // red
+                                                            color = "#842029";
+                                                        } else if (mins >= 5) {
+                                                            bg = "#fff3cd";  // amber
+                                                            color = "#856404";
+                                                        } else {
+                                                            bg = "#d1e7dd";  // green
+                                                            color = "#0f5132";
+                                                        }
+                                                    } else {
+                                                        if (mins >= 15) {
+                                                            bg = "#fff3cd";  // amber (slow active chat)
+                                                            color = "#856404";
+                                                        } else {
+                                                            bg = "#e7f3ff";  // blue
+                                                            color = "#084298";
+                                                        }
+                                                    }
+
+                                                    return (
+                                                        <div style={{ marginTop: 4 }}>
+                                                            <Badge bg={bg} color={color}>
+                                                                {c.assigned_to ? `Active ${mins}m` : `Waiting ${mins}m`}
+                                                            </Badge>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 <div style={{ padding: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -311,7 +311,20 @@ export default function Chat() {
                                 <div style={{ fontSize: 12, opacity: 0.6 }}>
                                     {m.sender_type} • {new Date(m.created_at).toLocaleString()}
                                 </div>
-                                <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+                                {m.body?.startsWith("SYSTEM:") ? (
+                                    <div
+                                        style={{
+                                            whiteSpace: "pre-wrap",
+                                            fontSize: 13,
+                                            opacity: 0.7,
+                                            fontStyle: "italic",
+                                        }}
+                                    >
+                                        {m.body.replace(/^SYSTEM:\s*/, "")}
+                                    </div>
+                                ) : (
+                                    <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+                                )}
                             </div>
                         ))}
                     </div>
