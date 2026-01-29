@@ -112,6 +112,11 @@ export default function Inbox() {
                             Admin: Users
                         </Link>
                     )}
+                    {role === "admin" && (
+                        <Link to="/admin/live" style={{ fontSize: 13, marginLeft: 12 }}>
+                            Admin: Live Monitor
+                        </Link>
+                    )}
                     <Link to="/change-pin" style={{ fontSize: 13 }}>Change PIN</Link>
                     <button onClick={signOut}>Sign out</button>
                 </div>

@@ -183,7 +183,6 @@ export default function Chat() {
             .from("conversations")
             .update({
                 status: "closed",
-                assigned_to: null,
                 closed_at: new Date().toISOString(),
             })
             .eq("id", id);
@@ -212,7 +211,7 @@ export default function Chat() {
 
     const isMine = convo.assigned_to && convo.assigned_to === me?.id;
     const isUnassigned = !convo.assigned_to;
-    const canSend = convo.status === "open" && (isUnassigned || isMine);
+    const canSend = convo.status === "open" && isMine;
 
     return (
         <div style={{ maxWidth: 1100, margin: "20px auto", padding: 16 }}>
@@ -268,6 +267,21 @@ export default function Chat() {
                     }}
                 >
                     This chat is closed.
+                </div>
+            )}
+
+            {isUnassigned && convo.status === "open" && (
+                <div
+                    style={{
+                        marginTop: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "#e7f3ff",
+                        border: "1px solid #b6daff",
+                        color: "#111",
+                    }}
+                >
+                    Claim this chat to reply to the customer.
                 </div>
             )}
 
