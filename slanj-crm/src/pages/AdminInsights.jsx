@@ -2,6 +2,18 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
 
+const inputStyle = {
+    display: "block",
+    marginTop: 6,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid #999999",
+    background: "#fff",
+    color: "#111",
+    outline: "none",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.3)",
+};
+
 async function invokeAdmin(fn, body = {}) {
     const { data: sessionData, error: sessErr } = await supabase.auth.getSession();
     if (sessErr) throw new Error(sessErr.message);
@@ -72,6 +84,7 @@ export default function AdminInsights() {
     // Sorters
     const [sortBy, setSortBy] = React.useState("closed_count"); // default
     const [sortDir, setSortDir] = React.useState("desc"); // "asc" | "desc"
+    const [avgMode, setAvgMode] = React.useState("response"); // "response" | "duration"
 
     async function loadFilters() {
         // Staff list (admin-only)
@@ -147,6 +160,158 @@ export default function AdminInsights() {
         }
     }
 
+    function toggleAvgMetric() {
+        if (sortBy === "avg_metric") {
+            setAvgMode((m) => (m === "response" ? "duration" : "response"));
+            return;
+        }
+
+        setSortBy("avg_metric");
+        setSortDir("desc");
+        setAvgMode("response");
+    }
+
+    function SortHeader({ label, active, dir, onClick }) {
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 700,
+                }}
+            >
+                <span>{label}</span>
+
+                {/* Reserved space: always 14px wide */}
+                <span
+                    style={{
+                        width: 14,
+                        display: "inline-flex",
+                        justifyContent: "center",
+                        opacity: active ? 1 : 0, // invisible but keeps space
+                        transform: dir === "asc" ? "rotate(180deg)" : "none",
+                        transition: "transform 120ms ease",
+                    }}
+                >
+                    ▼
+                </span>
+            </button>
+        );
+    }
+
+    function AvgMetricHeader({ avgMode, setAvgMode, active, dir, onToggleDir, onActivate }) {
+        const [hover, setHover] = React.useState(false);
+        const showArrow = active || hover;
+
+        return (
+            <div
+                onMouseEnter={() => setHover(true)}
+                onMouseLeave={() => setHover(false)}
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    width: "100%",
+                }}
+            >
+                {/* Label toggles response/duration */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        // Ensure we are sorting by avg_metric first
+                        if (!active) onActivate();
+                        setAvgMode((m) => (m === "response" ? "duration" : "response"));
+                    }}
+                    style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        color: "#111",
+                        whiteSpace: "nowrap",
+                    }}
+                    title="Click to toggle response/duration"
+                >
+                    {avgMode === "response" ? "Avg response" : "Avg duration"}
+                </button>
+
+                {/* Arrow toggles sort direction */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (!active) onActivate();
+                        onToggleDir();
+                    }}
+                    style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        width: 14,                 // fixed width => no layout shift
+                        display: "inline-flex",
+                        justifyContent: "center",
+                        opacity: showArrow ? 1 : 0, // fade in on hover
+                        transform: active && dir === "asc" ? "rotate(180deg)" : "none",
+                        transition: "opacity 120ms ease, transform 120ms ease",
+                        userSelect: "none",
+                    }}
+                    title="Click to sort"
+                >
+                    ▼
+                </button>
+            </div>
+        );
+    }
+
+    const th = {
+        padding: 10,
+        fontWeight: 800,
+        color: "#111",
+    };
+
+    function SortHeader({ label, active, dir, onClick }) {
+        const [hover, setHover] = React.useState(false);
+        const show = active || hover;
+
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                onMouseEnter={() => setHover(true)}
+                onMouseLeave={() => setHover(false)}
+                style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    fontWeight: 700,
+                    color: "#111",
+                }}
+            >
+                <span>{label}</span>
+
+                {/* Fixed-width arrow container prevents layout shift */}
+                <span
+                    style={{
+                        width: 14,
+                        display: "inline-flex",
+                        justifyContent: "center",
+                        opacity: show ? 1 : 0,
+                        transform: active && dir === "asc" ? "rotate(180deg)" : "none",
+                        transition: "opacity 120ms ease, transform 120ms ease",
+                    }}
+                >
+                    ▼
+                </span>
+            </button>
+        );
+    }
+
     React.useEffect(() => {
         (async () => {
             setLoading(true);
@@ -177,9 +342,14 @@ export default function AdminInsights() {
         const dir = sortDir === "asc" ? 1 : -1;
 
         function val(a) {
+            if (sortBy === "avg_metric") {
+                return avgMode === "response"
+                    ? (a?.avg_first_reply_seconds ?? -1)
+                    : (a?.avg_chat_duration_minutes ?? -1);
+            }
+
             const v = a?.[sortBy];
-            if (v == null) return -1;
-            return v;
+            return v == null ? -1 : v;
         }
 
         return [...agents].sort((a, b) => {
@@ -235,18 +405,17 @@ export default function AdminInsights() {
                 style={{
                     marginTop: 14,
                     padding: 12,
-                    border: "1px solid #ddd",
+                    border: "1px solid #bcbcbc",
                     borderRadius: 12,
                     display: "flex",
                     gap: 12,
                     flexWrap: "wrap",
                     alignItems: "end",
-                    background: "#fafafa",
                 }}
             >
                 <label style={{ fontSize: 13 }}>
                     Range
-                    <select value={range} onChange={(e) => setRange(e.target.value)} style={{ display: "block", marginTop: 6, padding: 8 }}>
+                    <select value={range} onChange={(e) => setRange(e.target.value)} style={inputStyle}>
                         <option value="today">Today</option>
                         <option value="7d">Last 7 days</option>
                         <option value="30d">Last 30 days</option>
@@ -262,7 +431,7 @@ export default function AdminInsights() {
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                style={{ display: "block", marginTop: 6, padding: 8 }}
+                                style={inputStyle}
                             />
                         </label>
 
@@ -272,7 +441,7 @@ export default function AdminInsights() {
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                style={{ display: "block", marginTop: 6, padding: 8 }}
+                                style={inputStyle}
                             />
                         </label>
                     </>
@@ -280,7 +449,7 @@ export default function AdminInsights() {
 
                 <label style={{ fontSize: 13 }}>
                     Site
-                    <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={{ display: "block", marginTop: 6, padding: 8 }}>
+                    <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={inputStyle}>
                         <option value="all">All</option>
                         {sites.map((s) => (
                             <option key={s.id} value={s.id}>
@@ -292,7 +461,7 @@ export default function AdminInsights() {
 
                 <label style={{ fontSize: 13 }}>
                     Agent
-                    <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={{ display: "block", marginTop: 6, padding: 8, minWidth: 200 }}>
+                    <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={inputStyle}>
                         <option value="all">All</option>
                         {staff.map((s) => (
                             <option key={s.user_id} value={s.user_id}>
@@ -305,7 +474,7 @@ export default function AdminInsights() {
 
             {/* Summary */}
             <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12, minWidth: 240 }}>
+                <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Created (in range)</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.created_conversations ?? "—"}</div>
                     <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
@@ -313,7 +482,7 @@ export default function AdminInsights() {
                     </div>
                 </div>
 
-                <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 12, minWidth: 240 }}>
+                <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Closed (in range)</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.closed_conversations ?? "—"}</div>
                     <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
@@ -326,7 +495,7 @@ export default function AdminInsights() {
             </div>
 
             {/* Per-agent table */}
-            <div style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ marginTop: 16, border: "1px solid #bcbcbc", borderRadius: 12, overflow: "hidden" }}>
                 {(() => {
                     function arrow(key) {
                         if (sortBy !== key) return "";
@@ -348,24 +517,44 @@ export default function AdminInsights() {
                         <div
                             style={{
                                 display: "grid",
-                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr 1fr",
+                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr minmax(260px, 1fr)",
                                 background: "#f6f6f6",
-                                borderBottom: "1px solid #ddd",
+                                borderBottom: "1px solid #bcbcbc",
                             }}
                         >
                             <div style={th}>Agent</div>
                             <div style={th}>Site</div>
 
-                            <div style={clickable} onClick={() => toggleSort("claimed_count")}>
-                                Claimed{arrow("claimed_count")}
+                            <div style={th}>
+                                <SortHeader
+                                    label="Claimed"
+                                    active={sortBy === "claimed_count"}
+                                    dir={sortDir}
+                                    onClick={() => toggleSort("claimed_count")}
+                                />
                             </div>
 
-                            <div style={clickable} onClick={() => toggleSort("closed_count")}>
-                                Closed{arrow("closed_count")}
+                            <div style={th}>
+                                <SortHeader
+                                    label="Closed"
+                                    active={sortBy === "closed_count"}
+                                    dir={sortDir}
+                                    onClick={() => toggleSort("closed_count")}
+                                />
                             </div>
 
-                            <div style={clickable} onClick={() => toggleSort("avg_first_reply_seconds")}>
-                                Avg response / duration{arrow("avg_first_reply_seconds")}
+                            <div style={th}>
+                                <AvgMetricHeader
+                                    avgMode={avgMode}
+                                    setAvgMode={setAvgMode}
+                                    active={sortBy === "avg_metric"}
+                                    dir={sortDir}
+                                    onActivate={() => {
+                                        setSortBy("avg_metric");
+                                        setSortDir("desc"); // default when first activating
+                                    }}
+                                    onToggleDir={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+                                />
                             </div>
                         </div>
                     );
@@ -381,7 +570,7 @@ export default function AdminInsights() {
                             key={a.user_id}
                             style={{
                                 display: "grid",
-                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr 1fr",
+                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr minmax(260px, 1fr)",
                                 borderBottom: "1px solid #eee",
                             }}
                         >

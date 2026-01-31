@@ -142,116 +142,241 @@ export default function UsersAdmin() {
     }
 
     return (
-        <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <h2>Admin: Staff Users</h2>
-                <Link to="/">← Inbox</Link>
+        <div style={{ color: "#111" }}>
+            {/* Header */}
+            <div
+                style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: 12,
+                    marginBottom: 14,
+                }}
+            >
+                <div>
+                    <h2 style={{ margin: 0 }}>Staff Users</h2>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                        Create staff accounts, reset PINs, and deactivate leavers.
+                    </div>
+                </div>
+
+                <Link to="/" style={{ fontSize: 13 }}>
+                    ← Back to Inbox
+                </Link>
             </div>
 
+            {/* Error */}
             {error && (
-                <div style={{ marginBottom: 12, color: "crimson", whiteSpace: "pre-wrap" }}>
+                <div
+                    style={{
+                        marginBottom: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "#ffe6e6",
+                        border: "1px solid #ffb3b3",
+                        whiteSpace: "pre-wrap",
+                    }}
+                >
                     {error}
                 </div>
             )}
 
             {/* Create user */}
-            <form
-                onSubmit={createUser}
+            <div
                 style={{
                     border: "1px solid #ddd",
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 20,
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 16,
+                    background: "#fafafa",
                 }}
             >
-                <h4>Create Staff User</h4>
+                <div style={{ fontWeight: 800, marginBottom: 10 }}>Create Staff User</div>
 
-                <input
-                    placeholder="username (e.g. duke-amy)"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    style={{ width: "100%", padding: 8, marginBottom: 8 }}
-                />
+                <form onSubmit={createUser}>
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 10,
+                        }}
+                    >
+                        <input
+                            placeholder="username (e.g. duke-amy)"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            required
+                            style={{
+                                width: "100%",
+                                padding: 10,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                            }}
+                            autoComplete="off"
+                        />
 
-                <input
-                    placeholder="display name (optional)"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    style={{ width: "100%", padding: 8, marginBottom: 8 }}
-                />
+                        <input
+                            placeholder="display name (optional)"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            style={{
+                                width: "100%",
+                                padding: 10,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                            }}
+                            autoComplete="off"
+                        />
 
-                <select
-                    value={siteId}
-                    onChange={(e) => setSiteId(e.target.value)}
-                    required
-                    style={{ width: "100%", padding: 8, marginBottom: 8 }}
-                >
-                    <option value="">Select a site…</option>
-                    {sites.map((s) => (
-                        <option key={s.id} value={s.id}>
-                            {s.name ? `${s.name} (${s.id})` : s.id}
-                        </option>
-                    ))}
-                </select>
+                        <select
+                            value={siteId}
+                            onChange={(e) => setSiteId(e.target.value)}
+                            required
+                            style={{
+                                width: "100%",
+                                padding: 10,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                                background: "#fff",
+                            }}
+                        >
+                            <option value="">Select a site…</option>
+                            {sites.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name ? `${s.name} (${s.id})` : s.id}
+                                </option>
+                            ))}
+                        </select>
 
-                <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    style={{ width: "100%", padding: 8, marginBottom: 8 }}
-                >
-                    <option value="agent">Agent</option>
-                    <option value="admin">Admin</option>
-                </select>
+                        <select
+                            value={role}
+                            onChange={(e) => setRole(e.target.value)}
+                            style={{
+                                width: "100%",
+                                padding: 10,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                                background: "#fff",
+                            }}
+                        >
+                            <option value="agent">Agent</option>
+                            <option value="admin">Admin</option>
+                        </select>
 
-                <input
-                    placeholder="PIN / password"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    required
-                    type="password"
-                    style={{ width: "100%", padding: 8, marginBottom: 8 }}
-                />
+                        <input
+                            placeholder="PIN / password"
+                            value={pin}
+                            onChange={(e) => setPin(e.target.value)}
+                            required
+                            type="password"
+                            style={{
+                                width: "100%",
+                                padding: 10,
+                                borderRadius: 10,
+                                border: "1px solid #ccc",
+                                gridColumn: "1 / -1",
+                            }}
+                            autoComplete="new-password"
+                        />
+                    </div>
 
-                <button disabled={creating || !siteId}>
-                    {creating ? "Creating…" : "Create User"}
-                </button>
-            </form>
+                    <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                            disabled={creating || !siteId}
+                            style={{
+                                padding: "10px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #111",
+                                background: "#111",
+                                color: "#fff",
+                                fontWeight: 800,
+                                cursor: creating || !siteId ? "not-allowed" : "pointer",
+                                opacity: creating || !siteId ? 0.6 : 1,
+                            }}
+                        >
+                            {creating ? "Creating…" : "Create User"}
+                        </button>
+                    </div>
+                </form>
+            </div>
 
             {/* List */}
-            {loading ? (
-                <div>Loading…</div>
-            ) : rows.length === 0 ? (
-                <div>No staff users.</div>
-            ) : (
-                <table width="100%" cellPadding={8}>
-                    <thead>
-                        <tr>
-                            <th align="left">Username</th>
-                            <th align="left">Name</th>
-                            <th align="left">Role</th>
-                            <th align="left">Site</th>
-                            <th align="left">Active</th>
-                            <th />
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((u) => (
-                            <tr key={u.user_id}>
-                                <td>{u.username}</td>
-                                <td>{u.display_name}</td>
-                                <td>{u.role}</td>
-                                <td>{u.site_id || "—"}</td>
-                                <td>{u.is_active ? "Yes" : "No"}</td>
-                                <td style={{ textAlign: "right" }}>
-                                    <button onClick={() => resetPin(u.user_id)}>Reset PIN</button>{" "}
-                                    <button onClick={() => deactivate(u.user_id)}>Deactivate</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
+            <div style={{ border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
+                        gap: 0,
+                        background: "#f6f6f6",
+                        borderBottom: "1px solid #ddd",
+                        fontWeight: 800,
+                        fontSize: 13,
+                    }}
+                >
+                    <div style={{ padding: 10 }}>Username</div>
+                    <div style={{ padding: 10 }}>Name</div>
+                    <div style={{ padding: 10 }}>Role</div>
+                    <div style={{ padding: 10 }}>Site</div>
+                    <div style={{ padding: 10 }}>Active</div>
+                    <div style={{ padding: 10, textAlign: "right" }}>Actions</div>
+                </div>
+
+                {loading ? (
+                    <div style={{ padding: 12 }}>Loading…</div>
+                ) : rows.length === 0 ? (
+                    <div style={{ padding: 12, opacity: 0.8 }}>No staff users.</div>
+                ) : (
+                    rows.map((u) => (
+                        <div
+                            key={u.user_id}
+                            style={{
+                                display: "grid",
+                                gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
+                                borderBottom: "1px solid #eee",
+                                alignItems: "center",
+                                fontSize: 13,
+                            }}
+                        >
+                            <div style={{ padding: 10, fontWeight: 800 }}>{u.username}</div>
+                            <div style={{ padding: 10 }}>{u.display_name || "—"}</div>
+                            <div style={{ padding: 10 }}>{u.role}</div>
+                            <div style={{ padding: 10 }}>{u.site_id || "—"}</div>
+                            <div style={{ padding: 10 }}>{u.is_active ? "Yes" : "No"}</div>
+
+                            <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                <button
+                                    onClick={() => resetPin(u.user_id)}
+                                    style={{
+                                        padding: "8px 10px",
+                                        borderRadius: 10,
+                                        border: "1px solid #ccc",
+                                        background: "#fff",
+                                        cursor: "pointer",
+                                        fontWeight: 700,
+                                    }}
+                                >
+                                    Reset PIN
+                                </button>
+
+                                <button
+                                    onClick={() => deactivate(u.user_id)}
+                                    style={{
+                                        padding: "8px 10px",
+                                        borderRadius: 10,
+                                        border: "1px solid #ffb3b3",
+                                        background: "#ffe6e6",
+                                        cursor: "pointer",
+                                        fontWeight: 800,
+                                    }}
+                                >
+                                    Deactivate
+                                </button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
     );
+
 }
