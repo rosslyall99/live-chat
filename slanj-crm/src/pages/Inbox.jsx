@@ -116,7 +116,7 @@ export default function Inbox() {
                 </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 14, marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 14, marginBottom: 12, }}>
                 <button style={segBtn(tab === "unassigned")} onClick={() => setTab("unassigned")}>
                     Unassigned
                 </button>
