@@ -96,56 +96,38 @@ export default function Inbox() {
         window.location.href = "/login";
     }
 
+    const segBtn = (active) => ({
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: active ? "1px solid #bbb" : "1px solid #ddd",
+        background: active ? "#fff" : "#f6f6f6",
+        fontWeight: active ? 800 : 700,
+        cursor: "pointer",
+    });
+
     return (
         <div style={{ maxWidth: 900, margin: "20px auto", padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h2 style={{ margin: 0 }}>Live Chat Inbox</h2>
-
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    {role === "admin" && (
-                        <Link to="/admin/canned" style={{ fontSize: 13 }}>
-                            Admin: Canned Replies
-                        </Link>
-                    )}
-                    {role === "admin" && (
-                        <Link to="/admin/users" style={{ fontSize: 13 }}>
-                            Admin: Users
-                        </Link>
-                    )}
-                    {role === "admin" && (
-                        <Link to="/admin/live" style={{ fontSize: 13, marginLeft: 12 }}>
-                            Admin: Live Monitor
-                        </Link>
-                    )}
-                    {role === "admin" && (
-                        <Link to="/admin/insights" style={{ fontSize: 13, marginLeft: 12 }}>
-                            Admin: Insights
-                        </Link>
-                    )}
-                    <Link to="/change-pin" style={{ fontSize: 13 }}>Change PIN</Link>
-                    <button onClick={signOut}>Sign out</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div>
+                    <h2 style={{ margin: 0 }}>Inbox</h2>
+                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                        Unassigned chats are visible to everyone. Claim to reply.
+                    </div>
                 </div>
             </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <button
-                    onClick={() => setTab("unassigned")}
-                    style={{ fontWeight: tab === "unassigned" ? "700" : "400" }}
-                >
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14, marginBottom: 12 }}>
+                <button style={segBtn(tab === "unassigned")} onClick={() => setTab("unassigned")}>
                     Unassigned
                 </button>
-                <button
-                    onClick={() => setTab("mine")}
-                    style={{ fontWeight: tab === "mine" ? "700" : "400" }}
-                >
+
+                <button style={segBtn(tab === "mine")} onClick={() => setTab("mine")}>
                     Mine
                 </button>
-                <button
-                    onClick={() => setTab("closed")}
-                    style={{ fontWeight: tab === "closed" ? "700" : "400" }}
-                >
+
+                <button style={segBtn(tab === "closed")} onClick={() => setTab("closed")}>
                     Closed
                 </button>
-
             </div>
 
             {loading ? (
