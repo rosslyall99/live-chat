@@ -3,6 +3,13 @@ html, body {
     "Segoe UI", Roboto, sans-serif;
 }
 
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  background: #d4d4d4;
+}
+
 input,
 select,
 textarea,

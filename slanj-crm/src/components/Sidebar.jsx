@@ -60,7 +60,7 @@ function Item({ to, label }) {
 }
 
 export default function Sidebar({ role = "agent" }) {
-    const isAdmin = role === "admin";
+    const isAdmin = String(role).toLowerCase() === "admin";
 
     return (
         <aside
@@ -100,6 +100,7 @@ export default function Sidebar({ role = "agent" }) {
                     >
                         S
                     </div>
+
                     <div style={{ lineHeight: 1.1 }}>
                         <div style={{ fontSize: 16, fontWeight: 800 }}>Slanj</div>
                         <div style={{ fontSize: 12, color: ui.colors.sidebarMuted }}>
@@ -107,52 +108,30 @@ export default function Sidebar({ role = "agent" }) {
                         </div>
                     </div>
 
-                    <div style={{ marginLeft: "auto" }}>
-                        <span
-                            style={{
-                                fontSize: 11,
-                                padding: "5px 8px",
-                                borderRadius: 999,
-                                background: "rgba(255,255,255,0.08)",
-                                border: `1px solid ${ui.colors.sidebarBorder}`,
-                                color: ui.colors.sidebarText,
-                                fontWeight: 700,
-                            }}
-                        >
-                            {isAdmin ? "Admin" : "Agent"}
-                        </span>
-                    </div>
+                    {/* ✅ removed Agent/Admin pill from header */}
                 </div>
             </div>
 
             {/* Nav */}
             <div style={{ paddingTop: 10, overflow: "auto" }}>
-                {!isAdmin ? (
-                    <>
-                        <SectionTitle>Inbox</SectionTitle>
-                        <Item to="/" label="Unassigned & Mine" />
-                        <Item to="/closed" label="My Closed Chats" />
+                <SectionTitle>Inbox</SectionTitle>
+                <Item to="/" label="Inbox" />
 
+                <SectionTitle>User</SectionTitle>
+                <Item to="/change-pin" label="Change PIN" />
+
+                {isAdmin && (
+                    <>
                         <SectionTitle>Admin</SectionTitle>
-                        <Item to="/admin/monitor" label="Admin Live Monitor" />
+                        <Item to="/admin/live" label="Active Chats" />
                         <Item to="/admin/insights" label="Insights" />
                         <Item to="/admin/users" label="Users" />
-                    </>
-                ) : (
-                    <>
-                        <SectionTitle>Dashboard</SectionTitle>
-                        <Item to="/admin/insights" label="Insights" />
-
-                        <SectionTitle>Live</SectionTitle>
-                        <Item to="/admin/monitor" label="Active Chats" />
-
-                        <SectionTitle>Management</SectionTitle>
-                        <Item to="/admin/users" label="Users" />
+                        <Item to="/admin/canned" label="Canned Replies" />
                     </>
                 )}
             </div>
 
-            {/* Bottom / future */}
+            {/* Bottom */}
             <div
                 style={{
                     marginTop: "auto",
@@ -162,7 +141,9 @@ export default function Sidebar({ role = "agent" }) {
                     fontSize: 12,
                 }}
             >
-                <div style={{ opacity: 0.9 }}>Slanj Retail © {new Date().getFullYear()}</div>
+                <div style={{ opacity: 0.9 }}>
+                    Ross Lyall © {new Date().getFullYear()}
+                </div>
             </div>
         </aside>
     );

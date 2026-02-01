@@ -1,6 +1,7 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
+import { ui } from "../ui/tokens";
 
 const inputStyle = {
     display: "block",
@@ -371,17 +372,29 @@ export default function AdminInsights() {
     }, [agents, sortBy, sortDir]);
 
     return (
-        <div style={{ maxWidth: 1100, margin: "20px auto", padding: 16, color: "#111" }}>
+        <div style={{ width: "100%", color: "#111" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <div>
-                    <Link to="/">← Inbox</Link>
-                    <h2 style={{ marginTop: 8 }}>Admin: Insights</h2>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                    <Link
+                        to="/"
+                        style={{ textDecoration: "none", color: ui.colors.brand }}>← Inbox</Link>
+                    <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admin: Insights</h2>
+                    <div style={ui.text.subtitle}>
                         Chat stats by staff — filter by time, branch, and user.
                     </div>
                 </div>
 
-                <button onClick={loadMetrics} disabled={loading} style={{ padding: "8px 12px" }}>
+                <button onClick={loadMetrics}
+                    disabled={loading}
+                    style={{
+                        padding: "8px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: ui.colors.cardBg,
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontWeight: 800,
+                        color: ui.colors.text,
+                    }}>
                     {loading ? "Refreshing…" : "Refresh"}
                 </button>
             </div>

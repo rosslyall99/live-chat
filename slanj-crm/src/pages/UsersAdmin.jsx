@@ -1,6 +1,7 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
+import { ui } from "../ui/tokens";
 
 export default function UsersAdmin() {
     const [rows, setRows] = React.useState([]);
@@ -25,7 +26,6 @@ export default function UsersAdmin() {
         });
 
         if (error) {
-            // Extract useful body if possible
             if (error.context instanceof Response) {
                 const t = await error.context.text();
                 throw new Error(`HTTP ${error.context.status}: ${t}`);
@@ -46,10 +46,8 @@ export default function UsersAdmin() {
             const sitesRes = await invokeAdmin("admin_list_sites", {});
             const staffRes = await invokeAdmin("admin_list_staff", {});
 
-            // Ignore stale results if another load started after this one
             if (seq !== loadSeq.current) return;
 
-            console.log("admin_list_staff returned", staffRes);
             setSites(sitesRes?.sites || []);
             setRows(staffRes?.staff || []);
         } catch (e) {
@@ -67,8 +65,9 @@ export default function UsersAdmin() {
     React.useEffect(() => {
         loadAll();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event) => {
-            // Only reload when auth actually changes
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event) => {
             loadAll();
         });
 
@@ -94,7 +93,7 @@ export default function UsersAdmin() {
             await invokeAdmin("admin_create_staff", {
                 username: u,
                 display_name: dn,
-                site_id: s, // must match sites.id
+                site_id: s,
                 role,
                 pin: p,
             });
@@ -107,7 +106,6 @@ export default function UsersAdmin() {
 
             await new Promise((r) => setTimeout(r, 250));
             await loadAll();
-
         } catch (e) {
             console.error(e);
             setError(String(e.message || e));
@@ -141,57 +139,84 @@ export default function UsersAdmin() {
         }
     }
 
+    const inputStyle = {
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: ui.radius.md,
+        border: `1px solid ${ui.colors.border}`,
+        background: ui.colors.cardBg,
+        color: ui.colors.text,
+        outline: "none",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+        fontFamily: ui.font.ui,
+        boxSizing: "border-box",
+    };
+
+    const th = {
+        padding: 10,
+        fontWeight: 800,
+        color: ui.colors.text,
+        fontSize: 13,
+    };
+
     return (
-        <div style={{ color: "#111" }}>
-            {/* Header */}
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    gap: 12,
-                    marginBottom: 14,
-                }}
-            >
+        <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
+            {/* Header (match Insights/Live) */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
                 <div>
-                    <h2 style={{ margin: 0 }}>Staff Users</h2>
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                    <Link
+                        to="/"
+                        style={{ textDecoration: "none", color: ui.colors.brand }}>← Inbox</Link>
+                    <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admin: Users</h2>
+                    <div style={ui.text.subtitle}>
                         Create staff accounts, reset PINs, and deactivate leavers.
                     </div>
                 </div>
 
-                <Link to="/" style={{ fontSize: 13 }}>
-                    ← Back to Inbox
-                </Link>
+                <button
+                    onClick={loadAll}
+                    disabled={loading}
+                    style={{
+                        padding: "8px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: ui.colors.cardBg,
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontWeight: 800,
+                        color: ui.colors.text,
+                    }}
+                >
+                    {loading ? "Refreshing…" : "Refresh"}
+                </button>
             </div>
 
             {/* Error */}
-            {error && (
+            {error ? (
                 <div
                     style={{
-                        marginBottom: 12,
+                        marginTop: 12,
                         padding: 10,
                         borderRadius: 10,
-                        background: "#ffe6e6",
-                        border: "1px solid #ffb3b3",
+                        background: "rgba(239,68,68,0.08)",
+                        border: "1px solid rgba(239,68,68,0.35)",
                         whiteSpace: "pre-wrap",
                     }}
                 >
                     {error}
                 </div>
-            )}
+            ) : null}
 
-            {/* Create user */}
+            {/* Create user (styled like Insights filter block) */}
             <div
                 style={{
-                    border: "1px solid #ddd",
+                    marginTop: 14,
+                    padding: 12,
+                    border: `1px solid ${ui.colors.border}`,
                     borderRadius: 12,
-                    padding: 14,
-                    marginBottom: 16,
-                    background: "#fafafa",
+                    background: "rgba(2, 6, 23, 0.02)",
                 }}
             >
-                <div style={{ fontWeight: 800, marginBottom: 10 }}>Create Staff User</div>
+                <div style={{ fontWeight: 900, marginBottom: 10 }}>Create Staff User</div>
 
                 <form onSubmit={createUser}>
                     <div
@@ -206,12 +231,7 @@ export default function UsersAdmin() {
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             required
-                            style={{
-                                width: "100%",
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                            }}
+                            style={inputStyle}
                             autoComplete="off"
                         />
 
@@ -219,12 +239,7 @@ export default function UsersAdmin() {
                             placeholder="display name (optional)"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
-                            style={{
-                                width: "100%",
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                            }}
+                            style={inputStyle}
                             autoComplete="off"
                         />
 
@@ -232,13 +247,7 @@ export default function UsersAdmin() {
                             value={siteId}
                             onChange={(e) => setSiteId(e.target.value)}
                             required
-                            style={{
-                                width: "100%",
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                                background: "#fff",
-                            }}
+                            style={inputStyle}
                         >
                             <option value="">Select a site…</option>
                             {sites.map((s) => (
@@ -248,17 +257,7 @@ export default function UsersAdmin() {
                             ))}
                         </select>
 
-                        <select
-                            value={role}
-                            onChange={(e) => setRole(e.target.value)}
-                            style={{
-                                width: "100%",
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                                background: "#fff",
-                            }}
-                        >
+                        <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
                             <option value="agent">Agent</option>
                             <option value="admin">Admin</option>
                         </select>
@@ -269,28 +268,23 @@ export default function UsersAdmin() {
                             onChange={(e) => setPin(e.target.value)}
                             required
                             type="password"
-                            style={{
-                                width: "100%",
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "1px solid #ccc",
-                                gridColumn: "1 / -1",
-                            }}
+                            style={{ ...inputStyle, gridColumn: "1 / -1" }}
                             autoComplete="new-password"
                         />
                     </div>
 
-                    <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 10 }}>
                         <button
+                            type="submit"
                             disabled={creating || !siteId}
                             style={{
-                                padding: "10px 14px",
-                                borderRadius: 12,
-                                border: "1px solid #111",
-                                background: "#111",
-                                color: "#fff",
-                                fontWeight: 800,
+                                padding: "9px 12px",
+                                borderRadius: ui.radius.md,
+                                border: `1px solid rgba(168,85,247,0.35)`,
+                                background: ui.colors.brandSoft,
                                 cursor: creating || !siteId ? "not-allowed" : "pointer",
+                                fontWeight: 900,
+                                color: ui.colors.text,
                                 opacity: creating || !siteId ? 0.6 : 1,
                             }}
                         >
@@ -301,24 +295,24 @@ export default function UsersAdmin() {
             </div>
 
             {/* List */}
-            <div style={{ border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ marginTop: 16, border: `1px solid ${ui.colors.border}`, borderRadius: 12, overflow: "hidden" }}>
                 <div
                     style={{
                         display: "grid",
                         gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
                         gap: 0,
-                        background: "#f6f6f6",
-                        borderBottom: "1px solid #ddd",
+                        background: "rgba(2, 6, 23, 0.03)",
+                        borderBottom: `1px solid ${ui.colors.border}`,
                         fontWeight: 800,
                         fontSize: 13,
                     }}
                 >
-                    <div style={{ padding: 10 }}>Username</div>
-                    <div style={{ padding: 10 }}>Name</div>
-                    <div style={{ padding: 10 }}>Role</div>
-                    <div style={{ padding: 10 }}>Site</div>
-                    <div style={{ padding: 10 }}>Active</div>
-                    <div style={{ padding: 10, textAlign: "right" }}>Actions</div>
+                    <div style={th}>Username</div>
+                    <div style={th}>Name</div>
+                    <div style={th}>Role</div>
+                    <div style={th}>Site</div>
+                    <div style={th}>Active</div>
+                    <div style={{ ...th, textAlign: "right" }}>Actions</div>
                 </div>
 
                 {loading ? (
@@ -332,27 +326,30 @@ export default function UsersAdmin() {
                             style={{
                                 display: "grid",
                                 gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
-                                borderBottom: "1px solid #eee",
+                                borderBottom: "1px solid rgba(2, 6, 23, 0.06)",
                                 alignItems: "center",
                                 fontSize: 13,
                             }}
                         >
-                            <div style={{ padding: 10, fontWeight: 800 }}>{u.username}</div>
+                            <div style={{ padding: 10, fontWeight: 900 }}>{u.username}</div>
                             <div style={{ padding: 10 }}>{u.display_name || "—"}</div>
-                            <div style={{ padding: 10 }}>{u.role}</div>
+                            <div style={{ padding: 10, textTransform: "capitalize" }}>{u.role}</div>
                             <div style={{ padding: 10 }}>{u.site_id || "—"}</div>
-                            <div style={{ padding: 10 }}>{u.is_active ? "Yes" : "No"}</div>
+                            <div style={{ padding: 10, fontWeight: 800 }}>
+                                {u.is_active ? "Yes" : "No"}
+                            </div>
 
-                            <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <div style={{ padding: 10, display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
                                 <button
                                     onClick={() => resetPin(u.user_id)}
                                     style={{
                                         padding: "8px 10px",
-                                        borderRadius: 10,
-                                        border: "1px solid #ccc",
-                                        background: "#fff",
+                                        borderRadius: ui.radius.md,
+                                        border: `1px solid ${ui.colors.border}`,
+                                        background: ui.colors.cardBg,
                                         cursor: "pointer",
-                                        fontWeight: 700,
+                                        fontWeight: 800,
+                                        color: ui.colors.text,
                                     }}
                                 >
                                     Reset PIN
@@ -362,11 +359,12 @@ export default function UsersAdmin() {
                                     onClick={() => deactivate(u.user_id)}
                                     style={{
                                         padding: "8px 10px",
-                                        borderRadius: 10,
-                                        border: "1px solid #ffb3b3",
-                                        background: "#ffe6e6",
+                                        borderRadius: ui.radius.md,
+                                        border: "1px solid rgba(239,68,68,0.35)",
+                                        background: "rgba(239,68,68,0.08)",
                                         cursor: "pointer",
-                                        fontWeight: 800,
+                                        fontWeight: 900,
+                                        color: ui.colors.text,
                                     }}
                                 >
                                     Deactivate
@@ -378,5 +376,4 @@ export default function UsersAdmin() {
             </div>
         </div>
     );
-
 }

@@ -1,8 +1,9 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
+import { ui } from "../ui/tokens";
 
-function Badge({ children, bg = "#eee", color = "#111" }) {
+function Badge({ children, bg = "#eee", color = "#111", border = "#bcbcbc" }) {
     return (
         <span
             style={{
@@ -10,20 +11,17 @@ function Badge({ children, bg = "#eee", color = "#111" }) {
                 padding: "4px 8px",
                 borderRadius: 999,
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
                 background: bg,
                 color,
                 lineHeight: 1,
+                border: `1px solid ${border}`,
+                whiteSpace: "nowrap",
             }}
         >
             {children}
         </span>
     );
-}
-
-function minutesSince(isoOrNull, fallbackIso) {
-    const t = new Date(isoOrNull || fallbackIso).getTime();
-    return Math.max(0, Math.floor((Date.now() - t) / 60000));
 }
 
 async function invokeAdmin(fn, body = {}) {
@@ -38,11 +36,9 @@ async function invokeAdmin(fn, body = {}) {
     });
 
     if (error) {
-        // Try to surface response body if present
-        const msg =
-            error?.context?.status
-                ? `HTTP ${error.context.status}: ${error.message}`
-                : error.message;
+        const msg = error?.context?.status
+            ? `HTTP ${error.context.status}: ${error.message}`
+            : error.message;
         throw new Error(msg);
     }
     return data;
@@ -57,27 +53,70 @@ export default function AdminLive() {
     const [rows, setRows] = React.useState([]);
     const [now, setNow] = React.useState(Date.now());
 
-
-    // for filters / name mapping
-    const [staff, setStaff] = React.useState([]); // staff_profiles
+    const [staff, setStaff] = React.useState([]);
     const [staffMap, setStaffMap] = React.useState({});
     const [siteFilter, setSiteFilter] = React.useState("all");
-    const [assigneeFilter, setAssigneeFilter] = React.useState("all"); // all | unassigned | <user_id>
+    const [assigneeFilter, setAssigneeFilter] = React.useState("all");
 
-    // for per-row reassignment
-    const [assigning, setAssigning] = React.useState({}); // { [convoId]: boolean }
-    const [reassignChoice, setReassignChoice] = React.useState({}); // { [convoId]: user_id }
+    const [assigning, setAssigning] = React.useState({});
+    const [reassignChoice, setReassignChoice] = React.useState({});
+    const [sites, setSites] = React.useState([]);
+
+    const inputStyle = {
+        display: "block",
+        marginTop: 6,
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: `1px solid ${ui.colors.border}`,
+        background: ui.colors.cardBg,
+        color: ui.colors.text,
+        outline: "none",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+        fontFamily: ui.font.ui,
+    };
+
+    const siteCounts = React.useMemo(() => {
+        const m = {};
+        for (const r of rows) {
+            const k = r.site_id || "";
+            if (!k) continue;
+            m[k] = (m[k] || 0) + 1;
+        }
+        return m;
+    }, [rows]);
+
+    const staffCounts = React.useMemo(() => {
+        const m = {};
+        for (const r of rows) {
+            if (!r.assigned_to) continue;
+            m[r.assigned_to] = (m[r.assigned_to] || 0) + 1;
+        }
+        return m;
+    }, [rows]);
 
     async function load() {
         setError("");
         setLoading(true);
 
+        const { data: siteRows, error: siteErr } = await supabase
+            .from("sites")
+            .select("id, name")
+            .order("name", { ascending: true });
+
+        if (!siteErr && siteRows?.length) {
+            setSites(siteRows);
+        } else {
+            setSites([
+                { id: "duke", name: "Duke Street" },
+                { id: "stenoch", name: "St Enoch" },
+                { id: "office", name: "Office" },
+            ]);
+        }
         try {
             const { data: userData, error: userErr } = await supabase.auth.getUser();
             if (userErr) throw new Error(userErr.message);
             setMe(userData?.user ?? null);
 
-            // Pull staff list via admin function (bypasses any staff_profiles RLS complexities)
             const staffRes = await invokeAdmin("admin_list_staff", {});
             const staffList = staffRes?.staff || [];
             setStaff(staffList);
@@ -86,14 +125,12 @@ export default function AdminLive() {
             for (const s of staffList) map[s.user_id] = s;
             setStaffMap(map);
 
-            // Load open conversations
-            let q = supabase
+            const { data, error: qErr } = await supabase
                 .from("conversations")
                 .select("id, site_id, customer_name, status, assigned_to, last_message_at, created_at")
                 .eq("status", "open")
                 .order("last_message_at", { ascending: false });
 
-            const { data, error: qErr } = await q;
             if (qErr) throw new Error(qErr.message);
 
             setRows(data || []);
@@ -107,27 +144,27 @@ export default function AdminLive() {
     }
 
     React.useEffect(() => {
+        if (siteFilter === "all") return;
+        const count = siteCounts[siteFilter] || 0;
+        if (count === 0) setSiteFilter("all");
+    }, [siteFilter, siteCounts]);
+
+    React.useEffect(() => {
+        if (assigneeFilter === "all" || assigneeFilter === "unassigned") return;
+        const count = staffCounts[assigneeFilter] || 0;
+        if (count === 0) setAssigneeFilter("all");
+    }, [assigneeFilter, staffCounts]);
+
+    React.useEffect(() => {
         load();
 
-        // Realtime updates
         const channel = supabase
             .channel("admin-live")
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "conversations" },
-                () => load()
-            )
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "messages" },
-                () => load()
-            )
+            .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => load())
+            .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => load())
             .subscribe();
 
-        // Timer for "Waiting X m" / "Active X m"
-        const timer = setInterval(() => {
-            setNow(Date.now());
-        }, 30 * 1000);
+        const timer = setInterval(() => setNow(Date.now()), 30 * 1000);
 
         return () => {
             supabase.removeChannel(channel);
@@ -149,10 +186,6 @@ export default function AdminLive() {
 
             if (updErr) throw new Error(updErr.message);
 
-            // Optional: notify Teams using your existing function
-            // await supabase.functions.invoke("staff_notify_claimed", { body: { conversation_id } });
-
-            // Audit trail (shows in the chat transcript)
             await supabase.from("messages").insert({
                 conversation_id,
                 sender_type: "staff",
@@ -186,9 +219,6 @@ export default function AdminLive() {
 
             if (updErr) throw new Error(updErr.message);
 
-            // Optional: notify Teams (we can make a dedicated "reassigned" notification later)
-            // await supabase.functions.invoke("staff_notify_claimed", { body: { conversation_id } });
-
             await load();
         } catch (e) {
             setError(String(e.message || e));
@@ -204,70 +234,140 @@ export default function AdminLive() {
 
     const filtered = rows.filter((c) => {
         if (siteFilter !== "all" && c.site_id !== siteFilter) return false;
-
         if (assigneeFilter === "all") return true;
         if (assigneeFilter === "unassigned") return !c.assigned_to;
         return c.assigned_to === assigneeFilter;
     });
 
     const sorted = [...filtered].sort((a, b) => {
-        // Unassigned first
         const aU = a.assigned_to ? 1 : 0;
         const bU = b.assigned_to ? 1 : 0;
         if (aU !== bU) return aU - bU;
 
-        // Then most recent activity
         const aT = new Date(a.last_message_at || a.created_at).getTime();
         const bT = new Date(b.last_message_at || b.created_at).getTime();
         return bT - aT;
     });
 
+    function activityColors(c) {
+        const mins = Math.max(0, Math.floor((now - new Date(c.last_message_at || c.created_at).getTime()) / 60000));
+        const isUnassigned = !c.assigned_to;
+
+        if (isUnassigned) {
+            if (mins >= 10) return { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)" };
+            if (mins >= 5) return { bg: "rgba(245,158,11,0.14)", border: "rgba(245,158,11,0.35)" };
+            return { bg: "rgba(34,197,94,0.14)", border: "rgba(34,197,94,0.35)" };
+        } else {
+            if (mins >= 15) return { bg: "rgba(245,158,11,0.14)", border: "rgba(245,158,11,0.35)" };
+            return { bg: "rgba(59,130,246,0.14)", border: "rgba(59,130,246,0.35)" };
+        }
+    }
+
+    const th = { padding: 10, fontWeight: 800, color: ui.colors.text };
+
     return (
-        <div style={{ maxWidth: 1100, margin: "20px auto", padding: 16, color: "#111" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
+            {/* Header (match Insights) */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
                 <div>
-                    <Link to="/">← Inbox</Link>
-                    <h2 style={{ marginTop: 8 }}>Admin: Live Monitor</h2>
-                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                    <Link
+                        to="/"
+                        style={{ textDecoration: "none", color: ui.colors.brand }}>← Inbox</Link>
+                    <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admin: Live Monitor</h2>
+                    <div style={ui.text.subtitle}>
                         All open chats (unassigned + assigned). Take over or reassign as needed.
                     </div>
                 </div>
 
-                <button onClick={load} disabled={loading}>
+                <button
+                    onClick={load}
+                    disabled={loading}
+                    style={{
+                        padding: "8px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: ui.colors.cardBg,
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontWeight: 800,
+                        color: ui.colors.text,
+                    }}
+                >
                     {loading ? "Refreshing…" : "Refresh"}
                 </button>
             </div>
 
             {error && (
-                <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "#ffe6e6", border: "1px solid #ffb3b3" }}>
+                <div
+                    style={{
+                        marginTop: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "rgba(239,68,68,0.08)",
+                        border: "1px solid rgba(239,68,68,0.35)",
+                    }}
+                >
                     {error}
                 </div>
             )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+            {/* Filters (match Insights) */}
+            <div
+                style={{
+                    marginTop: 14,
+                    padding: 12,
+                    border: `1px solid ${ui.colors.border}`,
+                    borderRadius: 12,
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    alignItems: "end",
+                }}
+            >
                 <label style={{ fontSize: 13 }}>
-                    Site{" "}
-                    <select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} style={{ marginLeft: 6, padding: 6 }}>
+                    Site
+                    <select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} style={inputStyle}>
                         <option value="all">All</option>
-                        {siteOptions.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
+
+                        {sites.map((s) => {
+                            const count = siteCounts[s.id] || 0;
+                            const disabled = count === 0;
+
+                            return (
+                                <option key={s.id} value={s.id} disabled={disabled}>
+                                    {s.name || s.id} {disabled ? "(0)" : `(${count})`}
+                                </option>
+                            );
+                        })}
                     </select>
                 </label>
 
                 <label style={{ fontSize: 13 }}>
-                    Assignee{" "}
-                    <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ marginLeft: 6, padding: 6 }}>
+                    Assignee
+                    <select
+                        value={assigneeFilter}
+                        onChange={(e) => setAssigneeFilter(e.target.value)}
+                        style={inputStyle}
+                    >
                         <option value="all">All</option>
-                        <option value="unassigned">Unassigned</option>
+                        <option value="unassigned">
+                            Unassigned ({rows.filter((r) => !r.assigned_to).length})
+                        </option>
+
                         {staff
                             .filter((s) => s.is_active)
-                            .sort((a, b) => (a.display_name || a.username).localeCompare(b.display_name || b.username))
-                            .map((s) => (
-                                <option key={s.user_id} value={s.user_id}>
-                                    {s.display_name || s.username}
-                                </option>
-                            ))}
+                            .sort((a, b) =>
+                                (a.display_name || a.username).localeCompare(b.display_name || b.username)
+                            )
+                            .map((s) => {
+                                const count = staffCounts[s.user_id] || 0;
+                                const disabled = count === 0;
+
+                                return (
+                                    <option key={s.user_id} value={s.user_id} disabled={disabled}>
+                                        {(s.display_name || s.username)} {disabled ? "(0)" : `(${count})`}
+                                    </option>
+                                );
+                            })}
                     </select>
                 </label>
 
@@ -276,36 +376,54 @@ export default function AdminLive() {
                 </div>
             </div>
 
-            {loading ? (
-                <div style={{ marginTop: 16 }}>Loading…</div>
-            ) : filtered.length === 0 ? (
-                <div style={{ marginTop: 16, opacity: 0.8 }}>No open chats match your filters.</div>
-            ) : (
-                <div style={{ marginTop: 16, border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1fr 0.9fr 1.4fr", gap: 0, background: "#f6f6f6", borderBottom: "1px solid #ddd" }}>
-                        <div style={{ padding: 10, fontWeight: 700 }}>Customer</div>
-                        <div style={{ padding: 10, fontWeight: 700 }}>Site</div>
-                        <div style={{ padding: 10, fontWeight: 700 }}>Assigned</div>
-                        <div style={{ padding: 10, fontWeight: 700 }}>Last activity</div>
-                        <div style={{ padding: 10, fontWeight: 700 }}>Actions</div>
-                    </div>
+            {/* Table (match Insights) */}
+            <div style={{ marginTop: 16, border: `1px solid ${ui.colors.border}`, borderRadius: 12, overflow: "hidden" }}>
+                <div
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "1.2fr 0.8fr 1fr 1fr 1.4fr",
+                        background: "rgba(2, 6, 23, 0.03)",
+                        borderBottom: `1px solid ${ui.colors.border}`,
+                    }}
+                >
+                    <div style={th}>Customer</div>
+                    <div style={th}>Site</div>
+                    <div style={th}>Assigned</div>
+                    <div style={th}>Last activity</div>
+                    <div style={th}>Actions</div>
+                </div>
 
-                    {sorted.map((c) => {
+                {loading ? (
+                    <div style={{ padding: 12 }}>Loading…</div>
+                ) : filtered.length === 0 ? (
+                    <div style={{ padding: 12, opacity: 0.8 }}>No open chats match your filters.</div>
+                ) : (
+                    sorted.map((c) => {
                         const assigned = c.assigned_to ? staffMap[c.assigned_to] : null;
                         const assignedLabel = c.assigned_to
                             ? (assigned?.display_name || assigned?.username || "Assigned")
                             : "Unassigned";
 
                         const isBusy = !!assigning[c.id];
+                        const mins = Math.max(0, Math.floor((now - new Date(c.last_message_at || c.created_at).getTime()) / 60000));
+                        const ts = new Date(c.last_message_at || c.created_at);
+                        const ac = activityColors(c);
 
                         return (
-                            <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1fr 0.9fr 1.4fr", borderBottom: "1px solid #eee" }}>
+                            <div
+                                key={c.id}
+                                style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "1.2fr 0.8fr 1fr 1fr 1.4fr",
+                                    borderBottom: "1px solid rgba(2, 6, 23, 0.06)",
+                                }}
+                            >
                                 <div style={{ padding: 10 }}>
-                                    <div style={{ fontWeight: 700, display: "flex", gap: 6, alignItems: "center" }}>
+                                    <div style={{ fontWeight: 800, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                                         {c.customer_name}
-                                        {!c.assigned_to && (
-                                            <Badge bg="#fff3cd" color="#856404">New</Badge>
-                                        )}
+                                        {!c.assigned_to ? (
+                                            <Badge bg="rgba(245,158,11,0.14)" border="rgba(245,158,11,0.35)">New</Badge>
+                                        ) : null}
                                     </div>
                                     <div style={{ fontSize: 12, opacity: 0.75 }}>{c.id}</div>
                                 </div>
@@ -314,79 +432,53 @@ export default function AdminLive() {
 
                                 <div style={{ padding: 10 }}>
                                     {!c.assigned_to ? (
-                                        <Badge bg="#fff3cd" color="#856404">Unassigned</Badge>
+                                        <Badge bg="rgba(245,158,11,0.14)" border="rgba(245,158,11,0.35)">Unassigned</Badge>
                                     ) : (
-                                        <Badge bg="#e7f3ff" color="#084298">
+                                        <Badge bg="rgba(59,130,246,0.14)" border="rgba(59,130,246,0.35)">
                                             Assigned to {assignedLabel}
                                         </Badge>
                                     )}
-
-                                    {c.assigned_to && assigned?.role === "admin" && (
-                                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
-                                            Admin
-                                        </div>
-                                    )}
+                                    {c.assigned_to && assigned?.role === "admin" ? (
+                                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>Admin</div>
+                                    ) : null}
                                 </div>
 
-                                <div style={{ padding: 10, fontSize: 13, opacity: 0.85 }}>
-                                    {(() => {
-                                        const mins = Math.max(
-                                            0,
-                                            Math.floor((now - new Date(c.last_message_at || c.created_at).getTime()) / 60000)
-                                        );
-                                        return (
-                                            <div>
-                                                <div style={{ fontSize: 13, opacity: 0.85 }}>
-                                                    {new Date(c.last_message_at || c.created_at).toLocaleString()}
-                                                </div>
-                                                {(() => {
-                                                    const isUnassigned = !c.assigned_to;
-                                                    let bg = "#f1f3f5";
-                                                    let color = "#111";
-
-                                                    if (isUnassigned) {
-                                                        if (mins >= 10) {
-                                                            bg = "#f8d7da";  // red
-                                                            color = "#842029";
-                                                        } else if (mins >= 5) {
-                                                            bg = "#fff3cd";  // amber
-                                                            color = "#856404";
-                                                        } else {
-                                                            bg = "#d1e7dd";  // green
-                                                            color = "#0f5132";
-                                                        }
-                                                    } else {
-                                                        if (mins >= 15) {
-                                                            bg = "#fff3cd";  // amber (slow active chat)
-                                                            color = "#856404";
-                                                        } else {
-                                                            bg = "#e7f3ff";  // blue
-                                                            color = "#084298";
-                                                        }
-                                                    }
-
-                                                    return (
-                                                        <div style={{ marginTop: 4 }}>
-                                                            <Badge bg={bg} color={color}>
-                                                                {c.assigned_to ? `Active ${mins}m` : `Waiting ${mins}m`}
-                                                            </Badge>
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </div>
-                                        );
-                                    })()}
+                                <div style={{ padding: 10 }}>
+                                    <div style={{ fontSize: 13, opacity: 0.9 }}>{ts.toLocaleString()}</div>
+                                    <div style={{ marginTop: 6 }}>
+                                        <Badge bg={ac.bg} border={ac.border}>
+                                            {c.assigned_to ? `Active ${mins}m` : `Waiting ${mins}m`}
+                                        </Badge>
+                                    </div>
                                 </div>
 
-                                <div style={{ padding: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                    <Link to={`/chat/${c.id}`} style={{ padding: "6px 10px", border: "1px solid #ddd", borderRadius: 8, textDecoration: "none", color: "#111" }}>
+                                <div style={{ padding: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                    <Link
+                                        to={`/chat/${c.id}`}
+                                        style={{
+                                            padding: "8px 10px",
+                                            border: `1px solid ${ui.colors.border}`,
+                                            borderRadius: ui.radius.md,
+                                            textDecoration: "none",
+                                            color: ui.colors.text,
+                                            fontWeight: 800,
+                                            background: ui.colors.cardBg,
+                                        }}
+                                    >
                                         View
                                     </Link>
 
                                     <button
                                         onClick={() => takeOver(c.id)}
                                         disabled={isBusy}
-                                        style={{ padding: "6px 10px" }}
+                                        style={{
+                                            padding: "8px 10px",
+                                            borderRadius: ui.radius.md,
+                                            border: `1px solid ${ui.colors.border}`,
+                                            background: ui.colors.cardBg,
+                                            cursor: isBusy ? "not-allowed" : "pointer",
+                                            fontWeight: 800,
+                                        }}
                                         title="Assign this chat to yourself"
                                     >
                                         {isBusy ? "Working…" : "Take over"}
@@ -395,7 +487,7 @@ export default function AdminLive() {
                                     <select
                                         value={reassignChoice[c.id] || ""}
                                         onChange={(e) => setReassignChoice((p) => ({ ...p, [c.id]: e.target.value }))}
-                                        style={{ padding: 6 }}
+                                        style={{ ...inputStyle, marginTop: 0, padding: "8px 10px" }}
                                         disabled={isBusy}
                                     >
                                         <option value="">Reassign…</option>
@@ -409,15 +501,27 @@ export default function AdminLive() {
                                             ))}
                                     </select>
 
-                                    <button onClick={() => reassign(c.id)} disabled={isBusy} style={{ padding: "6px 10px" }}>
+                                    <button
+                                        onClick={() => reassign(c.id)}
+                                        disabled={isBusy}
+                                        style={{
+                                            padding: "8px 10px",
+                                            borderRadius: ui.radius.md,
+                                            border: `1px solid rgba(168,85,247,0.35)`,
+                                            background: ui.colors.brandSoft,
+                                            cursor: isBusy ? "not-allowed" : "pointer",
+                                            fontWeight: 900,
+                                            color: ui.colors.text,
+                                        }}
+                                    >
                                         Assign
                                     </button>
                                 </div>
                             </div>
                         );
-                    })}
-                </div>
-            )}
+                    })
+                )}
+            </div>
         </div>
     );
 }

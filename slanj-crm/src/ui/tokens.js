@@ -29,4 +29,12 @@ export const ui = {
   font: {
     ui: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
   },
+  text: {
+  subtitle: {
+    fontSize: 13,
+    opacity: 0.75,
+    marginTop: 6,
+    lineHeight: 1.4,
+  },
+},
 };
