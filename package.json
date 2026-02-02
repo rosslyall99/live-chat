@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "build:github": "vite build --mode github",
-    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
