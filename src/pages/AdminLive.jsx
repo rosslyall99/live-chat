@@ -478,6 +478,7 @@ export default function AdminLive() {
                                             background: ui.colors.cardBg,
                                             cursor: isBusy ? "not-allowed" : "pointer",
                                             fontWeight: 800,
+                                            color: ui.colors.text,
                                         }}
                                         title="Assign this chat to yourself"
                                     >

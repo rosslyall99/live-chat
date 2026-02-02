@@ -490,20 +490,12 @@ export default function AdminInsights() {
                 <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Created (in range)</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.created_conversations ?? "—"}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                        Assigned: <b>{overall?.created_assigned ?? "—"}</b> • Unassigned: <b>{overall?.created_unassigned ?? "—"}</b>
-                    </div>
                 </div>
 
                 <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>Closed (in range)</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.closed_conversations ?? "—"}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                        Filters:{" "}
-                        <b>{range}</b>
-                        {siteId !== "all" ? <> • Site: <b>{siteId}</b></> : null}
-                        {agentId !== "all" ? <> • Agent: <b>selected</b></> : null}
-                    </div>
+
                 </div>
             </div>
 
@@ -530,22 +522,13 @@ export default function AdminInsights() {
                         <div
                             style={{
                                 display: "grid",
-                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr minmax(260px, 1fr)",
+                                gridTemplateColumns: "1.2fr 0.8fr 0.9fr minmax(260px, 1fr)",
                                 background: "#f6f6f6",
                                 borderBottom: "1px solid #bcbcbc",
                             }}
                         >
                             <div style={th}>Agent</div>
                             <div style={th}>Site</div>
-
-                            <div style={th}>
-                                <SortHeader
-                                    label="Claimed"
-                                    active={sortBy === "claimed_count"}
-                                    dir={sortDir}
-                                    onClick={() => toggleSort("claimed_count")}
-                                />
-                            </div>
 
                             <div style={th}>
                                 <SortHeader
@@ -583,7 +566,7 @@ export default function AdminInsights() {
                             key={a.user_id}
                             style={{
                                 display: "grid",
-                                gridTemplateColumns: "1.2fr 0.8fr 0.7fr 0.9fr minmax(260px, 1fr)",
+                                gridTemplateColumns: "1.2fr 0.8fr 0.9fr minmax(260px, 1fr)",
                                 borderBottom: "1px solid #eee",
                             }}
                         >
@@ -593,7 +576,6 @@ export default function AdminInsights() {
                             </div>
 
                             <div style={{ padding: 10 }}>{a.staff_site_id || "—"}</div>
-                            <div style={{ padding: 10, fontWeight: 700 }}>{a.claimed_count ?? 0}</div>
                             <div style={{ padding: 10, fontWeight: 700 }}>{a.closed_count ?? 0}</div>
 
                             <div style={{ padding: 10 }}>

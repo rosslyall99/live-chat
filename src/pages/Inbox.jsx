@@ -27,32 +27,32 @@ async function invokeAdmin(fn, body = {}) {
 function SegmentedTabs({ value, onChange, items }) {
     const wrap = {
         display: "inline-flex",
-        border: `1px solid ${ui.colors.border}`,
-        borderRadius: 14,
-        overflow: "hidden",
-        background: ui.colors.pageBg,
+        background: "transparent",
+        gap: 6,
     };
 
-    const btn = (active, isLast) => ({
+    const btn = (active) => ({
         appearance: "none",
-        border: "none",
+        border: `1px solid ${ui.colors.border}`,
         background: active ? ui.colors.cardBg : ui.colors.pageBg,
         color: ui.colors.text,
-        padding: "10px 12px",
-        fontWeight: active ? 800 : 700,
+        padding: "10px 14px",
+        fontWeight: active ? 900 : 700,
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         gap: 8,
         lineHeight: 1,
-        borderRight: isLast ? "none" : `1px solid ${ui.colors.border}`,
-        transition: "background 120ms ease",
+        borderRadius: 12,
+        transition: "background 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+        outline: "none",
+        boxShadow: active ? ui.shadow.card : "none",
     });
 
     const countPill = (active) => ({
-        minWidth: 24,
+        minWidth: 22,
         height: 20,
-        padding: "0 8px",
+        padding: "0 7px",
         borderRadius: 999,
         display: "inline-flex",
         alignItems: "center",
@@ -75,7 +75,7 @@ function SegmentedTabs({ value, onChange, items }) {
                         role="tab"
                         aria-selected={active}
                         onClick={() => onChange(it.value)}
-                        style={btn(active, idx === items.length - 1)}
+                        style={btn(active)}
                     >
                         <span>{it.label}</span>
                         <span style={countPill(active)}>{it.count ?? 0}</span>
@@ -158,23 +158,23 @@ export default function Inbox() {
     async function loadRows(activeTab = tab) {
         setLoading(true);
         try {
-            const user = me ?? (await loadMeAndRole());
-            if (!user?.id) {
+            const authedUser = me ?? (await loadMeAndRole()).user; // ✅ take .user
+            if (!authedUser?.id) {
                 setRows([]);
                 return;
             }
 
             let q = supabase
                 .from("conversations")
-                // IMPORTANT: no embedded join here (was causing 400)
-                .select("id, site_id, customer_name, status, assigned_to, last_message_at, closed_at, handled_by");
+                .select("id, site_id, customer_name, status, assigned_to, last_message_at, closed_at, handled_by, handled_by_name");
+
 
             if (activeTab === "unassigned") {
                 q = q.eq("status", "open").is("assigned_to", null).order("last_message_at", { ascending: false });
             }
 
             if (activeTab === "mine") {
-                q = q.eq("status", "open").eq("assigned_to", user.id).order("last_message_at", { ascending: false });
+                q = q.eq("status", "open").eq("assigned_to", authedUser.id).order("last_message_at", { ascending: false });
             }
 
             if (activeTab === "closed") {
@@ -182,7 +182,6 @@ export default function Inbox() {
             }
 
             const { data, error } = await q;
-
             if (error) {
                 console.error(error);
                 setRows([]);
@@ -237,43 +236,57 @@ export default function Inbox() {
         }
     }
 
-    // Initial load
+    // Initial load: identity + role + admin name map only (no data fetch here)
     React.useEffect(() => {
         (async () => {
-            const user = await loadMeAndRole();
-            // after role known, preload admin name map once
-            const { data: prof } = user?.id
-                ? await supabase.from("staff_profiles").select("role, is_active").eq("user_id", user.id).maybeSingle()
-                : { data: null };
-            const r = prof?.is_active ? prof?.role : null;
+            const { user, role: r } = await loadMeAndRole();
+
+            // preload admin name map once (admins only)
             await loadAdminStaffNamesIfNeeded(r);
 
-            await loadRows(tab);
-            await loadCounts();
+            // ✅ do NOT call loadRows/loadCounts here
+            // The tab effect below will handle the first fetch once me is set.
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // On tab change
+    // On tab change (and first time we know who 'me' is)
     React.useEffect(() => {
+        if (!me?.id) return; // wait until we have an authed user
         loadRows(tab);
         loadCounts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tab]);
+    }, [tab, me?.id]);
 
-    // Realtime refresh rows
+    // Realtime refresh rows + counts
     React.useEffect(() => {
+        if (!me?.id) return; // safety guard
+
         const channel = supabase
             .channel("inbox-realtime")
-            .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => loadRows(tab))
-            .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => loadRows(tab))
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "messages" },
+                () => {
+                    loadRows(tab);
+                    loadCounts();
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "conversations" },
+                () => {
+                    loadRows(tab);
+                    loadCounts();
+                }
+            )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tab]);
+    }, [tab, me?.id]);
 
     // Poll counts every 30s
     React.useEffect(() => {
@@ -370,7 +383,7 @@ export default function Inbox() {
 
                         const closedBy =
                             tab === "closed"
-                                ? staffNameById[c.handled_by] || (c.handled_by ? "Staff" : "—")
+                                ? (c.closed_by_name || c.handled_by_name || staffNameById[c.closed_by] || staffNameById[c.handled_by] || "Staff")
                                 : null;
 
                         const isHover = hoverId === c.id;

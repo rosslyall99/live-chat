@@ -415,9 +415,15 @@ export default function Chat() {
             .update({
                 status: "closed",
                 assigned_to: null,
+                closed_at: new Date().toISOString(),
+
+                // new fields
+                closed_by: me.id,
+                closed_by_name: myDisplay,
+
+                // existing fields (keep)
                 handled_by: me.id,
                 handled_by_name: myDisplay,
-                closed_at: new Date().toISOString(),
             })
             .eq("id", id);
 
