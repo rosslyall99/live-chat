@@ -243,7 +243,7 @@ export default function Chat() {
 
         const { data: c, error: cErr } = await supabase
             .from("conversations")
-            .select("id, site_id, customer_name, status, assigned_to")
+            .select("id, site_id, customer_name, status, assigned_to, assigned_to_name")
             .eq("id", id)
             .single();
 
@@ -462,7 +462,9 @@ export default function Chat() {
 
                     <div style={S.subtitle}>
                         Site: <b>{convo.site_id || "—"}</b> • Status: <b>{convo.status}</b> •{" "}
-                        {convo.assigned_to ? (isMine ? "Assigned to you" : "Assigned") : "Unassigned"}
+                        {convo.assigned_to
+                            ? (isMine ? "Assigned to you" : `Assigned to ${convo.assigned_to_name || "someone"}`)
+                            : "Unassigned"}
                     </div>
                 </div>
 
