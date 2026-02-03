@@ -76,7 +76,7 @@ export default function Login() {
 
     const S = {
         page: {
-            minHeight: "100vh",
+            minHeight: "90vh",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
