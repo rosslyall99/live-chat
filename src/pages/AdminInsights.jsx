@@ -488,12 +488,12 @@ export default function AdminInsights() {
             {/* Summary */}
             <div style={{ marginTop: 14, display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>Created (in range)</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>Chats</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.created_conversations ?? "—"}</div>
                 </div>
 
                 <div style={{ border: "1px solid #bcbcbc", borderRadius: 12, padding: 12, minWidth: 240 }}>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>Closed (in range)</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>Closed</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>{overall?.closed_conversations ?? "—"}</div>
 
                 </div>
@@ -567,7 +567,7 @@ export default function AdminInsights() {
                             style={{
                                 display: "grid",
                                 gridTemplateColumns: "1.2fr 0.8fr 0.9fr minmax(260px, 1fr)",
-                                borderBottom: "1px solid #eee",
+                                borderBottom: `1px solid ${ui.colors.border}`,
                             }}
                         >
                             <div style={{ padding: 10 }}>

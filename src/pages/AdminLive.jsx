@@ -415,7 +415,7 @@ export default function AdminLive() {
                                 style={{
                                     display: "grid",
                                     gridTemplateColumns: "1.2fr 0.8fr 1fr 1fr 1.4fr",
-                                    borderBottom: "1px solid rgba(2, 6, 23, 0.06)",
+                                    borderBottom: `1px solid ${ui.colors.border}`,
                                 }}
                             >
                                 <div style={{ padding: 10 }}>

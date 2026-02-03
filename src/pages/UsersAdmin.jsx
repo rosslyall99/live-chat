@@ -263,7 +263,7 @@ export default function UsersAdmin() {
                         </select>
 
                         <input
-                            placeholder="PIN / password"
+                            placeholder="PIN (min 6 chars)"
                             value={pin}
                             onChange={(e) => setPin(e.target.value)}
                             required
@@ -326,7 +326,7 @@ export default function UsersAdmin() {
                             style={{
                                 display: "grid",
                                 gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
-                                borderBottom: "1px solid rgba(2, 6, 23, 0.06)",
+                                borderBottom: `1px solid ${ui.colors.border}`,
                                 alignItems: "center",
                                 fontSize: 13,
                             }}
