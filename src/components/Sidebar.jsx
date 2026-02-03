@@ -114,7 +114,7 @@ export default function Sidebar({ role = "agent" }) {
 
             {/* Nav */}
             <div style={{ paddingTop: 10, overflow: "auto" }}>
-                <SectionTitle>Inbox</SectionTitle>
+                <SectionTitle>Apps</SectionTitle>
                 <Item to="/" label="Inbox" />
 
                 <SectionTitle>User</SectionTitle>
