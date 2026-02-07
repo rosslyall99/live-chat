@@ -2,6 +2,8 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { ui } from "../ui/tokens";
+import PhilLogo from "../images/PHiL2.png";
+
 
 function usernameToEmail(username) {
     return `${username.trim().toLowerCase()}@staff.slanj`;
@@ -100,7 +102,7 @@ export default function Login() {
         },
         logo: {
             display: "block",
-            width: 220,
+            width: 300,
             maxWidth: "70%",
             height: "auto",
             marginTop: 2,
@@ -272,7 +274,7 @@ export default function Login() {
         <div style={S.page}>
             <div style={S.card}>
                 <img
-                    src="https://images.squarespace-cdn.com/content/v1/5c9c84ab92441b2e0c2fd836/f80b087e-1ff8-4dfd-a9ef-76b713df9b7f/NewSlanjLogo.png?format=1500w"
+                    src={PhilLogo}
                     alt="Slanj"
                     style={S.logo}
                     draggable={false}

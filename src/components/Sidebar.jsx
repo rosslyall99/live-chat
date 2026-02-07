@@ -2,6 +2,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { ui } from "../ui/tokens";
+import PhilLogo from "../images/PHiL.png";
 
 function SectionTitle({ children }) {
     return (
@@ -91,20 +92,31 @@ export default function Sidebar({ role = "agent" }) {
                             width: 34,
                             height: 34,
                             borderRadius: 10,
-                            background: ui.colors.brand,
+                            background: "rgba(255,255,255,0.06)",
+                            //border: `1px solid ${ui.colors.sidebarBorder}`,
                             display: "grid",
                             placeItems: "center",
-                            fontWeight: 900,
-                            color: "white",
+                            overflow: "hidden",
+                            flex: "0 0 auto",
                         }}
                     >
-                        S
+                        <img
+                            src={PhilLogo}
+                            alt="PHiL"
+                            style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                                display: "block",
+                            }}
+                            draggable={false}
+                        />
                     </div>
 
                     <div style={{ lineHeight: 1.1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 800 }}>Slanj</div>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>Slanj Kilts</div>
                         <div style={{ fontSize: 12, color: ui.colors.sidebarMuted }}>
-                            Live Chat
+                            Personal Hub: Live
                         </div>
                     </div>
 

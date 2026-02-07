@@ -101,7 +101,7 @@ export default function UsersAdmin() {
             setUsername("");
             setDisplayName("");
             setSiteId("");
-            setRole("agent");
+            setRole("");
             setPin("");
 
             await new Promise((r) => setTimeout(r, 250));
@@ -259,6 +259,7 @@ export default function UsersAdmin() {
 
                         <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
                             <option value="agent">Agent</option>
+                            <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
                         </select>
 
