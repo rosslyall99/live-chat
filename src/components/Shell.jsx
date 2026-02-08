@@ -1,6 +1,6 @@
 // src/components/Shell.jsx
 import React from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Sidebar from "./Sidebar";
 import { ui } from "../ui/tokens";
@@ -23,6 +23,7 @@ export default function Shell() {
     const [role, setRole] = React.useState("agent");
     const [loading, setLoading] = React.useState(true);
     const loc = useLocation();
+    const nav = useNavigate();
     const [displayName, setDisplayName] = React.useState("");
 
     // Kill switch state
@@ -34,11 +35,8 @@ export default function Shell() {
 
     const onBg = "rgba(22, 163, 74, 0.12)";
     const onBorder = "rgba(22, 163, 74, 0.28)";
-    const onText = "rgb(22, 163, 74)";
-
     const offBg = "rgba(220, 38, 38, 0.10)";
     const offBorder = "rgba(220, 38, 38, 0.26)";
-    const offText = "rgb(220, 38, 38)";
 
     function iconToggleStyle(isOn, disabled) {
         return {
@@ -59,6 +57,144 @@ export default function Shell() {
             overflow: "hidden",
         };
     }
+
+    // ------------------------------------------------------------
+    // Tight "closed + 30s inactivity => sign out on next open"
+    // + Cross-tab sign out sync (sign out in one tab => others follow)
+    // ------------------------------------------------------------
+    React.useEffect(() => {
+        const CHANNEL = "crm-auth";
+        const STORAGE_LOGOUT_KEY = "crm:logout";
+        const STORAGE_LAST_ACTIVITY = "crm:lastActivityAt";
+        const STORAGE_LAST_CLOSED = "crm:lastClosedAt";
+        const INACTIVITY_MS = 30_000;
+
+        const bc = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL) : null;
+        let handled = false;
+
+        const goLogin = () => {
+            // Clear UI state to avoid flashes
+            setMe(null);
+            setRole("agent");
+            setDisplayName("");
+            setSiteId(null);
+            setBranchEnabled(true);
+            setGlobalEnabled(true);
+            setSwitchError("");
+            nav("/login");
+        };
+
+        const broadcastLogout = (reason) => {
+            const payload = { type: "logout", at: Date.now(), reason: reason || "unknown" };
+            try {
+                bc?.postMessage(payload);
+            } catch { }
+            try {
+                localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload));
+            } catch { }
+        };
+
+        const doLocalLogout = async (reason) => {
+            if (handled) return;
+            handled = true;
+
+            try {
+                await supabase.auth.signOut();
+            } catch { }
+            goLogin();
+        };
+
+        // ---- activity tracking
+        const markActivity = () => {
+            try {
+                localStorage.setItem(STORAGE_LAST_ACTIVITY, String(Date.now()));
+            } catch { }
+        };
+
+        // Record activity on common interactions
+        const activityEvents = ["mousemove", "keydown", "mousedown", "touchstart", "scroll", "click"];
+        activityEvents.forEach((ev) => window.addEventListener(ev, markActivity, { passive: true }));
+
+        // On tab closing / navigating away, record close time.
+        // pagehide is generally best cross-browser.
+        const onPageHide = (e) => {
+            // If going into BFCache, treat as not a true close.
+            if (e && e.persisted) return;
+            try {
+                localStorage.setItem(STORAGE_LAST_CLOSED, String(Date.now()));
+            } catch { }
+            // Note: we DO NOT sign out here anymore (that would cause refresh weirdness).
+            // We enforce sign-out on next open if >30s has passed.
+        };
+        window.addEventListener("pagehide", onPageHide);
+
+        // ---- On startup: enforce "closed + inactivity > 30s => sign out"
+        (async () => {
+            let lastActivityAt = 0;
+            let lastClosedAt = 0;
+
+            try {
+                lastActivityAt = Number(localStorage.getItem(STORAGE_LAST_ACTIVITY) || "0");
+                lastClosedAt = Number(localStorage.getItem(STORAGE_LAST_CLOSED) || "0");
+            } catch { }
+
+            const now = Date.now();
+            const closedLongEnough = lastClosedAt > 0 && now - lastClosedAt > INACTIVITY_MS;
+            const inactiveLongEnough = lastActivityAt > 0 && now - lastActivityAt > INACTIVITY_MS;
+
+            if (closedLongEnough && inactiveLongEnough) {
+                // Only sign out if there IS a current session — avoids pointless redirects.
+                const { data } = await supabase.auth.getSession();
+                if (data?.session) {
+                    broadcastLogout("reopen_after_30s_closed");
+                    await doLocalLogout("reopen_after_30s_closed");
+                    return;
+                }
+            }
+        })();
+
+        // ---- Cross-tab logout listeners
+        if (bc) {
+            bc.onmessage = (ev) => {
+                if (ev?.data?.type === "logout") doLocalLogout(ev.data.reason || "broadcast");
+            };
+        }
+
+        const onStorage = (e) => {
+            if (e.key !== STORAGE_LOGOUT_KEY || !e.newValue) return;
+            try {
+                const msg = JSON.parse(e.newValue);
+                if (msg?.type === "logout") doLocalLogout(msg.reason || "storage");
+            } catch {
+                doLocalLogout("storage");
+            }
+        };
+        window.addEventListener("storage", onStorage);
+
+        // Also: if this tab signs out, propagate to other tabs
+        const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT") {
+                broadcastLogout("signed_out");
+                goLogin();
+            }
+        });
+
+        // Mark initial activity on load
+        markActivity();
+
+        return () => {
+            activityEvents.forEach((ev) => window.removeEventListener(ev, markActivity));
+            window.removeEventListener("pagehide", onPageHide);
+            window.removeEventListener("storage", onStorage);
+
+            try {
+                authSub?.subscription?.unsubscribe();
+            } catch { }
+            try {
+                bc?.close();
+            } catch { }
+        };
+    }, [nav]);
 
     async function refreshMeAndSettings() {
         setLoading(true);
@@ -156,15 +292,11 @@ export default function Shell() {
     const isAdmin = role === "admin";
     const isManager = role === "manager";
 
-    // anyone logged-in with a site can toggle branch
     const canToggleBranch = !!siteId && !loading && !switchLoading;
-
-    // only admin + manager can toggle global
     const canToggleGlobal = (isAdmin || isManager) && !loading && !switchLoading;
 
     const effectiveLive = globalEnabled && branchEnabled;
 
-    // Optional polish: tiny "press" effect without affecting layout focus
     function pressDown(e) {
         e.preventDefault();
         e.currentTarget.style.transform = "translateY(1px)";
@@ -211,12 +343,15 @@ export default function Shell() {
                 >
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{ color: ui.colors.text, fontWeight: 800 }}>
-                            {role === "admin" ? "Admin Portal" : role === "manager" ? "Manager Console" : "Agent Console"}
+                            {role === "admin"
+                                ? "Admin Portal"
+                                : role === "manager"
+                                    ? "Manager Console"
+                                    : "Agent Console"}
                         </div>
 
                         {/* Kill switch buttons */}
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            {/* Branch toggle */}
                             <button
                                 disabled={!canToggleBranch}
                                 onClick={() => toggleBranch(!branchEnabled)}
@@ -231,7 +366,6 @@ export default function Shell() {
                                 </span>
                             </button>
 
-                            {/* Global toggle (admin/manager only) */}
                             {(isAdmin || isManager) && (
                                 <button
                                     disabled={!canToggleGlobal}
@@ -257,7 +391,6 @@ export default function Shell() {
                                 </button>
                             )}
 
-                            {/* Quiet status text */}
                             <span
                                 style={{
                                     marginLeft: 6,
@@ -299,7 +432,9 @@ export default function Shell() {
                         </span>
 
                         <button
-                            onClick={() => supabase.auth.signOut()}
+                            onClick={async () => {
+                                await supabase.auth.signOut(); // cross-tab propagation handled by listener
+                            }}
                             style={{
                                 padding: "8px 12px",
                                 borderRadius: 12,
@@ -341,7 +476,7 @@ export default function Shell() {
                         </div>
                     </div>
                 </div>
-            </main >
-        </div >
+            </main>
+        </div>
     );
 }
