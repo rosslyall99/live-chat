@@ -73,7 +73,6 @@ export default function Shell() {
         let handled = false;
 
         const goLogin = () => {
-            // Clear UI state to avoid flashes
             setMe(null);
             setRole("agent");
             setDisplayName("");
@@ -86,49 +85,33 @@ export default function Shell() {
 
         const broadcastLogout = (reason) => {
             const payload = { type: "logout", at: Date.now(), reason: reason || "unknown" };
-            try {
-                bc?.postMessage(payload);
-            } catch { }
-            try {
-                localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload));
-            } catch { }
+            try { bc?.postMessage(payload); } catch { }
+            try { localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload)); } catch { }
         };
 
-        const doLocalLogout = async (reason) => {
+        const doLocalLogout = async () => {
             if (handled) return;
             handled = true;
-
-            try {
-                await supabase.auth.signOut();
-            } catch { }
+            try { await supabase.auth.signOut(); } catch { }
             goLogin();
         };
 
-        // ---- activity tracking
         const markActivity = () => {
-            try {
-                localStorage.setItem(STORAGE_LAST_ACTIVITY, String(Date.now()));
-            } catch { }
+            try { localStorage.setItem(STORAGE_LAST_ACTIVITY, String(Date.now())); } catch { }
         };
 
-        // Record activity on common interactions
+        // --- record activity while the app is open
         const activityEvents = ["mousemove", "keydown", "mousedown", "touchstart", "scroll", "click"];
         activityEvents.forEach((ev) => window.addEventListener(ev, markActivity, { passive: true }));
 
-        // On tab closing / navigating away, record close time.
-        // pagehide is generally best cross-browser.
+        // --- record close time when tab/window is actually going away
         const onPageHide = (e) => {
-            // If going into BFCache, treat as not a true close.
-            if (e && e.persisted) return;
-            try {
-                localStorage.setItem(STORAGE_LAST_CLOSED, String(Date.now()));
-            } catch { }
-            // Note: we DO NOT sign out here anymore (that would cause refresh weirdness).
-            // We enforce sign-out on next open if >30s has passed.
+            if (e && e.persisted) return; // ignore BFCache
+            try { localStorage.setItem(STORAGE_LAST_CLOSED, String(Date.now())); } catch { }
         };
         window.addEventListener("pagehide", onPageHide);
 
-        // ---- On startup: enforce "closed + inactivity > 30s => sign out"
+        // --- On startup: if we are reopening after a real close + idle > 30s, force logout
         (async () => {
             let lastActivityAt = 0;
             let lastClosedAt = 0;
@@ -138,25 +121,36 @@ export default function Shell() {
                 lastClosedAt = Number(localStorage.getItem(STORAGE_LAST_CLOSED) || "0");
             } catch { }
 
-            const now = Date.now();
-            const closedLongEnough = lastClosedAt > 0 && now - lastClosedAt > INACTIVITY_MS;
-            const inactiveLongEnough = lastActivityAt > 0 && now - lastActivityAt > INACTIVITY_MS;
+            // Only enforce if we have BOTH timestamps
+            if (!lastClosedAt || !lastActivityAt) {
+                markActivity();
+                return;
+            }
 
-            if (closedLongEnough && inactiveLongEnough) {
-                // Only sign out if there IS a current session — avoids pointless redirects.
+            const now = Date.now();
+
+            // Must have closed AFTER the last activity (i.e. a real session ended)
+            const validClose = lastClosedAt >= lastActivityAt;
+            const closedLongEnough = now - lastClosedAt > INACTIVITY_MS;
+            const inactiveLongEnough = now - lastActivityAt > INACTIVITY_MS;
+
+            if (validClose && closedLongEnough && inactiveLongEnough) {
                 const { data } = await supabase.auth.getSession();
                 if (data?.session) {
                     broadcastLogout("reopen_after_30s_closed");
-                    await doLocalLogout("reopen_after_30s_closed");
+                    await doLocalLogout();
                     return;
                 }
             }
+
+            // If we're not logging out, stamp activity for this session now
+            markActivity();
         })();
 
-        // ---- Cross-tab logout listeners
+        // --- Cross-tab logout listeners
         if (bc) {
             bc.onmessage = (ev) => {
-                if (ev?.data?.type === "logout") doLocalLogout(ev.data.reason || "broadcast");
+                if (ev?.data?.type === "logout") doLocalLogout();
             };
         }
 
@@ -164,35 +158,32 @@ export default function Shell() {
             if (e.key !== STORAGE_LOGOUT_KEY || !e.newValue) return;
             try {
                 const msg = JSON.parse(e.newValue);
-                if (msg?.type === "logout") doLocalLogout(msg.reason || "storage");
+                if (msg?.type === "logout") doLocalLogout();
             } catch {
-                doLocalLogout("storage");
+                doLocalLogout();
             }
         };
         window.addEventListener("storage", onStorage);
 
-        // Also: if this tab signs out, propagate to other tabs
+        // --- Supabase auth listener: sign out in one tab => others go too
         const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
             if (event === "SIGNED_OUT") {
                 broadcastLogout("signed_out");
                 goLogin();
             }
+            if (event === "SIGNED_IN") {
+                // record fresh activity, but DO NOT clear lastClosedAt (avoids racing the startup check)
+                markActivity();
+            }
         });
-
-        // Mark initial activity on load
-        markActivity();
 
         return () => {
             activityEvents.forEach((ev) => window.removeEventListener(ev, markActivity));
             window.removeEventListener("pagehide", onPageHide);
             window.removeEventListener("storage", onStorage);
 
-            try {
-                authSub?.subscription?.unsubscribe();
-            } catch { }
-            try {
-                bc?.close();
-            } catch { }
+            try { authSub?.subscription?.unsubscribe(); } catch { }
+            try { bc?.close(); } catch { }
         };
     }, [nav]);
 
