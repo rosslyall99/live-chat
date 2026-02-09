@@ -20,20 +20,28 @@ export default function UsersAdmin() {
 
     const loadSeq = React.useRef(0);
 
-    async function invokeAdmin(fn, body) {
-        const { data, error } = await supabase.functions.invoke(fn, {
-            body: body || {},
-        });
+    // wherever your invokeAdmin lives (e.g. UsersAdmin.jsx helper)
 
-        if (error) {
-            if (error.context instanceof Response) {
-                const t = await error.context.text();
-                throw new Error(`HTTP ${error.context.status}: ${t}`);
-            }
-            throw new Error(error.message || "Edge Function error");
+    async function invokeAdmin(fn, body) {
+        // Get a fresh access token from the current session
+        const { data: sessData, error: sessErr } = await supabase.auth.getSession();
+        const token = sessData?.session?.access_token;
+
+        if (sessErr || !token) {
+            return {
+                data: null,
+                error: {
+                    message: "No active session",
+                    status: 401,
+                },
+            };
         }
 
-        return data;
+        // Always pass Authorization explicitly (removes any ambiguity)
+        return await supabase.functions.invoke(fn, {
+            body: body || {},
+            headers: { Authorization: `Bearer ${token}` },
+        });
     }
 
     async function loadAll() {
