@@ -19,17 +19,27 @@ function RequireAuth({ children }) {
   const [session, setSession] = React.useState(null);
 
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    let mounted = true;
+
+    // 1) Get session once, then mark ready
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
       setSession(data.session);
       setReady(true);
-    });
+    })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 2) Listen for changes AFTER initial load
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      // Prevent INITIAL_SESSION from racing getSession()
+      if (event === "INITIAL_SESSION") return;
       setSession(session);
-      setReady(true);
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>;

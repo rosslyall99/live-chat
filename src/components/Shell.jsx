@@ -113,6 +113,26 @@ export default function Shell() {
 
         // --- On startup: if we are reopening after a real close + idle > 30s, force logout
         (async () => {
+            // Run this check only once per tab session
+            const STARTUP_CHECK_KEY = "crm:startupChecked";
+            try {
+                if (sessionStorage.getItem(STARTUP_CHECK_KEY) === "1") {
+                    markActivity();
+                    return;
+                }
+                sessionStorage.setItem(STARTUP_CHECK_KEY, "1");
+            } catch { }
+
+            // Skip on reload / BFCache restores (these can look like “closed”)
+            try {
+                const nav = performance.getEntriesByType("navigation")?.[0];
+                const navType = nav?.type; // "navigate" | "reload" | "back_forward" | "prerender"
+                if (navType === "reload" || navType === "back_forward") {
+                    markActivity();
+                    return;
+                }
+            } catch { }
+
             let lastActivityAt = 0;
             let lastClosedAt = 0;
 
