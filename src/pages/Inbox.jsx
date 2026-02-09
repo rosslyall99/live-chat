@@ -4,24 +4,87 @@ import { Link } from "react-router-dom";
 import { ui } from "../ui/tokens";
 
 /** Admin-only helper (uses Edge Function) */
+/** Admin-only helper (uses Edge Function)
+ *  - Never signs out the user
+ *  - If token is stale and function returns 401, refreshes once and retries
+ *  - Throws with `.code` so callers can decide what to do
+ */
 async function invokeAdmin(fn, body = {}) {
+    // 1) Ensure we have a session
     const { data: sessionData, error: sessErr } = await supabase.auth.getSession();
-    if (sessErr) throw new Error(sessErr.message);
-
-    const jwt = sessionData?.session?.access_token;
-    if (!jwt) throw new Error("Not signed in.");
-
-    const { data, error } = await supabase.functions.invoke(fn, {
-        body,
-        headers: { Authorization: `Bearer ${jwt}` },
-    });
-
-    if (error) {
-        const status = error?.context?.status;
-        const msg = status ? `HTTP ${status}: ${error.message}` : error.message;
-        throw new Error(msg);
+    if (sessErr) {
+        const e = new Error(sessErr.message);
+        e.code = "SESSION_ERROR";
+        throw e;
     }
-    return data;
+
+    let jwt = sessionData?.session?.access_token;
+    if (!jwt) {
+        const e = new Error("Not signed in.");
+        e.code = "NOT_SIGNED_IN";
+        throw e;
+    }
+
+    // helper to call function with a jwt
+    async function callWith(jwtToken) {
+        const { data, error } = await supabase.functions.invoke(fn, {
+            body,
+            headers: { Authorization: `Bearer ${jwtToken}` },
+        });
+
+        if (error) {
+            const status = error?.context?.status;
+            const msg = status ? `HTTP ${status}: ${error.message}` : error.message;
+            const e = new Error(msg);
+            e.status = status;
+            e.raw = error;
+            throw e;
+        }
+
+        return data;
+    }
+
+    try {
+        return await callWith(jwt);
+    } catch (e) {
+        // 2) If unauthorized, try ONE refresh + retry
+        const status = e?.status;
+        const is401 = status === 401 || String(e.message || "").includes("HTTP 401");
+
+        if (!is401) throw e;
+
+        // refresh session (if possible)
+        const { data: refreshData, error: refreshErr } = await supabase.auth.refreshSession();
+        if (refreshErr) {
+            const err = new Error(`Unauthorized and refresh failed: ${refreshErr.message}`);
+            err.code = "ADMIN_UNAUTHORIZED";
+            err.status = 401;
+            throw err;
+        }
+
+        const newJwt = refreshData?.session?.access_token;
+        if (!newJwt) {
+            const err = new Error("Unauthorized (no refreshed token).");
+            err.code = "ADMIN_UNAUTHORIZED";
+            err.status = 401;
+            throw err;
+        }
+
+        // retry once
+        try {
+            return await callWith(newJwt);
+        } catch (e2) {
+            const status2 = e2?.status;
+            const is401_2 = status2 === 401 || String(e2.message || "").includes("HTTP 401");
+            if (is401_2) {
+                const err = new Error("Not authorised to access this admin function.");
+                err.code = "ADMIN_UNAUTHORIZED";
+                err.status = 401;
+                throw err;
+            }
+            throw e2;
+        }
+    }
 }
 
 function SegmentedTabs({ value, onChange, items }) {
@@ -150,7 +213,11 @@ export default function Inbox() {
             }
             setStaffNameById((prev) => ({ ...prev, ...map }));
         } catch (e) {
-            // Don’t hard-fail inbox if this goes wrong
+            if (e?.code === "ADMIN_UNAUTHORIZED" || e?.status === 401) {
+                // Admin mapping failed — do NOT log out, just continue without it
+                console.warn("admin_list_staff not authorised (continuing without full map)");
+                return;
+            }
             console.error("admin_list_staff failed", e);
         }
     }
