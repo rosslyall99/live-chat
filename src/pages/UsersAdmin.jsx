@@ -56,8 +56,11 @@ export default function UsersAdmin() {
 
             if (seq !== loadSeq.current) return;
 
-            setSites(sitesRes?.sites || []);
-            setRows(staffRes?.staff || []);
+            if (sitesRes?.error) throw new Error(sitesRes.error.message || "admin_list_sites failed");
+            if (staffRes?.error) throw new Error(staffRes.error.message || "admin_list_staff failed");
+
+            setSites(sitesRes?.data?.sites || []);
+            setRows(staffRes?.data?.staff || []);
         } catch (e) {
             console.error(e);
             if (seq !== loadSeq.current) return;
@@ -109,7 +112,7 @@ export default function UsersAdmin() {
             setUsername("");
             setDisplayName("");
             setSiteId("");
-            setRole("");
+            setRole("agent");
             setPin("");
 
             await new Promise((r) => setTimeout(r, 250));
