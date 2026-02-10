@@ -55,8 +55,10 @@ export default function UsersAdmin() {
 
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event) => {
-            loadAll();
+        } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+                loadAll();
+            }
         });
 
         return () => subscription.unsubscribe();

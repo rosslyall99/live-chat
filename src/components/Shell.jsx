@@ -214,6 +214,56 @@ export default function Shell() {
         };
     }, [nav]);
 
+    // ------------------------------------------------------------
+    // Single-session enforcement (newest login wins)
+    // If session_nonce in DB changes, this tab signs out.
+    // ------------------------------------------------------------
+    React.useEffect(() => {
+        let stopped = false;
+
+        async function checkNonce() {
+            try {
+                const { data: sess } = await supabase.auth.getSession();
+                if (!sess?.session) return;
+
+                const local = localStorage.getItem("crm:session_nonce") || "";
+                if (!local) return; // login should set it
+
+                const { data: prof } = await supabase
+                    .from("staff_profiles")
+                    .select("session_nonce")
+                    .eq("user_id", sess.session.user.id)
+                    .maybeSingle();
+
+                const server = prof?.session_nonce || "";
+                if (server && local && server !== local) {
+                    // newer login happened elsewhere
+                    await supabase.auth.signOut();
+                }
+            } catch {
+                // ignore transient errors
+            }
+        }
+
+        const onVis = () => {
+            if (!document.hidden) checkNonce();
+        };
+
+        document.addEventListener("visibilitychange", onVis);
+
+        const timer = setInterval(() => {
+            if (!stopped) checkNonce();
+        }, 10_000);
+
+        checkNonce();
+
+        return () => {
+            stopped = true;
+            clearInterval(timer);
+            document.removeEventListener("visibilitychange", onVis);
+        };
+    }, []);
+
     async function refreshMeAndSettings() {
         // local helper to safely set state only if still mounted
         const safe = (fn) => { if (aliveRef.current) fn(); };

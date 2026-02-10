@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { ui } from "../ui/tokens";
 import PhilLogo from "../images/PHiL2.png";
+import { invokeAuthed } from "../lib/invokeAuthed";
 
 
 function usernameToEmail(username) {
@@ -61,18 +62,43 @@ export default function Login() {
 
         const email = usernameToEmail(selectedUsername);
 
+        try {
+            // Supabase stores auth state under these keys (project-specific key may vary)
+            // Clearing it fixes "403 /auth/v1/user" after login due to corrupted persisted state.
+            for (const k of Object.keys(localStorage)) {
+                if (k.startsWith("sb-") && k.includes("-auth-token")) localStorage.removeItem(k);
+            }
+        } catch { }
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password: pin,
         });
 
-        setLoadingLogin(false);
-
         if (error) {
+            setLoadingLogin(false);
             setError("Invalid PIN or password.");
             return;
         }
 
+        try {
+            const now = Date.now();
+            localStorage.setItem("crm:lastActivityAt", String(now));
+            localStorage.setItem("crm:lastClosedAt", String(now));
+            sessionStorage.setItem("crm:startupChecked", "1");
+        } catch { }
+
+        // 🔒 NEW: stamp this as the newest active session
+        try {
+            const { data: touchData } = await invokeAuthed("auth_touch_session", {});
+            if (touchData?.session_nonce) {
+                localStorage.setItem("crm:session_nonce", touchData.session_nonce);
+            }
+        } catch {
+            // non-fatal: if this fails, login still succeeds
+        }
+
+        setLoadingLogin(false);
         nav("/");
     }
 
