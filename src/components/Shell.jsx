@@ -5,6 +5,7 @@ import { supabase } from "../supabaseClient";
 import Sidebar from "./Sidebar";
 import { ui } from "../ui/tokens";
 import Lion from "../images/lion.png";
+import { invokeAuthed } from "../lib/invokeAuthed";
 
 function siteLetter(siteId) {
     if (!siteId) return "?";
@@ -32,6 +33,12 @@ export default function Shell() {
     const [globalEnabled, setGlobalEnabled] = React.useState(true);
     const [switchLoading, setSwitchLoading] = React.useState(false);
     const [switchError, setSwitchError] = React.useState("");
+    const aliveRef = React.useRef(true);
+
+    React.useEffect(() => {
+        aliveRef.current = true;
+        return () => { aliveRef.current = false; };
+    }, []);
 
     const onBg = "rgba(22, 163, 74, 0.12)";
     const onBorder = "rgba(22, 163, 74, 0.28)";
@@ -208,54 +215,90 @@ export default function Shell() {
     }, [nav]);
 
     async function refreshMeAndSettings() {
-        setLoading(true);
-        setSwitchError("");
+        // local helper to safely set state only if still mounted
+        const safe = (fn) => { if (aliveRef.current) fn(); };
+
+        safe(() => {
+            setLoading(true);
+            setSwitchError("");
+        });
 
         const { data: userData } = await supabase.auth.getUser();
         const user = userData?.user ?? null;
-        setMe(user);
 
-        if (user?.id) {
-            const { data: prof } = await supabase
-                .from("staff_profiles")
-                .select("role, display_name, username, site_id")
-                .eq("user_id", user.id)
+        safe(() => setMe(user));
+
+        if (!user) {
+            safe(() => {
+                setRole("agent");
+                setDisplayName("");
+                setSiteId(null);
+                setBranchEnabled(true);
+                setGlobalEnabled(true);
+                setLoading(false);
+            });
+            return;
+        }
+
+        const { data: prof } = await supabase
+            .from("staff_profiles")
+            .select("role, display_name, username, site_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+        const nextRole = prof?.role ? String(prof.role).toLowerCase() : "agent";
+
+        const emailPrefix = user?.email ? user.email.split("@")[0] : "";
+        const bestName =
+            (prof?.display_name && prof.display_name.trim()) ||
+            (prof?.username && prof.username.trim()) ||
+            emailPrefix;
+
+        const nextSiteId = prof?.site_id || null;
+
+        safe(() => {
+            setRole(nextRole);
+            setDisplayName(bestName);
+            setSiteId(nextSiteId);
+        });
+
+        if (nextSiteId) {
+            const { data: cs } = await supabase
+                .from("chat_settings")
+                .select("enabled, global_enabled")
+                .eq("site_id", nextSiteId)
                 .maybeSingle();
 
-            const nextRole = prof?.role ? String(prof.role).toLowerCase() : "agent";
-            setRole(nextRole);
-
-            const emailPrefix = user?.email ? user.email.split("@")[0] : "";
-            const bestName =
-                (prof?.display_name && prof.display_name.trim()) ||
-                (prof?.username && prof.username.trim()) ||
-                emailPrefix;
-            setDisplayName(bestName);
-
-            const nextSiteId = prof?.site_id || null;
-            setSiteId(nextSiteId);
-
-            if (nextSiteId) {
-                const { data: cs } = await supabase
-                    .from("chat_settings")
-                    .select("enabled, global_enabled")
-                    .eq("site_id", nextSiteId)
-                    .maybeSingle();
-
-                if (cs) {
+            if (cs) {
+                safe(() => {
                     setBranchEnabled(cs.enabled !== false);
                     setGlobalEnabled(cs.global_enabled !== false);
-                }
+                });
             }
         }
 
-        setLoading(false);
+        safe(() => setLoading(false));
     }
 
     React.useEffect(() => {
         refreshMeAndSettings();
+
+        const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+                refreshMeAndSettings();
+            }
+            if (event === "SIGNED_OUT") {
+                // your other effect already handles redirect/reset
+                // but it doesn't hurt to sync UI state too
+                refreshMeAndSettings();
+            }
+        });
+
+        return () => {
+            try { sub?.subscription?.unsubscribe(); } catch { }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loc.pathname]);
+    }, []);
 
     async function toggleBranch(next) {
         setSwitchError("");
@@ -264,8 +307,8 @@ export default function Shell() {
         const prev = branchEnabled;
         setBranchEnabled(next);
 
-        const { data, error } = await supabase.functions.invoke("toggle_branch_chat", {
-            body: { enabled: next },
+        const { data, error } = await invokeAuthed("toggle_branch_chat", {
+            enabled: next,
         });
 
         if (error || !data?.ok) {
@@ -285,8 +328,8 @@ export default function Shell() {
         const prev = globalEnabled;
         setGlobalEnabled(next);
 
-        const { data, error } = await supabase.functions.invoke("toggle_global_chat", {
-            body: { global_enabled: next },
+        const { data, error } = await invokeAuthed("toggle_global_chat", {
+            global_enabled: next,
         });
 
         if (error || !data?.ok) {

@@ -2,6 +2,7 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { Link } from "react-router-dom";
 import { ui } from "../ui/tokens";
+import { invokeAdmin } from "../lib/invokeAdmin";
 
 export default function UsersAdmin() {
     const [rows, setRows] = React.useState([]);
@@ -19,30 +20,6 @@ export default function UsersAdmin() {
     const [creating, setCreating] = React.useState(false);
 
     const loadSeq = React.useRef(0);
-
-    // wherever your invokeAdmin lives (e.g. UsersAdmin.jsx helper)
-
-    async function invokeAdmin(fn, body) {
-        // Get a fresh access token from the current session
-        const { data: sessData, error: sessErr } = await supabase.auth.getSession();
-        const token = sessData?.session?.access_token;
-
-        if (sessErr || !token) {
-            return {
-                data: null,
-                error: {
-                    message: "No active session",
-                    status: 401,
-                },
-            };
-        }
-
-        // Always pass Authorization explicitly (removes any ambiguity)
-        return await supabase.functions.invoke(fn, {
-            body: body || {},
-            headers: { Authorization: `Bearer ${token}` },
-        });
-    }
 
     async function loadAll() {
         const seq = ++loadSeq.current;
