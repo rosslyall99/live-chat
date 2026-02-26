@@ -26,6 +26,11 @@ export default function Login() {
             setError("");
             setLoadingStaff(true);
 
+            // 🔒 Ensure login screen always behaves as anon
+            try {
+                await supabase.auth.signOut();
+            } catch { }
+
             const { data, error } = await supabase
                 .from("staff_login_list")
                 .select("username, display_name")
