@@ -21,6 +21,18 @@ export default function UsersAdmin() {
 
     const loadSeq = React.useRef(0);
 
+    const ROTA_BRANCHES = [
+        { value: "", label: "—" },
+        { value: "DUK", label: "DUK" },
+        { value: "STE", label: "STE" },
+        { value: "HIRE", label: "Hire" },
+        { value: "OFFICE", label: "Office" },
+    ];
+
+    const [rotaNamesOpen, setRotaNamesOpen] = React.useState(false);
+    const [rotaNamesLoading, setRotaNamesLoading] = React.useState(false);
+    const [rotaNames, setRotaNames] = React.useState([]);
+
     async function loadAll() {
         const seq = ++loadSeq.current;
 
@@ -129,6 +141,46 @@ export default function UsersAdmin() {
         }
     }
 
+    async function updateRota(user_id, patch) {
+        try {
+            await invokeAdmin("admin_update_staff_rota", { user_id, ...patch });
+            await loadAll();
+        } catch (e) {
+            console.error(e);
+            alert(String(e.message || e));
+        }
+    }
+
+    function siteToRotaBranch(site_id) {
+        const s = String(site_id || "").toLowerCase();
+        if (s === "duke") return "DUK";
+        if (s === "sten") return "STE";
+        if (s === "hire") return "HIRE";
+        if (s === "office") return "OFFICE";
+        return "—";
+    }
+
+    async function loadRotaNames() {
+        setRotaNamesLoading(true);
+        setError("");
+
+        try {
+            const res = await invokeAdmin("admin_list_rota_staff_names", {});
+            if (res?.error) throw new Error(res.error.message || "admin_list_rota_staff_names failed");
+
+            setRotaNames(res?.data?.names || []);
+        } catch (e) {
+            console.error(e);
+            setError(String(e.message || e));
+            setRotaNames([]);
+        } finally {
+            setRotaNamesLoading(false);
+        }
+    }
+
+    // which row is currently editing rota override?
+    const [editingRotaFor, setEditingRotaFor] = React.useState(null);
+
     const inputStyle = {
         width: "100%",
         padding: "10px 12px",
@@ -178,6 +230,26 @@ export default function UsersAdmin() {
                 >
                     {loading ? "Refreshing…" : "Refresh"}
                 </button>
+
+                <button
+                    onClick={async () => {
+                        const next = !rotaNamesOpen;
+                        setRotaNamesOpen(next);
+                        if (next && rotaNames.length === 0) await loadRotaNames();
+                    }}
+                    style={{
+                        padding: "8px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: ui.colors.cardBg,
+                        cursor: "pointer",
+                        fontWeight: 800,
+                        color: ui.colors.text,
+                    }}
+                >
+                    {rotaNamesOpen ? "Hide Sage names" : "Show Sage names"}
+                </button>
+
             </div>
 
             {/* Error */}
@@ -285,12 +357,108 @@ export default function UsersAdmin() {
                 </form>
             </div>
 
+            {rotaNamesOpen ? (
+                <div
+                    style={{
+                        marginTop: 12,
+                        padding: 12,
+                        border: `1px solid ${ui.colors.border}`,
+                        borderRadius: 12,
+                        background: "rgba(2, 6, 23, 0.02)",
+                    }}
+                >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                        <div style={{ fontWeight: 900 }}>Sage (webcal) staff names found in rota_shifts</div>
+
+                        <button
+                            onClick={loadRotaNames}
+                            disabled={rotaNamesLoading}
+                            style={{
+                                padding: "8px 12px",
+                                borderRadius: ui.radius.md,
+                                border: `1px solid ${ui.colors.border}`,
+                                background: ui.colors.cardBg,
+                                cursor: rotaNamesLoading ? "not-allowed" : "pointer",
+                                fontWeight: 800,
+                                color: ui.colors.text,
+                                opacity: rotaNamesLoading ? 0.7 : 1,
+                            }}
+                        >
+                            {rotaNamesLoading ? "Loading…" : "Refresh list"}
+                        </button>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {rotaNamesLoading ? (
+                            <div style={{ opacity: 0.8 }}>Loading…</div>
+                        ) : rotaNames.length === 0 ? (
+                            <div style={{ opacity: 0.8 }}>No names found.</div>
+                        ) : (
+                            rotaNames.map((name) => (
+                                <div
+                                    key={name}
+                                    style={{
+                                        padding: "6px 10px",
+                                        borderRadius: 999,
+                                        border: `1px solid ${ui.colors.border}`,
+                                        background: ui.colors.cardBg,
+                                        fontWeight: 800,
+                                        fontSize: 12,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                    }}
+                                    title="Assign this Sage name to a CRM user"
+                                >
+                                    <span>{name}</span>
+
+                                    <select
+                                        defaultValue=""
+                                        onChange={async (e) => {
+                                            const userId = e.target.value;
+                                            if (!userId) return;
+
+                                            try {
+                                                await updateRota(userId, { rota_match_name: name });
+                                            } finally {
+                                                // reset dropdown so you can reuse it quickly
+                                                e.target.value = "";
+                                            }
+                                        }}
+                                        style={{
+                                            borderRadius: 8,
+                                            border: `1px solid ${ui.colors.border}`,
+                                            padding: "4px 6px",
+                                            fontSize: 12,
+                                            background: ui.colors.cardBg,
+                                            color: ui.colors.text,
+                                            fontFamily: ui.font.ui,
+                                        }}
+                                    >
+                                        <option value="">Assign to…</option>
+                                        {rows.map((u) => (
+                                            <option key={u.user_id} value={u.user_id}>
+                                                {u.display_name || u.username}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                        Pick a user from the dropdown to save the override instantly.
+                    </div>
+                </div>
+            ) : null}
+
             {/* List */}
             <div style={{ marginTop: 16, border: `1px solid ${ui.colors.border}`, borderRadius: 12, overflow: "hidden" }}>
                 <div
                     style={{
                         display: "grid",
-                        gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
+                        gridTemplateColumns: "1.1fr 1.1fr 0.7fr 0.8fr 1.3fr 0.7fr 0.55fr 1fr",
                         gap: 0,
                         background: "rgba(2, 6, 23, 0.03)",
                         borderBottom: `1px solid ${ui.colors.border}`,
@@ -302,6 +470,8 @@ export default function UsersAdmin() {
                     <div style={th}>Name</div>
                     <div style={th}>Role</div>
                     <div style={th}>Site</div>
+                    <div style={th}>Rota name</div>
+                    <div style={th}>Rota branch</div>
                     <div style={th}>Active</div>
                     <div style={{ ...th, textAlign: "right" }}>Actions</div>
                 </div>
@@ -316,7 +486,7 @@ export default function UsersAdmin() {
                             key={u.user_id}
                             style={{
                                 display: "grid",
-                                gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.8fr 0.6fr 1fr",
+                                gridTemplateColumns: "1.1fr 1.1fr 0.7fr 0.8fr 1.3fr 0.7fr 0.55fr 1fr",
                                 borderBottom: `1px solid ${ui.colors.border}`,
                                 alignItems: "center",
                                 fontSize: 13,
@@ -326,6 +496,98 @@ export default function UsersAdmin() {
                             <div style={{ padding: 10 }}>{u.display_name || "—"}</div>
                             <div style={{ padding: 10, textTransform: "capitalize" }}>{u.role}</div>
                             <div style={{ padding: 10 }}>{u.site_id || "—"}</div>
+
+                            <div style={{ padding: 10 }}>
+                                {(() => {
+                                    const effective = (u.rota_match_name || u.display_name || "").trim();
+                                    const isOverridden = !!(u.rota_match_name && u.rota_match_name.trim());
+
+                                    // Small link button style (matches your vibe)
+                                    const miniBtn = {
+                                        border: "none",
+                                        background: "transparent",
+                                        color: ui.colors.brand,
+                                        fontWeight: 900,
+                                        cursor: "pointer",
+                                        padding: 0,
+                                        fontFamily: ui.font.ui,
+                                    };
+
+                                    if (editingRotaFor === u.user_id) {
+                                        return (
+                                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                                <input
+                                                    value={u.rota_match_name ?? ""}
+                                                    placeholder={u.display_name || "Rota name…"}
+                                                    onChange={(e) => {
+                                                        const v = e.target.value;
+                                                        setRows((prev) =>
+                                                            prev.map((r) =>
+                                                                r.user_id === u.user_id ? { ...r, rota_match_name: v } : r
+                                                            )
+                                                        );
+                                                    }}
+                                                    style={inputStyle}
+                                                    autoComplete="off"
+                                                />
+
+                                                <button
+                                                    style={miniBtn}
+                                                    onClick={async () => {
+                                                        // Save override (blank clears)
+                                                        await updateRota(u.user_id, { rota_match_name: (u.rota_match_name || "").trim() });
+                                                        setEditingRotaFor(null);
+                                                    }}
+                                                >
+                                                    Save
+                                                </button>
+
+                                                <button
+                                                    style={{ ...miniBtn, color: "rgba(17,24,39,0.55)" }}
+                                                    onClick={async () => {
+                                                        setEditingRotaFor(null);
+                                                        await loadAll();
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+
+                                                {isOverridden ? (
+                                                    <button
+                                                        style={{ ...miniBtn, color: "rgba(239,68,68,0.85)" }}
+                                                        onClick={async () => {
+                                                            await updateRota(u.user_id, { rota_match_name: "" }); // clears
+                                                            setEditingRotaFor(null);
+                                                        }}
+                                                        title="Clear override (uses Name)"
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                                            <div style={{ fontWeight: 800 }}>{effective || "—"}</div>
+
+                                            <button
+                                                style={miniBtn}
+                                                onClick={() => setEditingRotaFor(u.user_id)}
+                                                title={isOverridden ? "Override set" : "Uses Name by default"}
+                                            >
+                                                {isOverridden ? "Edit override" : "Override"}
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            <div style={{ padding: 10, fontWeight: 900 }}>
+                                {siteToRotaBranch(u.site_id)}
+                            </div>
+
                             <div style={{ padding: 10, fontWeight: 800 }}>
                                 {u.is_active ? "Yes" : "No"}
                             </div>

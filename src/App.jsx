@@ -10,6 +10,7 @@ import UsersAdmin from "./pages/UsersAdmin";
 import ChangePin from "./pages/ChangePin.jsx";
 import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
+import Rota from "./pages/Rota";
 
 import Shell from "./components/Shell";
 
@@ -63,15 +64,16 @@ export default function App() {
         }
       >
         {/* Core */}
-        <Route path="/" element={<Inbox />} />
-        <Route path="/chat/:id" element={<Chat />} />
-        <Route path="/change-pin" element={<ChangePin />} />
+        <Route index element={<Inbox />} />
+        <Route path="chat/:id" element={<Chat />} />
+        <Route path="change-pin" element={<ChangePin />} />
+        <Route path="rota" element={<Rota />} />
 
         {/* Admin */}
-        <Route path="/admin/canned" element={<CannedRepliesAdmin />} />
-        <Route path="/admin/users" element={<UsersAdmin />} />
-        <Route path="/admin/live" element={<AdminLive />} />
-        <Route path="/admin/insights" element={<AdminInsights />} />
+        <Route path="admin/canned" element={<CannedRepliesAdmin />} />
+        <Route path="admin/users" element={<UsersAdmin />} />
+        <Route path="admin/live" element={<AdminLive />} />
+        <Route path="admin/insights" element={<AdminInsights />} />
       </Route>
 
       {/* Fallback */}

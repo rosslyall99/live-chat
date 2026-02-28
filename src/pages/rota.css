@@ -1,0 +1,380 @@
+:root {
+  --rota-grid-line: rgba(2, 6, 23, 0.14);
+}
+
+/* Page */
+.rota-page {
+  padding: 18px;
+  color: rgba(17, 24, 39, 0.92);
+  min-width: 0;
+}
+
+/* Card area (inside your existing white card) */
+.rota-card {
+  display: block;
+  gap: 12px;
+  background: #0000001a;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  border: 1px solid rgba(0,0,0,0.06);
+  padding: 14px;
+  min-width: 0;
+}
+
+.rota-card > * + * {
+  margin-top: 12px;
+}
+
+/* Toolbar */
+.rota-toolbar {
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.rota-title {
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  color: rgba(17, 24, 39, 0.95);
+}
+
+.rota-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+/* Grid wrapper */
+.rota-gridWrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.02);
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 520px;
+  box-sizing: border-box;
+  padding-bottom: 8px;
+}
+
+/* Optional: nicer scrollbars (Chromium/Edge) */
+.rota-gridWrap::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.rota-gridWrap::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.22);
+  border-radius: 999px;
+}
+.rota-gridWrap::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.06);
+  border-radius: 999px;
+}
+
+/* =========================
+   TABLE / GRID (sticky-safe)
+   ========================= */
+
+/* Table baseline */
+.rota-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;   /* IMPORTANT for sticky header borders */
+  border-spacing: 0;
+  border: 1px solid var(--rota-grid-line); /* outer box */
+  margin-bottom: 8px;
+}
+
+/* All cells: draw grid lines using right+bottom only (prevents header border glitches) */
+.rota-grid th,
+.rota-grid td {
+  border: 0;
+  border-right: 1px solid var(--rota-grid-line);
+  border-bottom: 1px solid var(--rota-grid-line);
+  padding: 2px 2px;
+  vertical-align: middle;
+}
+
+/* Remove far-right line (outer border handles it) */
+.rota-grid tr > *:last-child {
+  border-right: 0;
+}
+
+/* Headers */
+.rota-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #fff;
+  backdrop-filter: blur(8px);
+  padding: 12px 10px;
+  text-align: center; /* (centre -> center) */
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.80);
+  min-width: 100px; /* Ensure header names don’t squash too hard */
+}
+
+/* First column (Day) sticky */
+.rota-grid .rota-staffCol {
+  position: sticky;
+  left: 0;
+  z-index: 7;
+  background: #fff;
+  text-align: left;
+  padding-left: 12px;
+  color: rgba(17, 24, 39, 0.90);
+  font-size: 12px;
+  min-width: 100px;
+}
+
+/* Body cells centered */
+.rota-grid tbody td {
+  text-align: center;
+}
+
+/* Day column styling in body */
+.rota-grid tbody th.rota-staffCol {
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.88);
+}
+
+/* Zebra */
+.rota-grid tbody tr:nth-child(even) td,
+.rota-grid tbody tr:nth-child(even) th {
+  background: rgba(255, 255, 255, 0.50);
+}
+
+/* Thicker dividers (reliable with sticky): draw inside the cell */
+.rota-afterDayDivider,
+.rota-colDivider {
+  box-shadow: inset 3px 0 0 var(--rota-grid-line);
+}
+
+/* Staff name cell (if you ever use it inside a sticky cell) */
+.rota-staffName {
+  font-weight: 900;
+  color: rgba(17, 24, 39, 0.90);
+  font-size: 13px;
+}
+.rota-staffMeta {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+/* Shift “pill” */
+.rota-pill {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid rgba(2, 6, 23, 0.10);
+}
+
+/* Branch colours */
+.rota-pill--stenoch { background: rgba(59,130,246,0.18); border-color: rgba(59,130,246,0.35); } /* Blue */
+.rota-pill--duke    { background: rgba(34,197,94,0.18);  border-color: rgba(34,197,94,0.35); }  /* Green */
+.rota-pill--hire    { background: rgba(249,115,22,0.20); border-color: rgba(249,115,22,0.40); } /* Orange */
+.rota-pill--office  { background: rgba(239,68,68,0.18);  border-color: rgba(239,68,68,0.35); }  /* Red */
+.rota-pill--unknown { background: rgba(100,116,139,0.14); border-color: rgba(100,116,139,0.28); } /* Slate */
+
+/* Absence colours */
+.rota-pill--sick { background: rgba(234,179,8,0.22); border-color: rgba(234,179,8,0.45); } /* Yellow */
+.rota-pill--hol  { background: rgba(168,85,247,0.20); border-color: rgba(168,85,247,0.40); } /* Purple */
+.rota-pill--other{ background: rgba(148,163,184,0.18); border-color: rgba(148,163,184,0.35); }
+
+/* Empty cells */
+.rota-empty {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  color: rgba(17, 24, 39, 0.28);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* Toolbar actions */
+.rota-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.rota-btn,
+.rota-select {
+  appearance: none;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: #fff;
+  color: rgba(17, 24, 39, 0.92);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+
+.rota-btn {
+  cursor: pointer;
+}
+
+.rota-btn:hover {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.rota-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Today card */
+.rota-todayCard {
+  border: 1px solid rgba(17, 24, 39, 0.10);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.02);
+  padding: 12px;
+}
+
+.rota-todayTitle {
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.rota-todayGrid {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.rota-todayLabel {
+  font-size: 12px;
+  font-weight: 750;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.rota-todayValue {
+  font-weight: 850;
+  color: rgba(17, 24, 39, 0.92);
+}
+
+/* ---- Today card ---- */
+.today-grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.today-col {
+  min-width: 0;
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.today-col-title {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.today-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.today-name {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.today-empty {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.today-pillList {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+/* Stack container keeps Today + Rota cards the same width */
+.rota-stack {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;      /* centers inside the background card */
+  display: grid;
+  gap: 14px;
+  justify-items: stretch;
+}
+
+/* Make sure Today card doesn't try to stretch wider than the stack */
+.today-card {
+  width: 100%;
+}
+
+.today-grid {
+  min-width: 0;
+}
+
+.today-col {
+  min-width: 0;
+}
+
+.today-pillList {
+  min-width: 0;
+}
+
+.today-card {
+  box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+}
+
+/* If you already have CSS vars for the pill backgrounds, swap these to match. */
+.today-col--stenoch { background: var(--pill-stenoch-bg, rgba(56, 189, 248, 0.12)); }
+.today-col--duke    { background: var(--pill-duke-bg,    rgba(34, 197, 94,  0.12)); }
+.today-col--hire    { background: var(--pill-hire-bg,    rgba(249, 115, 22, 0.12)); }
+.today-col--office  { background: var(--pill-office-bg,  rgba(239, 68, 68,  0.10)); }
+.today-col--holiday { background: var(--pill-hol-bg,     rgba(168, 85, 247, 0.12)); }
+.today-col--sick    { background: var(--pill-sick-bg,    rgba(234, 179, 8,  0.14)); }
+
+/* Responsive: stack to 3x2 then 2x3 then 1x6 */
+@media (max-width: 1200px) {
+  .today-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 780px) {
+  .today-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .today-grid { grid-template-columns: 1fr; }
+}
+
+/* Force both cards to fill the same grid track width */
+.rota-stack { justify-items: stretch; }
+
+.rota-stack > .rota-card {
+  width: 100%;
+  box-sizing: border-box;
+}
