@@ -461,4 +461,58 @@
   .rota-page {
     padding: 12px;
   }
+
+ /* --------------------------------------------------
+   Mobile: make outer cards clean white
+   (keep column colours intact)
+-------------------------------------------------- */
+@media (max-width: 780px) {
+
+  .rota-card {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  }
+
+  .rota-toolbar {
+    background: #ffffff;
+  }
+
+  .rota-gridWrap {
+    background: #ffffff;
+  }
+
+}
+
+/* --------------------------------------------------
+   Mobile: strengthen Today column background colours
+-------------------------------------------------- */
+@media (max-width: 780px) {
+
+  .today-col--stenoch { 
+    background: rgba(56, 189, 248, 0.22);
+  }
+
+  .today-col--duke { 
+    background: rgba(34, 197, 94, 0.22);
+  }
+
+  .today-col--hire { 
+    background: rgba(249, 115, 22, 0.22);
+  }
+
+  .today-col--office { 
+    background: rgba(239, 68, 68, 0.22);
+  }
+
+  .today-col--holiday { 
+    background: rgba(168, 85, 247, 0.22);
+  }
+
+  .today-col--sick { 
+    background: rgba(234, 179, 8, 0.24);
+  }
+
+}
+
 }
