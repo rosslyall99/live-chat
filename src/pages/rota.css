@@ -434,17 +434,13 @@
   border-color: rgba(17, 24, 39, 0.20);
 }
 
-/* Desktop: never hide panes (mobile query will hide) */
-.rota-mobilePane--hidden {
-  display: block;
-}
-
-/* Mobile behaviour */
+/* Mobile behaviour + mobile-only overrides */
 @media (max-width: 780px) {
   .rota-mobileNav {
     display: flex;
   }
 
+  /* Hide inactive pane on mobile */
   .rota-mobilePane--hidden {
     display: none !important;
   }
@@ -452,6 +448,7 @@
   .rota-toolbar {
     flex-direction: column;
     align-items: stretch;
+    background: #fff; /* cleaner */
   }
 
   .rota-actions {
@@ -462,57 +459,53 @@
     padding: 12px;
   }
 
- /* --------------------------------------------------
-   Mobile: make outer cards clean white
-   (keep column colours intact)
--------------------------------------------------- */
-@media (max-width: 780px) {
-
+  /* Make outer cards clean white (keeps coloured columns intact) */
   .rota-card {
-    background: #ffffff;
-    border: 1px solid rgba(0,0,0,0.06);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
   }
 
-  .rota-toolbar {
-    background: #ffffff;
-  }
-
+  /* Remove the dark/tinted slab behind the table */
   .rota-gridWrap {
-    background: #ffffff;
+    background: #fff;
+    max-height: none;                 /* IMPORTANT on mobile */
+    height: calc(100dvh - 200px);     /* prevents huge empty dark area in landscape */
+    min-height: 220px;
+    -webkit-overflow-scrolling: touch;
   }
 
+  /* Strengthen Today column background colours (mobile only) */
+  .today-col--stenoch { background: rgba(56, 189, 248, 0.22); }
+  .today-col--duke    { background: rgba(34, 197, 94, 0.22); }
+  .today-col--hire    { background: rgba(249, 115, 22, 0.22); }
+  .today-col--office  { background: rgba(239, 68, 68, 0.22); }
+  .today-col--holiday { background: rgba(168, 85, 247, 0.22); }
+  .today-col--sick    { background: rgba(234, 179, 8, 0.24); }
+
+  /* Mobile should use full width – no centered max-width stack */
+  .rota-stack {
+    max-width: none;
+    margin: 0;
+  }
 }
 
-/* --------------------------------------------------
-   Mobile: strengthen Today column background colours
--------------------------------------------------- */
-@media (max-width: 780px) {
-
-  .today-col--stenoch { 
-    background: rgba(56, 189, 248, 0.22);
+/* Mobile: portrait = natural height */
+@media (max-width: 780px) and (orientation: portrait) {
+  .rota-gridWrap {
+    height: auto;
+    max-height: none;
+    background: #fff;
   }
-
-  .today-col--duke { 
-    background: rgba(34, 197, 94, 0.22);
-  }
-
-  .today-col--hire { 
-    background: rgba(249, 115, 22, 0.22);
-  }
-
-  .today-col--office { 
-    background: rgba(239, 68, 68, 0.22);
-  }
-
-  .today-col--holiday { 
-    background: rgba(168, 85, 247, 0.22);
-  }
-
-  .today-col--sick { 
-    background: rgba(234, 179, 8, 0.24);
-  }
-
 }
 
+/* Mobile: landscape = constrain to visible viewport */
+@media (max-width: 780px) and (orientation: landscape) {
+  .rota-gridWrap {
+    height: calc(100dvh - 210px);
+    max-height: none;
+    min-height: 180px;
+    background: #fff;
+    -webkit-overflow-scrolling: touch;
+  }
 }
