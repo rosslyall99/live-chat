@@ -142,8 +142,8 @@
   text-align: left;
   padding-left: 12px;
   color: rgba(17, 24, 39, 0.90);
-  min-width: 50px;
-  width: 50px;
+  min-width: 80px;
+  width: 80px;
   font-size: 12px;
 }
 
@@ -456,8 +456,6 @@
 
   @media (max-width: 780px) {
 
-  @media (max-width: 780px) {
-
   .rota-actions {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
@@ -498,6 +496,11 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .rota-grid .rota-staffCol {
+    min-width: 50px;
+    width: 50px;
+  }
+
   /* Strengthen Today column background colours (mobile only) */
   .today-col--stenoch { background: rgba(56, 120, 248, 0.18); }
   .today-col--duke    { background: rgba(34, 197, 94, 0.18); }
@@ -531,4 +534,4 @@
     background: #fff;
     -webkit-overflow-scrolling: touch;
   }
-}}
+}
