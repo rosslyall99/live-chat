@@ -104,7 +104,7 @@ export default function Login() {
         }
 
         setLoadingLogin(false);
-        nav("/");
+        nav("/rota", { replace: true });
     }
 
     const S = {

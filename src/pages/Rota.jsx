@@ -145,7 +145,7 @@ function pillClassFor(key) {
   }
 }
 
-function TodayCard({ shifts, absences, today, labelFor, overlapsDate }) {
+function TodayCard({ shifts, absences, today, labelFor, overlapsDate, className = "" }) {
   const t = buildTodayBuckets({ shifts, absences, today, labelFor, overlapsDate });
 
   const cols = [
@@ -158,7 +158,7 @@ function TodayCard({ shifts, absences, today, labelFor, overlapsDate }) {
   ];
 
   return (
-    <div className="rota-card today-card">
+    <div className={["rota-card", "today-card", className].join(" ").trim()}>
       <div className="rota-toolbar today-toolbar">
         <div>
           <div className="rota-title">Today</div>
@@ -189,14 +189,24 @@ function TodayCard({ shifts, absences, today, labelFor, overlapsDate }) {
   );
 }
 
+function startOfDayLocal(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
 export default function Rota() {
   console.log("Rota.jsx loaded ✅", new Date().toISOString());
   const [weekStart, setWeekStart] = React.useState(() => startOfWeek(new Date()));
   const [branch, setBranch] = React.useState("All");
   const [loading, setLoading] = React.useState(false);
+  const [mobileView, setMobileView] = React.useState("today"); // "today" | "rota"
 
-  const [shifts, setShifts] = React.useState([]);
-  const [absences, setAbsences] = React.useState([]);
+  const [shiftsWeek, setShiftsWeek] = React.useState([]);
+  const [absencesWeek, setAbsencesWeek] = React.useState([]);
+
+  const [shiftsToday, setShiftsToday] = React.useState([]);
+  const [absencesToday, setAbsencesToday] = React.useState([]);
 
   // rota_match_name (Sage) -> CRM label (short_name/display_name)
   const [nameMap, setNameMap] = React.useState(() => ({}));
@@ -206,6 +216,16 @@ export default function Rota() {
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart]
   );
+
+  // Auto-refresh every 2 minutes (keeps Today accurate)
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      load(); // simplest version — reloads week + today
+    }, 120_000); // 2 minutes
+
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadNameMapAll() {
     const { data, error } = await supabase.rpc("get_rota_name_map");
@@ -223,6 +243,7 @@ export default function Rota() {
   async function load() {
     setLoading(true);
     try {
+      // -------- Week dataset (rota grid) --------
       const startIso = weekStart.toISOString();
       const endIso = weekEnd.toISOString();
 
@@ -243,23 +264,45 @@ export default function Rota() {
         .gte("end_date", weekStart.toISOString().slice(0, 10))
         .order("staff_name", { ascending: true });
 
-      const [{ data: sData, error: sErr }, { data: aData, error: aErr }] =
-        await Promise.all([sQ, aQ]);
+      // -------- Today dataset (TodayCard) --------
+      const today0 = startOfDayLocal(new Date());
+      const tomorrow0 = addDays(today0, 1);
 
-      if (sErr) throw sErr;
-      if (aErr) throw aErr;
+      const sTodayQ = supabase
+        .from("rota_shifts")
+        .select("staff_name, branch, label, start_at, end_at")
+        .gte("start_at", today0.toISOString())
+        .lt("start_at", tomorrow0.toISOString())
+        .order("staff_name", { ascending: true })
+        .order("start_at", { ascending: true });
 
-      const shiftsSafe = sData ?? [];
-      const absencesSafe = aData ?? [];
+      const aTodayQ = supabase
+        .from("rota_absences")
+        .select("staff_name, absence_type, absence_label, start_date, end_date, is_partial")
+        .lte("start_date", today0.toISOString().slice(0, 10))
+        .gte("end_date", today0.toISOString().slice(0, 10))
+        .order("staff_name", { ascending: true });
 
-      setShifts(shiftsSafe);
-      setAbsences(absencesSafe);
+      const [
+        { data: sWeekData, error: sWeekErr },
+        { data: aWeekData, error: aWeekErr },
+        { data: sTodayData, error: sTodayErr },
+        { data: aTodayData, error: aTodayErr },
+      ] = await Promise.all([sQ, aQ, sTodayQ, aTodayQ]);
 
-      // Load mapping (all profiles, avoids .in() 400 issues)
+      if (sWeekErr) throw sWeekErr;
+      if (aWeekErr) throw aWeekErr;
+      if (sTodayErr) throw sTodayErr;
+      if (aTodayErr) throw aTodayErr;
+
+      setShiftsWeek(sWeekData ?? []);
+      setAbsencesWeek(aWeekData ?? []);
+      setShiftsToday(sTodayData ?? []);
+      setAbsencesToday(aTodayData ?? []);
+
+      // Mapping stays as-is
       const map = await loadNameMapAll();
       setNameMap(map);
-      console.log("map has Steven Caldwell?", map[normName("Steven Caldwell")]);
-      console.log("map has William McGregor?", map[normName("William McGregor")]);
     } finally {
       setLoading(false);
     }
@@ -276,7 +319,7 @@ export default function Rota() {
     const byStaff = new Map();
 
     // Count branches per staff across shifts (this week)
-    for (const s of shifts) {
+    for (const s of shiftsWeek) {
       const key = s.staff_name;
       const branch = s.branch || "Unknown";
 
@@ -290,7 +333,7 @@ export default function Rota() {
     }
 
     // Ensure absence-only staff still appear
-    for (const a of absences) {
+    for (const a of absencesWeek) {
       const key = a.staff_name;
       if (!byStaff.has(key)) {
         byStaff.set(key, { key, counts: new Map([["Unknown", 1]]) });
@@ -345,7 +388,7 @@ export default function Rota() {
       prevBranchIndex = s.branchIndex;
       return { ...s, dividerBefore };
     });
-  }, [shifts, absences, nameMap]);
+  }, [shiftsWeek, absencesWeek, nameMap]);
 
   const today = React.useMemo(() => {
     const t = new Date();
@@ -382,7 +425,7 @@ export default function Rota() {
     const dayEnd = addDays(dayStart, 1);
 
     // Absence priority
-    const abs = absences.find((a) => normName(a.staff_name) === normName(staffNameKey) && overlapsDate(a, dayStart));
+    const abs = absencesWeek.find((a) => normName(a.staff_name) === normName(staffNameKey) && overlapsDate(a, dayStart));
     if (abs) {
       const label = String(abs.absence_type || "OTHER").toUpperCase();
       return (
@@ -394,7 +437,7 @@ export default function Rota() {
     }
 
     // Shift
-    const shift = shifts.find((s) => {
+    const shift = shiftsWeek.find((s) => {
       if (normName(s.staff_name) !== normName(staffNameKey)) return false;
       const st = new Date(s.start_at);
       return st >= dayStart && st < dayEnd;
@@ -413,18 +456,36 @@ export default function Rota() {
 
   return (
     <div className="rota-page">
+      {/* Mobile-only Today / Rota toggle */}
+      <div className="rota-mobileNav">
+        <button
+          type="button"
+          className={`rota-mobileTab ${mobileView === "today" ? "is-active" : ""}`}
+          onClick={() => setMobileView("today")}
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          className={`rota-mobileTab ${mobileView === "rota" ? "is-active" : ""}`}
+          onClick={() => setMobileView("rota")}
+        >
+          Rota
+        </button>
+      </div>
       {/* Today card (separate) */}
       <div className="rota-stack">
         <TodayCard
-          shifts={shifts}
-          absences={absences}
+          className={mobileView !== "today" ? "rota-mobilePane--hidden" : ""}
+          shifts={shiftsToday}
+          absences={absencesToday}
           today={today}
           labelFor={labelFor}
           overlapsDate={overlapsDate}
         />
 
         {/* Main Rota card (toolbar + grid inside one white card) */}
-        <div className="rota-card">
+        <div className={`rota-card ${mobileView !== "rota" ? "rota-mobilePane--hidden" : ""}`}>
           {/* Header / toolbar */}
           <div className="rota-toolbar">
             <div>
@@ -469,52 +530,58 @@ export default function Rota() {
 
           {/* Grid */}
           <div className="rota-gridWrap">
-            <table className="rota-grid">
-              <thead>
-                <tr>
-                  <th className="rota-staffCol">Day</th>
-
-                  {staff.map((s, i) => (
-                    <th
-                      key={s.key}
-                      className={[
-                        i === 0 ? "rota-afterDayDivider" : "",
-                        s.dividerBefore ? "rota-colDivider" : "",
-                      ]
-                        .join(" ")
-                        .trim()}
-                    >
-                      {s.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-
-              <tbody>
-                {days.map((d) => (
-                  <tr key={d.toISOString()}>
-                    <th className="rota-staffCol" style={{ fontWeight: 850, whiteSpace: "nowrap" }}>
-                      {fmtDay(d)}
-                    </th>
-
-                    {staff.map((s, i) => (
-                      <td
-                        key={s.key}
-                        className={[
-                          i === 0 ? "rota-afterDayDivider" : "",
-                          s.dividerBefore ? "rota-colDivider" : "",
-                        ]
-                          .join(" ")
-                          .trim()}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {cellFor(s.key, d)}
-                      </td>
-                    ))}
+            <div className="rota-gridInner">
+              <table className="rota-grid">
+                <thead>
+                  <tr>
+                    <th className="rota-staffCol">Day</th>
+                    {staff.map((s, i) => {
+                      const bKey = normBranch(s.branch) || "unknown";
+                      return (
+                        <th
+                          key={s.key}
+                          className={[
+                            "rota-branch",
+                            `rota-branch--${bKey}`,
+                            s.dividerBefore ? "rota-colDivider" : "",
+                          ].join(" ").trim()}
+                        >
+                          {s.label}
+                        </th>
+                      );
+                    })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {days.map((d) => (
+                    <tr key={d.toISOString()}>
+                      <th className="rota-staffCol" style={{ fontWeight: 850, whiteSpace: "nowrap" }}>
+                        {fmtDay(d)}
+                      </th>
+
+                      {staff.map((s, i) => {
+                        const bKey = normBranch(s.branch) || "unknown";
+                        return (
+                          <td
+                            key={s.key}
+                            className={[
+                              "rota-branch",
+                              `rota-branch--${bKey}`,
+                              i === 0 ? "rota-afterDayDivider" : "",
+                              s.dividerBefore ? "rota-colDivider" : "",
+                            ].join(" ").trim()}
+                            style={{ whiteSpace: "nowrap" }}
+                          >
+                            {cellFor(s.key, d)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

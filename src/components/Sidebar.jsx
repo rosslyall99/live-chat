@@ -127,8 +127,8 @@ export default function Sidebar({ role = "agent" }) {
             {/* Nav */}
             <div style={{ paddingTop: 10, overflow: "auto" }}>
                 <SectionTitle>Apps</SectionTitle>
-                <Item to="/" label="Inbox" />
                 <Item to="/rota" label="Rota" />
+                <Item to="/inbox" label="Inbox" />
 
                 <SectionTitle>User</SectionTitle>
                 <Item to="/change-pin" label="Change PIN" />
