@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import "./rota.css";
 
-const BRANCHES = ["All", "St Enoch", "Duke Street", "Hire", "Office"];
+const BRANCHES = ["All Branches", "St Enoch", "Duke Street", "Hire", "Office"];
 const BRANCH_ORDER = ["St Enoch", "Duke Street", "Hire", "Office"];
 
 function startOfWeek(d) {
@@ -55,6 +55,14 @@ function sameDay(a, b) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+function formatDayMobile(d) {
+  return d.toLocaleDateString("en-GB", {
+    weekday: "narrow",
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
 
 function uniqueSorted(arr) {
@@ -196,7 +204,6 @@ function startOfDayLocal(d) {
 }
 
 export default function Rota() {
-  console.log("Rota.jsx loaded ✅", new Date().toISOString());
   const [weekStart, setWeekStart] = React.useState(() => startOfWeek(new Date()));
   const [branch, setBranch] = React.useState("All");
   const [loading, setLoading] = React.useState(false);
@@ -216,6 +223,10 @@ export default function Rota() {
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart]
   );
+
+  const isMobile =
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 780px)").matches;
 
   // Auto-refresh every 2 minutes (keeps Today accurate)
   React.useEffect(() => {
@@ -557,7 +568,7 @@ export default function Rota() {
                   {days.map((d) => (
                     <tr key={d.toISOString()}>
                       <th className="rota-staffCol" style={{ fontWeight: 850, whiteSpace: "nowrap" }}>
-                        {fmtDay(d)}
+                        {isMobile ? formatDayMobile(d) : fmtDay(d)}
                       </th>
 
                       {staff.map((s, i) => {

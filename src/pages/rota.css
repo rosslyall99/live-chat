@@ -142,8 +142,9 @@
   text-align: left;
   padding-left: 12px;
   color: rgba(17, 24, 39, 0.90);
+  min-width: 50px;
+  width: 50px;
   font-size: 12px;
-  min-width: 100px;
 }
 
 .rota-grid th.rota-staffCol {
@@ -379,7 +380,7 @@
 .rota-grid tbody td.rota-branch--unknown { background: rgba(100, 116, 139, 0.08); }
 
 /* If you already have CSS vars for the pill backgrounds, swap these to match. */
-.today-col--stenoch { background: var(--pill-stenoch-bg, rgba(56, 189, 248, 0.12)); }
+.today-col--stenoch { background: var(--pill-stenoch-bg, rgba(56, 120, 248, 0.12)); }
 .today-col--duke    { background: var(--pill-duke-bg,    rgba(34, 197, 94,  0.12)); }
 .today-col--hire    { background: var(--pill-hire-bg,    rgba(249, 115, 22, 0.12)); }
 .today-col--office  { background: var(--pill-office-bg,  rgba(239, 68, 68,  0.12)); }
@@ -413,7 +414,7 @@
   display: none; /* desktop default */
   gap: 10px;
   justify-content: center;
-  padding: 2px 2px;
+  margin: 4px 4px;
 }
 
 .rota-mobileTab {
@@ -421,12 +422,12 @@
   border: 1px solid rgba(17, 24, 39, 0.14);
   background: rgba(255, 255, 255, 0.85);
   color: rgba(17, 24, 39, 0.88);
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 10px 14px;
   font-weight: 900;
   font-size: 12px;
   cursor: pointer;
-  min-width: 110px;
+  min-width: 50%;
 }
 
 .rota-mobileTab.is-active {
@@ -438,6 +439,8 @@
 @media (max-width: 780px) {
   .rota-mobileNav {
     display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
   }
 
   /* Hide inactive pane on mobile */
@@ -451,9 +454,29 @@
     background: #fff; /* cleaner */
   }
 
+  @media (max-width: 780px) {
+
+  @media (max-width: 780px) {
+
   .rota-actions {
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    width: 100%;
   }
+
+  .rota-actions > :nth-child(1),
+  .rota-actions > :nth-child(2),
+  .rota-actions > :nth-child(3) {
+    grid-column: span 2; /* 6/3 = 2 each */
+  }
+
+  .rota-actions > :nth-child(4),
+  .rota-actions > :nth-child(5) {
+    grid-column: span 3; /* 6/2 = 3 each */
+  }
+
+}
 
   .rota-page {
     padding: 12px;
@@ -476,12 +499,12 @@
   }
 
   /* Strengthen Today column background colours (mobile only) */
-  .today-col--stenoch { background: rgba(56, 189, 248, 0.22); }
-  .today-col--duke    { background: rgba(34, 197, 94, 0.22); }
-  .today-col--hire    { background: rgba(249, 115, 22, 0.22); }
-  .today-col--office  { background: rgba(239, 68, 68, 0.22); }
-  .today-col--holiday { background: rgba(168, 85, 247, 0.22); }
-  .today-col--sick    { background: rgba(234, 179, 8, 0.24); }
+  .today-col--stenoch { background: rgba(56, 120, 248, 0.18); }
+  .today-col--duke    { background: rgba(34, 197, 94, 0.18); }
+  .today-col--hire    { background: rgba(249, 115, 22, 0.18); }
+  .today-col--office  { background: rgba(239, 68, 68, 0.18); }
+  .today-col--holiday { background: rgba(168, 85, 247, 0.18); }
+  .today-col--sick    { background: rgba(234, 179, 8, 0.18); }
 
   /* Mobile should use full width – no centered max-width stack */
   .rota-stack {
@@ -508,4 +531,4 @@
     background: #fff;
     -webkit-overflow-scrolling: touch;
   }
-}
+}}
