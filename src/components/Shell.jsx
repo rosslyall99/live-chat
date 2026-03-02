@@ -400,6 +400,7 @@ export default function Shell() {
     const canToggleGlobal = (isAdmin || isManager) && !loading && !switchLoading;
 
     const effectiveLive = globalEnabled && branchEnabled;
+    const effectiveBranchLive = globalEnabled && branchEnabled;
 
     function pressDown(e) {
         e.preventDefault();
@@ -457,10 +458,17 @@ export default function Shell() {
                         {/* Kill switch buttons */}
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <button
-                                disabled={!canToggleBranch}
-                                onClick={() => toggleBranch(!branchEnabled)}
-                                title={`Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`}
-                                style={iconToggleStyle(branchEnabled, !canToggleBranch)}
+                                title={
+                                    !globalEnabled
+                                        ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
+                                        : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
+                                }
+                                style={iconToggleStyle(effectiveBranchLive, !canToggleBranch || !globalEnabled)}
+                                onClick={() => {
+                                    if (!globalEnabled) return; // don't allow branch toggles while global is off
+                                    toggleBranch(!branchEnabled);
+                                }}
+                                disabled={!canToggleBranch || !globalEnabled}
                                 onMouseDown={pressDown}
                                 onMouseUp={pressUp}
                                 onMouseLeave={pressUp}
