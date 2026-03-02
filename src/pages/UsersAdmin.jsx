@@ -392,7 +392,7 @@ export default function UsersAdmin() {
                         {rotaNamesLoading ? (
                             <div style={{ opacity: 0.8 }}>Loading…</div>
                         ) : rotaNames.length === 0 ? (
-                            <div style={{ opacity: 0.8 }}>No names found.</div>
+                            <div style={{ opacity: 0.8 }}>All Sage names are assigned.</div>
                         ) : (
                             rotaNames.map((name) => (
                                 <div
@@ -420,6 +420,7 @@ export default function UsersAdmin() {
 
                                             try {
                                                 await updateRota(userId, { rota_match_name: name });
+                                                await loadRotaNames(); // refresh list so the assigned name disappears immediately
                                             } finally {
                                                 // reset dropdown so you can reuse it quickly
                                                 e.target.value = "";
