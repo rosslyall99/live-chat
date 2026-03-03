@@ -12,6 +12,7 @@ import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
 import Rota from "./pages/Rota";
 import Shell from "./components/Shell";
+import StaffView from "./pages/StaffView.jsx";
 
 /* -------------------- AUTH GUARD -------------------- */
 function RequireAuth({ children }) {
@@ -84,6 +85,14 @@ function MobileApp() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/staff-view"
+        element={
+          <RequireAuth>
+            <StaffView />
+          </RequireAuth>
+        }
+      />
 
       {/* Mobile lock-down: nothing else reachable */}
       <Route path="*" element={<Navigate to="/rota" replace />} />
@@ -97,7 +106,14 @@ function DesktopApp() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
-
+      <Route
+        path="/staff-view"
+        element={
+          <RequireAuth>
+            <StaffView />
+          </RequireAuth>
+        }
+      />
       {/* Protected app (with Shell) */}
       <Route
         element={
@@ -128,6 +144,7 @@ function DesktopApp() {
 
 /* -------------------- APP ROOT -------------------- */
 export default function App() {
+  console.log("PATHNAME:", window.location.pathname);
   const isMobile = useIsMobile(900); // adjust if you want (e.g. 820/780)
   return isMobile ? <MobileApp /> : <DesktopApp />;
 }
