@@ -1,8 +1,22 @@
 {
-    "rewrites": [
+    "routes": [
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
+            "handle": "filesystem"
+        },
+        {
+            "src": "/.*",
+            "dest": "/index.html"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/staff-view(.*)",
+            "headers": [
+                {
+                    "key": "Content-Security-Policy",
+                    "value": "frame-ancestors 'self' https://www.slanjkilts.com https://slanjkilts.com;"
+                }
+            ]
         }
     ]
 }

@@ -77,14 +77,7 @@ function MobileApp() {
       <Route path="/login" element={<Login />} />
 
       {/* Protected */}
-      <Route
-        path="/rota"
-        element={
-          <RequireAuth>
-            <Rota />
-          </RequireAuth>
-        }
-      />
+      <Route path="/staff-view" element={<StaffView />} />
       <Route
         path="/staff-view"
         element={
@@ -106,14 +99,7 @@ function DesktopApp() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
-      <Route
-        path="/staff-view"
-        element={
-          <RequireAuth>
-            <StaffView />
-          </RequireAuth>
-        }
-      />
+      <Route path="/staff-view" element={<StaffView />} />
       {/* Protected app (with Shell) */}
       <Route
         element={
@@ -144,7 +130,6 @@ function DesktopApp() {
 
 /* -------------------- APP ROOT -------------------- */
 export default function App() {
-  console.log("PATHNAME:", window.location.pathname);
   const isMobile = useIsMobile(900); // adjust if you want (e.g. 820/780)
   return isMobile ? <MobileApp /> : <DesktopApp />;
 }
