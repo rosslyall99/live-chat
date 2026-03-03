@@ -356,14 +356,50 @@ export default function StaffView() {
 
     return (
         <div
+            className="staffview-root"
             style={{
                 minHeight: "100vh",
-                background: ui.colors.pageBg,
+                background: "#fff",
                 padding: 12,
                 boxSizing: "border-box",
                 fontFamily: ui.font.ui,
             }}
         >
+            <style>{`
+      /* StaffView (Squarespace embed) overrides */
+      .staffview-root { background:#fff !important; color:#111 !important; }
+
+      /* Make the "main" grey slab white */
+      .staffview-root .rota-stack { background:#fff !important; }
+
+      /* Remove grey tint from cards/toolbar/wrap */
+      .staffview-root .rota-card,
+      .staffview-root .rota-toolbar,
+      .staffview-root .rota-gridWrap {
+        background:#fff !important;
+      }
+
+      /* Force all text that might inherit light styles to black */
+      .staffview-root,
+      .staffview-root .rota-title,
+      .staffview-root .rota-subtitle,
+      .staffview-root .today-col-title,
+      .staffview-root .rota-grid th,
+      .staffview-root .rota-grid td,
+      .staffview-root .rota-staffCol,
+      .staffview-root .rota-btn,
+      .staffview-root .rota-select,
+      .staffview-root .today-empty {
+        color:#111 !important;
+      }
+
+      /* Keep muted things muted (but still dark enough on white) */
+      .staffview-root .rota-subtitle { color: rgba(17,24,39,0.55) !important; }
+
+      /* Empty placeholders */
+      .staffview-root .rota-empty { color: rgba(0,0,0,0.35) !important; }
+    `}</style>
+
             <div className="rota-stack" style={{ maxWidth: 1200 }}>
                 {error ? (
                     <div className="rota-card">
