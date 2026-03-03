@@ -359,7 +359,7 @@ export default function StaffView() {
             className="staffview-root"
             style={{
                 minHeight: "100vh",
-                background: "#ffffff",
+                background: "#ccc",
                 padding: 12,
                 boxSizing: "border-box",
                 fontFamily: ui.font.ui,
@@ -367,10 +367,10 @@ export default function StaffView() {
         >
             <style>{`
       /* StaffView (Squarespace embed) overrides */
-      .staffview-root { background:#fff !important; color:#111 !important; }
+      .staffview-root { background:#eee !important; color:#111 !important; }
 
       /* Make the "main" grey slab white */
-      .staffview-root .rota-stack { background:#ddd !important; }
+      .staffview-root .rota-stack { background:#eee !important; }
 
       /* Remove grey tint from cards/toolbar/wrap */
       .staffview-root .rota-card,
