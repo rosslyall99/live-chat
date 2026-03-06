@@ -417,8 +417,7 @@ export default function Inbox() {
                                         <div style={{ fontWeight: 800 }}>{c.customer_name}</div>
 
                                         <div style={{ fontSize: 12, color: ui.colors.muted, marginTop: 4 }}>
-                                            Site: <b style={{ color: ui.colors.text }}>{c.site_id}</b> • Status:{" "}
-                                            <b style={{ color: ui.colors.text }}>{c.status}</b>
+                                            <b style={{ color: ui.colors.text, textTransform: "capitalize" }}>{c.status}</b>
                                             {tab === "closed" && c.closed_at ? ` • Closed: ${fmtWhen(c.closed_at)}` : ""}
                                         </div>
 
