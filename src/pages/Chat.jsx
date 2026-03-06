@@ -400,35 +400,18 @@ export default function Chat() {
             return;
         }
 
-        let myDisplay = "Staff";
-        const { data: prof, error: profErr } = await supabase
-            .from("staff_profiles")
-            .select("display_name, username")
-            .eq("user_id", me.id)
-            .maybeSingle();
+        const { data: closeRows, error: closeErr } = await supabase.rpc("close_conversation", {
+            p_conversation_id: id,
+        });
 
-        if (profErr) console.error("closeChat profile lookup failed", profErr);
-        myDisplay = prof?.display_name || prof?.username || "Staff";
+        if (closeErr) {
+            setError(closeErr.message);
+            return;
+        }
 
-        const { error: updErr } = await supabase
-            .from("conversations")
-            .update({
-                status: "closed",
-                assigned_to: null,
-                closed_at: new Date().toISOString(),
-
-                // new fields
-                closed_by: me.id,
-                closed_by_name: myDisplay,
-
-                // existing fields (keep)
-                handled_by: me.id,
-                handled_by_name: myDisplay,
-            })
-            .eq("id", id);
-
-        if (updErr) {
-            setError(updErr.message);
+        if (!closeRows || closeRows.length === 0) {
+            setError("This chat could not be closed. It may already be closed or assigned to someone else.");
+            await load();
             return;
         }
 
