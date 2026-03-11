@@ -14,6 +14,13 @@ import Rota from "./pages/Rota";
 import Shell from "./components/Shell";
 import StaffView from "./pages/StaffView.jsx";
 
+function logAuthGuard(step, details) {
+  console.debug(`[auth][guard] ${step}`, {
+    at: new Date().toISOString(),
+    ...details,
+  });
+}
+
 /* -------------------- AUTH GUARD -------------------- */
 function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
@@ -21,27 +28,89 @@ function RequireAuth({ children }) {
 
   React.useEffect(() => {
     let mounted = true;
+    let initialEventSeen = false;
+    const hydratedRef = { current: false };
+    logAuthGuard("mount");
+
+    const finishHydration = (nextSession, source) => {
+      if (!mounted || hydratedRef.current) return;
+      hydratedRef.current = true;
+      logAuthGuard("hydrated", {
+        source,
+        hasSession: !!nextSession,
+        userId: nextSession?.user?.id,
+        email: nextSession?.user?.email,
+      });
+      setSession(nextSession);
+      setReady(true);
+    };
+
+    const applySessionUpdate = (nextSession, source) => {
+      if (!mounted) return;
+      logAuthGuard("session-update", {
+        source,
+        hasSession: !!nextSession,
+        userId: nextSession?.user?.id,
+        email: nextSession?.user?.email,
+      });
+      setSession(nextSession);
+      setReady(true);
+    };
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      logAuthGuard("onAuthStateChange", {
+        event,
+        hasSession: !!session,
+        userId: session?.user?.id,
+        email: session?.user?.email,
+      });
+
+      if (event === "INITIAL_SESSION") {
+        initialEventSeen = true;
+        finishHydration(session, "INITIAL_SESSION");
+        return;
+      }
+
+      if (!hydratedRef.current) {
+        finishHydration(session, event);
+        return;
+      }
+
+      applySessionUpdate(session, event);
+    });
 
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
-      setSession(data.session);
-      setReady(true);
-    })();
+      logAuthGuard("getSession:resolved", {
+        hasSession: !!data.session,
+        userId: data.session?.user?.id,
+        email: data.session?.user?.email,
+      });
 
-    const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "INITIAL_SESSION") return;
-      setSession(session);
+      if (data.session) {
+        finishHydration(data.session, "getSession");
+        return;
+      }
+
+      setTimeout(() => {
+        if (!mounted || hydratedRef.current || initialEventSeen) return;
+        finishHydration(null, "getSession:null-fallback");
+      }, 0);
     });
 
     return () => {
       mounted = false;
+      logAuthGuard("unmount");
       data.subscription.unsubscribe();
     };
   }, []);
 
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>;
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) {
+    logAuthGuard("redirect:login");
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 

@@ -437,7 +437,7 @@ export default function Chat() {
             <div style={S.header}>
                 <div>
                     {/* (Per your request: not changing #4) */}
-                    <Link to="/" style={{ textDecoration: "none", color: ui.colors.brand }}>
+                    <Link to="/inbox" style={{ textDecoration: "none", color: ui.colors.brand }}>
                         ← Inbox
                     </Link>
 

@@ -7,6 +7,13 @@ import { ui } from "../ui/tokens";
 import Lion from "../images/lion.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
 
+function logShellAuth(step, details) {
+    console.debug(`[auth][shell] ${step}`, {
+        at: new Date().toISOString(),
+        ...details,
+    });
+}
+
 function siteLetter(siteId) {
     if (!siteId) return "?";
     const map = { duke: "D", sten: "S", off: "O" };
@@ -79,7 +86,14 @@ export default function Shell() {
         const bc = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL) : null;
         let handled = false;
 
-        const goLogin = () => {
+        logShellAuth("logout-effect:mount", { pathname: loc.pathname });
+
+        const clearSessionNonce = () => {
+            try { localStorage.removeItem("crm:session_nonce"); } catch { }
+        };
+
+        const goLogin = (reason) => {
+            logShellAuth("go-login", { reason, pathname: loc.pathname });
             setMe(null);
             setRole("agent");
             setDisplayName("");
@@ -87,6 +101,7 @@ export default function Shell() {
             setBranchEnabled(true);
             setGlobalEnabled(true);
             setSwitchError("");
+            clearSessionNonce();
             nav("/login");
         };
 
@@ -96,11 +111,13 @@ export default function Shell() {
             try { localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload)); } catch { }
         };
 
-        const doLocalLogout = async () => {
+        const doLocalLogout = async (reason) => {
             if (handled) return;
             handled = true;
+            logShellAuth("do-local-logout", { reason, pathname: loc.pathname });
             try { await supabase.auth.signOut(); } catch { }
-            goLogin();
+            clearSessionNonce();
+            goLogin(reason);
         };
 
         const markActivity = () => {
@@ -124,6 +141,7 @@ export default function Shell() {
             const STARTUP_CHECK_KEY = "crm:startupChecked";
             try {
                 if (sessionStorage.getItem(STARTUP_CHECK_KEY) === "1") {
+                    logShellAuth("startup-check:skip-existing-session");
                     markActivity();
                     return;
                 }
@@ -135,6 +153,7 @@ export default function Shell() {
                 const nav = performance.getEntriesByType("navigation")?.[0];
                 const navType = nav?.type; // "navigate" | "reload" | "back_forward" | "prerender"
                 if (navType === "reload" || navType === "back_forward") {
+                    logShellAuth("startup-check:skip-navigation-type", { navType });
                     markActivity();
                     return;
                 }
@@ -150,6 +169,10 @@ export default function Shell() {
 
             // Only enforce if we have BOTH timestamps
             if (!lastClosedAt || !lastActivityAt) {
+                logShellAuth("startup-check:skip-missing-timestamps", {
+                    lastActivityAt,
+                    lastClosedAt,
+                });
                 markActivity();
                 return;
             }
@@ -165,19 +188,30 @@ export default function Shell() {
                 const { data } = await supabase.auth.getSession();
                 if (data?.session) {
                     broadcastLogout("reopen_after_30s_closed");
-                    await doLocalLogout();
+                    logShellAuth("startup-check:logout", {
+                        validClose,
+                        closedLongEnough,
+                        inactiveLongEnough,
+                        userId: data.session.user?.id,
+                    });
+                    await doLocalLogout("reopen_after_30s_closed");
                     return;
                 }
             }
 
             // If we're not logging out, stamp activity for this session now
+            logShellAuth("startup-check:pass", {
+                validClose,
+                closedLongEnough,
+                inactiveLongEnough,
+            });
             markActivity();
         })();
 
         // --- Cross-tab logout listeners
         if (bc) {
             bc.onmessage = (ev) => {
-                if (ev?.data?.type === "logout") doLocalLogout();
+                if (ev?.data?.type === "logout") doLocalLogout(`broadcast:${ev.data.reason || "unknown"}`);
             };
         }
 
@@ -185,18 +219,20 @@ export default function Shell() {
             if (e.key !== STORAGE_LOGOUT_KEY || !e.newValue) return;
             try {
                 const msg = JSON.parse(e.newValue);
-                if (msg?.type === "logout") doLocalLogout();
+                if (msg?.type === "logout") doLocalLogout(`storage:${msg.reason || "unknown"}`);
             } catch {
-                doLocalLogout();
+                doLocalLogout("storage:parse-failed");
             }
         };
         window.addEventListener("storage", onStorage);
 
         // --- Supabase auth listener: sign out in one tab => others go too
         const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+            logShellAuth("onAuthStateChange", { event, pathname: loc.pathname });
             if (event === "SIGNED_OUT") {
                 broadcastLogout("signed_out");
-                goLogin();
+                clearSessionNonce();
+                goLogin("signed_out");
             }
             if (event === "SIGNED_IN") {
                 // record fresh activity, but DO NOT clear lastClosedAt (avoids racing the startup check)
@@ -209,10 +245,11 @@ export default function Shell() {
             window.removeEventListener("pagehide", onPageHide);
             window.removeEventListener("storage", onStorage);
 
+            logShellAuth("logout-effect:unmount", { pathname: loc.pathname });
             try { authSub?.subscription?.unsubscribe(); } catch { }
             try { bc?.close(); } catch { }
         };
-    }, [nav]);
+    }, [loc.pathname, nav]);
 
     // ------------------------------------------------------------
     // Single-session enforcement (newest login wins)
@@ -227,7 +264,12 @@ export default function Shell() {
                 if (!sess?.session) return;
 
                 const local = localStorage.getItem("crm:session_nonce") || "";
-                if (!local) return; // login should set it
+                if (!local) {
+                    logShellAuth("nonce-check:missing-local", {
+                        userId: sess.session.user.id,
+                    });
+                    return;
+                }
 
                 const { data: prof } = await supabase
                     .from("staff_profiles")
@@ -238,7 +280,13 @@ export default function Shell() {
                 const server = prof?.session_nonce || "";
                 if (server && local && server !== local) {
                     // newer login happened elsewhere
+                    logShellAuth("nonce-check:mismatch", {
+                        userId: sess.session.user.id,
+                        local,
+                        server,
+                    });
                     await supabase.auth.signOut();
+                    return;
                 }
             } catch {
                 // ignore transient errors

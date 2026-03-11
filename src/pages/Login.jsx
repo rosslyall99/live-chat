@@ -5,6 +5,12 @@ import { ui } from "../ui/tokens";
 import PhilLogo from "../images/PHiL2.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
 
+function logLogin(step, details) {
+    console.debug(`[auth][login] ${step}`, {
+        at: new Date().toISOString(),
+        ...details,
+    });
+}
 
 function usernameToEmail(username) {
     return `${username.trim().toLowerCase()}@staff.slanj`;
@@ -22,19 +28,32 @@ export default function Login() {
     const [loadingLogin, setLoadingLogin] = React.useState(false);
 
     React.useEffect(() => {
+        let cancelled = false;
+
         (async () => {
             setError("");
             setLoadingStaff(true);
 
-            // 🔒 Ensure login screen always behaves as anon
-            try {
-                await supabase.auth.signOut();
-            } catch { }
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (cancelled) return;
+
+            if (sessionData?.session) {
+                logLogin("mount:session-present", {
+                    userId: sessionData.session.user?.id,
+                    email: sessionData.session.user?.email,
+                });
+                nav("/rota", { replace: true });
+                return;
+            }
+
+            logLogin("mount:load-staff-list");
 
             const { data, error } = await supabase
                 .from("staff_login_list")
                 .select("username, display_name")
                 .order("display_name", { ascending: true });
+
+            if (cancelled) return;
 
             if (error) {
                 console.error(error);
@@ -46,7 +65,12 @@ export default function Login() {
 
             setLoadingStaff(false);
         })();
-    }, []);
+
+        return () => {
+            cancelled = true;
+            logLogin("unmount");
+        };
+    }, [nav]);
 
     async function onSubmit(e) {
         e.preventDefault();
@@ -66,6 +90,7 @@ export default function Login() {
         }
 
         const email = usernameToEmail(selectedUsername);
+        logLogin("submit:start", { selectedUsername, email });
 
         try {
             // Supabase stores auth state under these keys (project-specific key may vary)
@@ -73,16 +98,34 @@ export default function Login() {
             for (const k of Object.keys(localStorage)) {
                 if (k.startsWith("sb-") && k.includes("-auth-token")) localStorage.removeItem(k);
             }
+            localStorage.removeItem("crm:session_nonce");
         } catch { }
 
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error } = await supabase.auth.signInWithPassword({
             email,
             password: pin,
         });
 
         if (error) {
+            logLogin("submit:error", { selectedUsername, message: error.message });
             setLoadingLogin(false);
             setError("Invalid PIN or password.");
+            return;
+        }
+
+        const sessionResult = await supabase.auth.getSession();
+        const signedInSession = signInData?.session ?? sessionResult.data.session ?? null;
+
+        logLogin("submit:signed-in", {
+            selectedUsername,
+            hasSession: !!signedInSession,
+            userId: signedInSession?.user?.id,
+            email: signedInSession?.user?.email,
+        });
+
+        if (!signedInSession) {
+            setLoadingLogin(false);
+            setError("Login completed but no session was available. Please try again.");
             return;
         }
 
@@ -99,11 +142,20 @@ export default function Login() {
             if (touchData?.session_nonce) {
                 localStorage.setItem("crm:session_nonce", touchData.session_nonce);
             }
-        } catch {
+            logLogin("submit:session-touched", {
+                selectedUsername,
+                hasNonce: !!touchData?.session_nonce,
+            });
+        } catch (touchErr) {
+            logLogin("submit:session-touch-failed", {
+                selectedUsername,
+                message: touchErr?.message || String(touchErr),
+            });
             // non-fatal: if this fails, login still succeeds
         }
 
         setLoadingLogin(false);
+        logLogin("submit:navigate", { to: "/rota", selectedUsername });
         nav("/rota", { replace: true });
     }
 
