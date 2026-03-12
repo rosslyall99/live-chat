@@ -271,7 +271,7 @@ export default function AdminLive() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
                 <div>
                     <Link
-                        to="/"
+                        to="/inbox"
                         style={{ textDecoration: "none", color: ui.colors.brand }}>← Inbox</Link>
                     <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admin: Live Monitor</h2>
                     <div style={ui.text.subtitle}>

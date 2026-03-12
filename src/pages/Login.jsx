@@ -1,6 +1,6 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ui } from "../ui/tokens";
 import PhilLogo from "../images/PHiL2.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
@@ -16,8 +16,23 @@ function usernameToEmail(username) {
     return `${username.trim().toLowerCase()}@staff.slanj`;
 }
 
+function getSafeRedirectTarget(rawValue) {
+    const fallback = "/rota";
+    if (!rawValue) return fallback;
+
+    const value = String(rawValue).trim();
+    if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+
+    return value;
+}
+
 export default function Login() {
     const nav = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirectTarget = React.useMemo(
+        () => getSafeRedirectTarget(searchParams.get("redirect")),
+        [searchParams]
+    );
 
     const [staff, setStaff] = React.useState([]);
     const [selectedUsername, setSelectedUsername] = React.useState("");
@@ -41,8 +56,9 @@ export default function Login() {
                 logLogin("mount:session-present", {
                     userId: sessionData.session.user?.id,
                     email: sessionData.session.user?.email,
+                    redirectTarget,
                 });
-                nav("/rota", { replace: true });
+                nav(redirectTarget, { replace: true });
                 return;
             }
 
@@ -70,7 +86,7 @@ export default function Login() {
             cancelled = true;
             logLogin("unmount");
         };
-    }, [nav]);
+    }, [nav, redirectTarget]);
 
     async function onSubmit(e) {
         e.preventDefault();
@@ -155,8 +171,8 @@ export default function Login() {
         }
 
         setLoadingLogin(false);
-        logLogin("submit:navigate", { to: "/rota", selectedUsername });
-        nav("/rota", { replace: true });
+        logLogin("submit:navigate", { to: redirectTarget, selectedUsername });
+        nav(redirectTarget, { replace: true });
     }
 
     const S = {

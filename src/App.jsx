@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
 import Login from "./pages/Login.jsx";
@@ -25,6 +25,7 @@ function logAuthGuard(step, details) {
 function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
   const [session, setSession] = React.useState(null);
+  const location = useLocation();
 
   React.useEffect(() => {
     let mounted = true;
@@ -108,8 +109,9 @@ function RequireAuth({ children }) {
 
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>;
   if (!session) {
-    logAuthGuard("redirect:login");
-    return <Navigate to="/login" replace />;
+    const redirect = `${location.pathname}${location.search}${location.hash}`;
+    logAuthGuard("redirect:login", { redirect });
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
   }
   return children;
 }

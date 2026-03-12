@@ -376,7 +376,7 @@ export default function AdminInsights() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <div>
                     <Link
-                        to="/"
+                        to="/inbox"
                         style={{ textDecoration: "none", color: ui.colors.brand }}>← Inbox</Link>
                     <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admin: Insights</h2>
                     <div style={ui.text.subtitle}>
