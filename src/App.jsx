@@ -148,7 +148,14 @@ function MobileApp() {
       <Route path="/login" element={<Login />} />
 
       {/* Protected */}
-      <Route path="/staff-view" element={<StaffView />} />
+      <Route
+        path="/rota"
+        element={
+          <RequireAuth>
+            <Rota />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/staff-view"
         element={
@@ -201,6 +208,14 @@ function DesktopApp() {
 
 /* -------------------- APP ROOT -------------------- */
 export default function App() {
+  const location = useLocation();
   const isMobile = useIsMobile(900); // adjust if you want (e.g. 820/780)
-  return isMobile ? <MobileApp /> : <DesktopApp />;
+  const pathname = location.pathname || "/";
+  const requiresDesktopShell =
+    pathname === "/inbox" ||
+    pathname.startsWith("/chat/") ||
+    pathname.startsWith("/admin/") ||
+    pathname === "/change-pin";
+
+  return isMobile && !requiresDesktopShell ? <MobileApp /> : <DesktopApp />;
 }

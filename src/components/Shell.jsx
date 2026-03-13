@@ -42,6 +42,11 @@ export default function Shell() {
     const [switchError, setSwitchError] = React.useState("");
     const aliveRef = React.useRef(true);
 
+    const loginRedirectTarget = React.useMemo(() => {
+        const redirect = `${loc.pathname}${loc.search}${loc.hash}`;
+        return `/login?redirect=${encodeURIComponent(redirect)}`;
+    }, [loc.hash, loc.pathname, loc.search]);
+
     React.useEffect(() => {
         aliveRef.current = true;
         return () => { aliveRef.current = false; };
@@ -102,7 +107,7 @@ export default function Shell() {
             setGlobalEnabled(true);
             setSwitchError("");
             clearSessionNonce();
-            nav("/login");
+            nav(loginRedirectTarget, { replace: true });
         };
 
         const broadcastLogout = (reason) => {
@@ -249,7 +254,7 @@ export default function Shell() {
             try { authSub?.subscription?.unsubscribe(); } catch { }
             try { bc?.close(); } catch { }
         };
-    }, [loc.pathname, nav]);
+    }, [loc.pathname, loginRedirectTarget, nav]);
 
     // ------------------------------------------------------------
     // Single-session enforcement (newest login wins)

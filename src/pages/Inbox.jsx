@@ -1,6 +1,6 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ui } from "../ui/tokens";
 import { invokeAdmin } from "../lib/invokeAdmin";
 
@@ -83,6 +83,11 @@ function fmtWhen(ts) {
 }
 
 export default function Inbox() {
+    const nav = useNavigate();
+    const [searchParams] = useSearchParams();
+    const claimConversationId = (searchParams.get("claim") || "").trim();
+    const claimRedirectedRef = React.useRef(false);
+
     const [tab, setTab] = React.useState("unassigned"); // unassigned | mine | closed
     const [rows, setRows] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
@@ -268,6 +273,17 @@ export default function Inbox() {
         loadCounts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tab, me?.id]);
+
+    React.useEffect(() => {
+        if (!claimConversationId) return;
+        setTab("unassigned");
+    }, [claimConversationId]);
+
+    React.useEffect(() => {
+        if (!me?.id || !claimConversationId || claimRedirectedRef.current) return;
+        claimRedirectedRef.current = true;
+        nav(`/chat/${claimConversationId}`, { replace: true });
+    }, [claimConversationId, me?.id, nav]);
 
     // Realtime refresh rows + counts
     React.useEffect(() => {

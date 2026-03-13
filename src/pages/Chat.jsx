@@ -9,6 +9,7 @@ export default function Chat() {
     const [convo, setConvo] = React.useState(null);
     const [msgs, setMsgs] = React.useState([]);
     const [me, setMe] = React.useState(null);
+    const [staffProfile, setStaffProfile] = React.useState(null);
 
     const [text, setText] = React.useState("");
     const [error, setError] = React.useState("");
@@ -239,11 +240,29 @@ export default function Chat() {
             setError(userErr.message);
             return;
         }
-        setMe(userData?.user ?? null);
+        const authedUser = userData?.user ?? null;
+        setMe(authedUser);
+
+        if (authedUser?.id) {
+            const { data: profile, error: profileErr } = await supabase
+                .from("staff_profiles")
+                .select("role, site_id, is_active")
+                .eq("user_id", authedUser.id)
+                .maybeSingle();
+
+            if (profileErr) {
+                setError(profileErr.message);
+                return;
+            }
+
+            setStaffProfile(profile ?? null);
+        } else {
+            setStaffProfile(null);
+        }
 
         const { data: c, error: cErr } = await supabase
             .from("conversations")
-            .select("id, site_id, customer_name, status, assigned_to, assigned_to_name")
+            .select("id, site_id, customer_name, status, assigned_to, assigned_to_name, eligible_sites")
             .eq("id", id)
             .single();
 
@@ -325,6 +344,11 @@ export default function Chat() {
         setClaiming(true);
 
         try {
+            if (!canClaim) {
+                setError(claimBlockedReason || "You are not allowed to claim this chat.");
+                return;
+            }
+
             const { data: claimRows, error: claimErr } = await supabase.rpc("claim_conversation", {
                 p_conversation_id: id,
             });
@@ -335,7 +359,7 @@ export default function Chat() {
             }
 
             if (!claimRows || claimRows.length === 0) {
-                setError("Already claimed by someone else.");
+                setError(claimBlockedReason || "You are not allowed to claim this chat.");
                 await load();
                 return;
             }
@@ -430,6 +454,17 @@ export default function Chat() {
 
     const isMine = convo.assigned_to && convo.assigned_to === me?.id;
     const isUnassigned = !convo.assigned_to;
+    const staffSiteId = staffProfile?.is_active ? staffProfile.site_id : null;
+    const eligibleSites = Array.isArray(convo.eligible_sites) ? convo.eligible_sites.filter(Boolean) : [];
+    const isEligibleForClaim = !!staffSiteId && eligibleSites.includes(staffSiteId);
+    const claimBlockedReason = !staffProfile?.is_active
+        ? "Your staff profile is inactive or missing."
+        : !staffSiteId
+            ? "Your staff profile does not have a site assigned."
+            : !isEligibleForClaim
+                ? `This chat can only be claimed by ${eligibleSites.length > 0 ? eligibleSites.join(", ") : "eligible"} site staff.`
+                : "";
+    const canClaim = convo.status === "open" && isUnassigned && isEligibleForClaim;
     const canSend = convo.status === "open" && isMine;
 
     return (
@@ -453,7 +488,7 @@ export default function Chat() {
 
                 <div style={S.toolbar}>
                     {/* ✅ Only show Claim when relevant */}
-                    {convo.status === "open" && isUnassigned && (
+                    {canClaim && (
                         <button
                             onClick={claimChat}
                             disabled={claiming}
@@ -490,7 +525,12 @@ export default function Chat() {
 
             {convo.status === "closed" && <div style={S.alertNeutral}>This chat is closed.</div>}
 
-            {isUnassigned && convo.status === "open" && <div style={S.alertInfo}>Claim this chat to reply to the customer.</div>}
+            {isUnassigned && convo.status === "open" && canClaim && (
+                <div style={S.alertInfo}>Claim this chat to reply to the customer.</div>
+            )}
+            {isUnassigned && convo.status === "open" && !canClaim && claimBlockedReason && (
+                <div style={S.alertWarn}>{claimBlockedReason}</div>
+            )}
 
             <div
                 style={{
