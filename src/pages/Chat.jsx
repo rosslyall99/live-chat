@@ -240,22 +240,20 @@ export default function Chat() {
             setError(userErr.message);
             return;
         }
+
         const authedUser = userData?.user ?? null;
         setMe(authedUser);
 
         if (authedUser?.id) {
-            const { data: profile, error: profileErr } = await supabase
-                .from("staff_profiles")
-                .select("role, site_id, is_active")
-                .eq("user_id", authedUser.id)
-                .maybeSingle();
+            const { data: profileRows, error: profileErr } = await supabase.rpc("get_my_staff_profile");
 
             if (profileErr) {
-                setError(profileErr.message);
-                return;
+                console.error("get_my_staff_profile failed", profileErr);
+                setStaffProfile(null);
+            } else {
+                const profile = Array.isArray(profileRows) ? profileRows[0] : profileRows;
+                setStaffProfile(profile ?? null);
             }
-
-            setStaffProfile(profile ?? null);
         } else {
             setStaffProfile(null);
         }
@@ -272,7 +270,7 @@ export default function Chat() {
         }
         setConvo(c);
 
-        await loadCanned(); // global-only
+        await loadCanned();
 
         const { data: m, error: mErr } = await supabase
             .from("messages")

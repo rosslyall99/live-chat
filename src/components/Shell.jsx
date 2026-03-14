@@ -276,15 +276,17 @@ export default function Shell() {
                     return;
                 }
 
-                const { data: prof } = await supabase
-                    .from("staff_profiles")
-                    .select("session_nonce")
-                    .eq("user_id", sess.session.user.id)
-                    .maybeSingle();
+                const { data: nonceRows, error: nonceErr } = await supabase.rpc("get_my_session_nonce");
 
-                const server = prof?.session_nonce || "";
+                if (nonceErr) {
+                    console.error("get_my_session_nonce failed", nonceErr);
+                    return;
+                }
+
+                const nonceRow = Array.isArray(nonceRows) ? nonceRows[0] : nonceRows;
+                const server = nonceRow?.session_nonce || "";
+
                 if (server && local && server !== local) {
-                    // newer login happened elsewhere
                     logShellAuth("nonce-check:mismatch", {
                         userId: sess.session.user.id,
                         local,
@@ -297,6 +299,7 @@ export default function Shell() {
                 // ignore transient errors
             }
         }
+
 
         const onVis = () => {
             if (!document.hidden) checkNonce();
@@ -318,7 +321,6 @@ export default function Shell() {
     }, []);
 
     async function refreshMeAndSettings() {
-        // local helper to safely set state only if still mounted
         const safe = (fn) => { if (aliveRef.current) fn(); };
 
         safe(() => {
@@ -343,11 +345,25 @@ export default function Shell() {
             return;
         }
 
-        const { data: prof } = await supabase
-            .from("staff_profiles")
-            .select("role, display_name, username, site_id")
-            .eq("user_id", user.id)
-            .maybeSingle();
+        const { data: profRows, error: profErr } = await supabase.rpc("get_my_staff_profile");
+
+        if (profErr) {
+            console.error("get_my_staff_profile failed", profErr);
+
+            const emailPrefix = user?.email ? user.email.split("@")[0] : "";
+
+            safe(() => {
+                setRole("agent");
+                setDisplayName(emailPrefix);
+                setSiteId(null);
+                setBranchEnabled(true);
+                setGlobalEnabled(true);
+                setLoading(false);
+            });
+            return;
+        }
+
+        const prof = Array.isArray(profRows) ? profRows[0] : profRows;
 
         const nextRole = prof?.role ? String(prof.role).toLowerCase() : "agent";
 
@@ -378,10 +394,16 @@ export default function Shell() {
                     setGlobalEnabled(cs.global_enabled !== false);
                 });
             }
+        } else {
+            safe(() => {
+                setBranchEnabled(true);
+                setGlobalEnabled(true);
+            });
         }
 
         safe(() => setLoading(false));
     }
+
 
     React.useEffect(() => {
         refreshMeAndSettings();
