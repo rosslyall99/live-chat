@@ -148,22 +148,8 @@ function MobileApp() {
       <Route path="/login" element={<Login />} />
 
       {/* Protected */}
-      <Route
-        path="/rota"
-        element={
-          <RequireAuth>
-            <Rota />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/staff-view"
-        element={
-          <RequireAuth>
-            <StaffView />
-          </RequireAuth>
-        }
-      />
+      <Route path="/rota" element={<Rota />} />
+      <Route path="/staff-view" element={<StaffView />} />
 
       {/* Mobile lock-down: nothing else reachable */}
       <Route path="*" element={<Navigate to="/rota" replace />} />
