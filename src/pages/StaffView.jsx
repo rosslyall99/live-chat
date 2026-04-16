@@ -204,8 +204,10 @@ export default function StaffView() {
 
     const [branch, setBranch] = React.useState(() => getParam("branch") || "All");
     const [weekStart, setWeekStart] = React.useState(() => {
-        const w = getParam("week");
-        if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) return new Date(w + "T00:00:00");
+    const w = getParam("week");
+        if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
+            return startOfWeekLocal(new Date(w + "T00:00:00"));
+        }
         return startOfWeekLocal(new Date());
     });
 
