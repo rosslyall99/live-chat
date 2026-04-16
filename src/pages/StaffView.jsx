@@ -46,6 +46,13 @@ function sameDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function ymdLocal(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
 function normBranch(branch) {
     const b = String(branch || "").trim().toLowerCase();
     if (b.includes("st enoch") || b.includes("stenoch") || b === "se") return "stenoch";
@@ -223,8 +230,8 @@ export default function StaffView() {
             const k = getParam("k");
             if (!k) throw new Error("Missing key (k) in URL");
 
-            const weekIso = weekStart.toISOString().slice(0, 10);
-
+            const weekIso = ymdLocal(weekStart);
+            
             const { data, error } = await supabase.functions.invoke("staff_view_data", {
                 body: { k, week: weekIso, branch },
             });
@@ -250,7 +257,7 @@ export default function StaffView() {
 
     // keep URL in sync (shareable iframe URL)
     React.useEffect(() => {
-        const weekIso = weekStart.toISOString().slice(0, 10);
+        const weekIso = ymdLocal(weekStart);
         setParams({ week: weekIso, branch });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [weekStart, branch]);
