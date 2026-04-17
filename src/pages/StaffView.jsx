@@ -332,8 +332,11 @@ export default function StaffView() {
     function cellFor(staffNameKey, day) {
         const dayStart = new Date(day);
         dayStart.setHours(0, 0, 0, 0);
-
-        const abs = absencesWeek.find((a) => normName(a.name) === normName(staffNameKey) && overlapsDate(a, dayStart));
+        const dayEnd = addDays(dayStart, 1);
+    
+        const abs = absencesWeek.find(
+            (a) => normName(a.name) === normName(staffNameKey) && overlapsDate(a, dayStart)
+        );
         if (abs) {
             const label = String(abs.type || "OTHER").toUpperCase();
             return (
@@ -343,13 +346,13 @@ export default function StaffView() {
                 </span>
             );
         }
-
+    
         const shift = shiftsWeek.find((s) => {
             if (normName(s.name) !== normName(staffNameKey)) return false;
             const st = new Date(s.start_at);
             return st >= dayStart && st < dayEnd;
         });
-
+    
         if (shift) {
             return (
                 <span className={pillClassForBranch(shift.branch)} title={shift.label || ""}>
@@ -357,7 +360,7 @@ export default function StaffView() {
                 </span>
             );
         }
-
+    
         return <span className="rota-empty">—</span>;
     }
 
