@@ -33,9 +33,8 @@ function fmtTimeRange(startIso, endIso) {
 }
 
 function overlapsDate(abs, date) {
-    const ds = new Date(abs.start_date + "T00:00:00Z");
-    const de = new Date(abs.end_date + "T23:59:59Z");
-    return date >= ds && date <= de;
+    const day = ymdLocal(date);
+    return abs.start_date <= day && abs.end_date >= day;
 }
 
 function normName(s) {
@@ -333,7 +332,6 @@ export default function StaffView() {
     function cellFor(staffNameKey, day) {
         const dayStart = new Date(day);
         dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = addDays(dayStart, 1);
 
         const abs = absencesWeek.find((a) => normName(a.name) === normName(staffNameKey) && overlapsDate(a, dayStart));
         if (abs) {
