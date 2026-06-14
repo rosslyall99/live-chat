@@ -33,9 +33,8 @@ function fmtTimeRange(startIso, endIso) {
 }
 
 function overlapsDate(abs, date) {
-    const ds = new Date(abs.start_date + "T00:00:00Z");
-    const de = new Date(abs.end_date + "T23:59:59Z");
-    return date >= ds && date <= de;
+    const day = ymdLocal(date);
+    return abs.start_date <= day && abs.end_date >= day;
 }
 
 function normName(s) {
@@ -44,6 +43,13 @@ function normName(s) {
 
 function sameDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function ymdLocal(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
 }
 
 function normBranch(branch) {
@@ -197,8 +203,10 @@ export default function StaffView() {
 
     const [branch, setBranch] = React.useState(() => getParam("branch") || "All");
     const [weekStart, setWeekStart] = React.useState(() => {
-        const w = getParam("week");
-        if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) return new Date(w + "T00:00:00");
+    const w = getParam("week");
+        if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
+            return startOfWeekLocal(new Date(w + "T00:00:00"));
+        }
         return startOfWeekLocal(new Date());
     });
 
@@ -223,8 +231,8 @@ export default function StaffView() {
             const k = getParam("k");
             if (!k) throw new Error("Missing key (k) in URL");
 
-            const weekIso = weekStart.toISOString().slice(0, 10);
-
+            const weekIso = ymdLocal(weekStart);
+            
             const { data, error } = await supabase.functions.invoke("staff_view_data", {
                 body: { k, week: weekIso, branch },
             });
@@ -250,7 +258,7 @@ export default function StaffView() {
 
     // keep URL in sync (shareable iframe URL)
     React.useEffect(() => {
-        const weekIso = weekStart.toISOString().slice(0, 10);
+        const weekIso = ymdLocal(weekStart);
         setParams({ week: weekIso, branch });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [weekStart, branch]);
@@ -325,8 +333,10 @@ export default function StaffView() {
         const dayStart = new Date(day);
         dayStart.setHours(0, 0, 0, 0);
         const dayEnd = addDays(dayStart, 1);
-
-        const abs = absencesWeek.find((a) => normName(a.name) === normName(staffNameKey) && overlapsDate(a, dayStart));
+    
+        const abs = absencesWeek.find(
+            (a) => normName(a.name) === normName(staffNameKey) && overlapsDate(a, dayStart)
+        );
         if (abs) {
             const label = String(abs.type || "OTHER").toUpperCase();
             return (
@@ -336,13 +346,13 @@ export default function StaffView() {
                 </span>
             );
         }
-
+    
         const shift = shiftsWeek.find((s) => {
             if (normName(s.name) !== normName(staffNameKey)) return false;
             const st = new Date(s.start_at);
             return st >= dayStart && st < dayEnd;
         });
-
+    
         if (shift) {
             return (
                 <span className={pillClassForBranch(shift.branch)} title={shift.label || ""}>
@@ -350,7 +360,7 @@ export default function StaffView() {
                 </span>
             );
         }
-
+    
         return <span className="rota-empty">—</span>;
     }
 

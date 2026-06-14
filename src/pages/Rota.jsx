@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import "./rota.css";
 
-const BRANCHES = ["All Branches", "St Enoch", "Duke Street", "Hire", "Office"];
+const BRANCHES = ["All", "St Enoch", "Duke Street", "Hire", "Office"];
 const BRANCH_ORDER = ["St Enoch", "Duke Street", "Hire", "Office"];
 
 function startOfWeek(d) {
@@ -36,11 +36,16 @@ function fmtTimeRange(startIso, endIso) {
   return `${sh}–${eh}`;
 }
 
+function ymdLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function overlapsDate(abs, date) {
-  // abs.start_date / end_date are YYYY-MM-DD (inclusive)
-  const ds = new Date(abs.start_date + "T00:00:00Z");
-  const de = new Date(abs.end_date + "T23:59:59Z");
-  return date >= ds && date <= de;
+  const day = ymdLocal(date);
+  return abs.start_date <= day && abs.end_date >= day;
 }
 
 function normName(s) {
@@ -251,69 +256,92 @@ export default function Rota() {
     return out;
   }
 
+  async function getLatestCompletedRunId() {
+    const { data, error } = await supabase
+      .from("rota_sync_runs")
+      .select("id")
+      .eq("status", "complete")
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .single();
+  
+    if (error) throw error;
+    return data.id;
+  }
+
   async function load() {
     setLoading(true);
     try {
+      const runId = await getLatestCompletedRunId();
+  
       // -------- Week dataset (rota grid) --------
       const startIso = weekStart.toISOString();
       const endIso = weekEnd.toISOString();
-
+  
       let sQ = supabase
         .from("rota_shifts")
         .select("staff_name, branch, label, start_at, end_at")
+        .eq("sync_run_id", runId)
         .gte("start_at", startIso)
         .lt("start_at", endIso)
         .order("staff_name", { ascending: true })
         .order("start_at", { ascending: true });
-
+  
       if (branch !== "All") sQ = sQ.eq("branch", branch);
-
+  
       const aQ = supabase
         .from("rota_absences")
         .select("staff_name, absence_type, absence_label, start_date, end_date, is_partial")
+        .eq("sync_run_id", runId)
         .lte("start_date", weekEnd.toISOString().slice(0, 10))
         .gte("end_date", weekStart.toISOString().slice(0, 10))
         .order("staff_name", { ascending: true });
-
+  
       // -------- Today dataset (TodayCard) --------
       const today0 = startOfDayLocal(new Date());
       const tomorrow0 = addDays(today0, 1);
-
+  
       const sTodayQ = supabase
         .from("rota_shifts")
         .select("staff_name, branch, label, start_at, end_at")
+        .eq("sync_run_id", runId)
         .gte("start_at", today0.toISOString())
         .lt("start_at", tomorrow0.toISOString())
         .order("staff_name", { ascending: true })
         .order("start_at", { ascending: true });
-
+  
       const aTodayQ = supabase
         .from("rota_absences")
         .select("staff_name, absence_type, absence_label, start_date, end_date, is_partial")
+        .eq("sync_run_id", runId)
         .lte("start_date", today0.toISOString().slice(0, 10))
         .gte("end_date", today0.toISOString().slice(0, 10))
         .order("staff_name", { ascending: true });
-
+  
       const [
         { data: sWeekData, error: sWeekErr },
         { data: aWeekData, error: aWeekErr },
         { data: sTodayData, error: sTodayErr },
         { data: aTodayData, error: aTodayErr },
-      ] = await Promise.all([sQ, aQ, sTodayQ, aTodayQ]);
-
+        map,
+      ] = await Promise.all([
+        sQ,
+        aQ,
+        sTodayQ,
+        aTodayQ,
+        loadNameMapAll(),
+      ]);
+  
       if (sWeekErr) throw sWeekErr;
       if (aWeekErr) throw aWeekErr;
       if (sTodayErr) throw sTodayErr;
       if (aTodayErr) throw aTodayErr;
-
+  
       setShiftsWeek(sWeekData ?? []);
       setAbsencesWeek(aWeekData ?? []);
       setShiftsToday(sTodayData ?? []);
       setAbsencesToday(aTodayData ?? []);
-
-      // Mapping stays as-is
-      const map = await loadNameMapAll();
-      setNameMap(map);
+      setNameMap(map ?? {});
     } finally {
       setLoading(false);
     }
