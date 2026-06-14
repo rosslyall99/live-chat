@@ -11,7 +11,7 @@ import {
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
-const HOUR_HEIGHT = 64;
+const HOUR_HEIGHT = 72;
 
 function todayInputValue() {
   const now = new Date();
@@ -73,6 +73,58 @@ function itemHeight(startAt, endAt) {
 
 function hourLabel(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function areaSlotNumber(name) {
+  const match = String(name || "").trim().match(/^(area|column)\s+(\d+)$/i);
+  if (!match) return null;
+  return Number(match[2]);
+}
+
+function isAreaName(name) {
+  return /^area\s+\d+$/i.test(String(name || "").trim());
+}
+
+function canonicalAreaLabel(area) {
+  const slot = areaSlotNumber(area?.name);
+  if (!slot) return area?.name || "Area";
+  return `Area ${slot}`;
+}
+
+function dedupeAreas(rows = []) {
+  const canonical = new Map();
+  const extras = [];
+
+  for (const row of rows || []) {
+    const slot = areaSlotNumber(row?.name);
+    if (!slot) {
+      extras.push(row);
+      continue;
+    }
+
+    const existing = canonical.get(slot);
+    if (!existing) {
+      canonical.set(slot, row);
+      continue;
+    }
+
+    const nextWins = isAreaName(row?.name) && !isAreaName(existing?.name);
+    if (nextWins) {
+      canonical.set(slot, row);
+    }
+  }
+
+  return [
+    ...Array.from(canonical.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, value]) => value),
+    ...extras.sort((a, b) => {
+      const aSort = Number(a?.sort_order ?? 9999);
+      const bSort = Number(b?.sort_order ?? 9999);
+      if (aSort !== bSort) return aSort - bSort;
+      return String(a?.name || "").localeCompare(String(b?.name || ""));
+    }),
+  ];
 }
 
 function bookedByLabel(item) {
@@ -141,6 +193,7 @@ function TimelineItem({ item, type, startHour, typesById }) {
         padding: 8,
         boxSizing: "border-box",
         overflow: "hidden",
+        boxShadow: isBlock ? "none" : "0 4px 10px rgba(59,130,246,0.10)",
       }}
       title={isBlock ? item.reason : item.customer_name}
     >
@@ -212,7 +265,7 @@ export default function Appointments() {
       .order("name", { ascending: true });
 
     if (loadError) throw loadError;
-    return data || [];
+    return dedupeAreas(data || []);
   }, []);
 
   const loadCalendar = React.useCallback(
@@ -875,7 +928,7 @@ export default function Appointments() {
                     background: "rgba(2, 6, 23, 0.03)",
                   }}
                 >
-                  <div style={{ fontWeight: 900 }}>{area.name}</div>
+                  <div style={{ fontWeight: 900 }}>{canonicalAreaLabel(area)}</div>
                   <div style={{ fontSize: 12, color: ui.colors.muted }}>
                     {area.branch || ""}
                   </div>
@@ -887,7 +940,7 @@ export default function Appointments() {
                   position: "relative",
                   height: timelineHeight,
                   borderRight: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
+                  background: "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
                 }}
               >
                 {hourTicks.map((hour) => {
@@ -921,6 +974,22 @@ export default function Appointments() {
                     </div>
                   );
                 })}
+
+                {Array.from({ length: Math.max(totalHours, 1) }, (_, index) => {
+                  const top = index * HOUR_HEIGHT + HOUR_HEIGHT / 2;
+                  return (
+                    <div
+                      key={`half-${index}`}
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        top,
+                        borderTop: "1px dashed rgba(2, 6, 23, 0.08)",
+                      }}
+                    />
+                  );
+                })}
               </div>
 
               {areas.map((area) => {
@@ -952,6 +1021,22 @@ export default function Appointments() {
                             right: 0,
                             top,
                             borderTop: "1px solid rgba(2, 6, 23, 0.08)",
+                          }}
+                        />
+                      );
+                    })}
+
+                    {Array.from({ length: Math.max(totalHours, 1) }, (_, index) => {
+                      const top = index * HOUR_HEIGHT + HOUR_HEIGHT / 2;
+                      return (
+                        <div
+                          key={`half-${area.id}-${index}`}
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            right: 0,
+                            top,
+                            borderTop: "1px dashed rgba(2, 6, 23, 0.06)",
                           }}
                         />
                       );
@@ -1119,7 +1204,7 @@ export default function Appointments() {
                     </option>
                     {modalAreas.map((area) => (
                       <option key={area.id} value={area.id}>
-                        {area.name}
+                        {canonicalAreaLabel(area)}
                       </option>
                     ))}
                   </select>

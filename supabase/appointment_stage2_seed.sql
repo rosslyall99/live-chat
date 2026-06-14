@@ -19,17 +19,21 @@ order by sort_order, name;
 
 -- Seed appointment areas/resources
 insert into public.appointment_areas (branch, name, is_active, sort_order)
-values
-  ('DUK', 'Column 1', true, 10),
-  ('DUK', 'Column 2', true, 20),
-  ('STE', 'Column 1', true, 10),
-  ('STE', 'Column 2', true, 20),
-  ('STE', 'Column 3', true, 30)
-on conflict (branch, name)
-do update
-set
-  is_active = excluded.is_active,
-  sort_order = excluded.sort_order;
+select seed.branch, seed.name, true, seed.sort_order
+from (
+  values
+    ('DUK'::public.branch_code, 'Area 1', 10, array['area 1', 'column 1']),
+    ('DUK'::public.branch_code, 'Area 2', 20, array['area 2', 'column 2']),
+    ('STE'::public.branch_code, 'Area 1', 10, array['area 1', 'column 1']),
+    ('STE'::public.branch_code, 'Area 2', 20, array['area 2', 'column 2']),
+    ('STE'::public.branch_code, 'Area 3', 30, array['area 3', 'column 3'])
+) as seed(branch, name, sort_order, aliases)
+where not exists (
+  select 1
+  from public.appointment_areas existing
+  where existing.branch = seed.branch
+    and lower(existing.name) = any(seed.aliases)
+);
 
 -- Seed appointment types
 insert into public.appointment_types (name, duration_minutes, is_active, sort_order)
