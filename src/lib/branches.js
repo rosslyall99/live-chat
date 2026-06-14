@@ -20,6 +20,11 @@ const SITE_LABEL_MAP = {
   hire: "Hire",
 };
 
+const BRANCH_SITE_MAP = {
+  DUK: "duke",
+  STE: "sten",
+};
+
 export function normalizeSiteId(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -35,6 +40,10 @@ export function isBookableAppointmentSite(siteId) {
 export function prettySiteName(siteId) {
   const normalized = normalizeSiteId(siteId);
   return SITE_LABEL_MAP[normalized] || siteId || "Unknown site";
+}
+
+export function appointmentBranchToSiteId(branchCode) {
+  return BRANCH_SITE_MAP[String(branchCode || "").trim().toUpperCase()] || "";
 }
 
 export function getBookableAppointmentSites(sites = []) {
