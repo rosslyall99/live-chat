@@ -11,6 +11,7 @@ import ChangePin from "./pages/ChangePin.jsx";
 import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
 import Rota from "./pages/Rota";
+import Appointments from "./pages/Appointments.jsx";
 import Shell from "./components/Shell";
 import StaffView from "./pages/StaffView.jsx";
 
@@ -175,6 +176,7 @@ function DesktopApp() {
         {/* Core */}
         <Route index element={<Rota />} />
         <Route path="rota" element={<Rota />} />
+        <Route path="appointments" element={<Appointments />} />
         <Route path="inbox" element={<Inbox />} />
         <Route path="chat/:id" element={<Chat />} />
         <Route path="change-pin" element={<ChangePin />} />
@@ -199,6 +201,7 @@ export default function App() {
   const pathname = location.pathname || "/";
   const requiresDesktopShell =
     pathname === "/inbox" ||
+    pathname === "/appointments" ||
     pathname.startsWith("/chat/") ||
     pathname.startsWith("/admin/") ||
     pathname === "/change-pin";
