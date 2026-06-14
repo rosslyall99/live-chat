@@ -2,6 +2,7 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import {
+  appointmentBranchToSiteId,
   getBookableAppointmentSites,
   getDefaultAppointmentSiteId,
   isBookableAppointmentSite,
@@ -21,6 +22,23 @@ function todayInputValue() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function inputDateValueFromIso(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return todayInputValue();
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function inputTimeValueFromIso(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function formatTimeRange(startAt, endAt) {
   const start = new Date(startAt);
   const end = new Date(endAt);
@@ -32,6 +50,30 @@ function formatTimeRange(startAt, endAt) {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+}
+
+function formatDateLabel(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatDateTimeLabel(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return date.toLocaleString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function clamp(value, min, max) {
@@ -128,20 +170,11 @@ function dedupeAreas(rows = []) {
 }
 
 function bookedByLabel(item) {
-  return (
-    item.booked_by_name ||
-    item.booked_by_display_name ||
-    item.booked_by_username ||
-    null
-  );
+  return item.booked_by_name || item.booked_by_display_name || item.booked_by_username || null;
 }
 
 function appointmentTypeLabel(item, typesById) {
-  return (
-    item.appointment_type_name ||
-    typesById[item.appointment_type_id]?.name ||
-    "Appointment"
-  );
+  return item.appointment_type_name || typesById[item.appointment_type_id]?.name || "Appointment";
 }
 
 function toDateTimeIso(dateString, timeString) {
@@ -149,7 +182,7 @@ function toDateTimeIso(dateString, timeString) {
 }
 
 function isWithinSelectedDay(dateString, isoValue) {
-  return new Date(isoValue).toISOString().slice(0, 10) === dateString;
+  return inputDateValueFromIso(isoValue) === dateString;
 }
 
 function rangesOverlap(startA, endA, startB, endB) {
@@ -171,14 +204,35 @@ function buildInitialForm({ siteId, date }) {
   };
 }
 
-function TimelineItem({ item, type, startHour, typesById }) {
+function buildDetailForm(appointment, siteId) {
+  return {
+    siteId: siteId || "",
+    date: inputDateValueFromIso(appointment?.start_at),
+    areaId: appointment?.area_id || "",
+    appointmentTypeId: appointment?.appointment_type_id || "",
+    startTime: inputTimeValueFromIso(appointment?.start_at),
+    customerName: appointment?.customer_name || "",
+    customerEmail: appointment?.customer_email || "",
+    customerPhone: appointment?.customer_phone || "",
+    internalNotes: appointment?.internal_notes || "",
+  };
+}
+
+function readErrorMessage(err, fallback) {
+  return err?.message || err?.error_description || fallback;
+}
+
+function TimelineItem({ item, type, startHour, typesById, onClick }) {
   const top = toPosition(item.start_at, startHour);
   const height = itemHeight(item.start_at, item.end_at);
   const isBlock = type === "block";
   const bookedBy = bookedByLabel(item);
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={isBlock ? undefined : onClick}
+      disabled={isBlock || !onClick}
       style={{
         position: "absolute",
         left: 8,
@@ -194,6 +248,9 @@ function TimelineItem({ item, type, startHour, typesById }) {
         boxSizing: "border-box",
         overflow: "hidden",
         boxShadow: isBlock ? "none" : "0 4px 10px rgba(59,130,246,0.10)",
+        cursor: isBlock ? "default" : "pointer",
+        textAlign: "left",
+        fontFamily: ui.font.ui,
       }}
       title={isBlock ? item.reason : item.customer_name}
     >
@@ -216,6 +273,88 @@ function TimelineItem({ item, type, startHour, typesById }) {
           Booked by {bookedBy}
         </div>
       ) : null}
+    </button>
+  );
+}
+
+function ModalShell({ title, subtitle, onClose, children, maxWidth = 720 }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+        zIndex: 1000,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth,
+          maxHeight: "90vh",
+          overflow: "auto",
+          background: ui.colors.cardBg,
+          border: `1px solid ${ui.colors.border}`,
+          borderRadius: ui.radius.lg,
+          boxShadow: ui.shadow.card,
+        }}
+      >
+        <div
+          style={{
+            padding: 16,
+            borderBottom: `1px solid ${ui.colors.border}`,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>{title}</div>
+            {subtitle ? <div style={ui.text.subtitle}>{subtitle}</div> : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "8px 12px",
+              borderRadius: ui.radius.md,
+              border: `1px solid ${ui.colors.border}`,
+              background: ui.colors.cardBg,
+              color: ui.colors.text,
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            Close
+          </button>
+        </div>
+
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FieldValue({ label, value }) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 12,
+        background: "rgba(2, 6, 23, 0.03)",
+        border: `1px solid ${ui.colors.border}`,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>{label}</div>
+      <div style={{ marginTop: 6, fontWeight: 700, color: ui.colors.text }}>
+        {value || "Not provided"}
+      </div>
     </div>
   );
 }
@@ -245,12 +384,37 @@ export default function Appointments() {
   const [modalAreasLoading, setModalAreasLoading] = React.useState(false);
   const [form, setForm] = React.useState(() => buildInitialForm({}));
 
+  const [detailOpen, setDetailOpen] = React.useState(false);
+  const [detailEditing, setDetailEditing] = React.useState(false);
+  const [detailSaving, setDetailSaving] = React.useState(false);
+  const [detailError, setDetailError] = React.useState("");
+  const [detailAppointment, setDetailAppointment] = React.useState(null);
+  const [detailForm, setDetailForm] = React.useState(() => buildInitialForm({}));
+  const [activityRows, setActivityRows] = React.useState([]);
+  const [activityLoading, setActivityLoading] = React.useState(false);
+  const [activityError, setActivityError] = React.useState("");
+
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const showSiteSelector = isAdmin || isManager;
   const bookableSites = React.useMemo(() => getBookableAppointmentSites(sites), [sites]);
   const selectedSiteIsBookable = isBookableAppointmentSite(selectedSiteId);
   const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
+
+  const baseInputStyle = React.useMemo(
+    () => ({
+      width: "100%",
+      padding: "10px 12px",
+      borderRadius: ui.radius.md,
+      border: `1px solid ${ui.colors.border}`,
+      background: ui.colors.cardBg,
+      color: ui.colors.text,
+      outline: "none",
+      boxSizing: "border-box",
+      fontFamily: ui.font.ui,
+    }),
+    []
+  );
 
   const loadAreasForSite = React.useCallback(async (siteId) => {
     const branchCode = siteIdToAppointmentBranch(siteId);
@@ -373,13 +537,39 @@ export default function Appointments() {
         setAreas([]);
         setAppointments([]);
         setBlocks([]);
-        setError(err.message || "Could not load appointment calendar.");
+        setError(readErrorMessage(err, "Could not load appointment calendar."));
       } finally {
         setLoading(false);
       }
     },
     [loadAreasForSite, profile?.site_id]
   );
+
+  const loadActivity = React.useCallback(async (appointmentId) => {
+    if (!appointmentId) {
+      setActivityRows([]);
+      setActivityError("");
+      return;
+    }
+
+    setActivityLoading(true);
+    setActivityError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("get_appointment_audit_staff", {
+        p_appointment_id: appointmentId,
+      });
+
+      if (rpcError) throw rpcError;
+      setActivityRows(data || []);
+    } catch (err) {
+      console.error("appointments: activity load failed", err);
+      setActivityRows([]);
+      setActivityError("Activity history could not be loaded.");
+    } finally {
+      setActivityLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!showSiteSelector) return;
@@ -454,7 +644,9 @@ export default function Appointments() {
         setSelectedSiteId((prev) => prev || preferredSiteId);
       } catch (err) {
         console.error("appointments: bootstrap failed", err);
-        if (!cancelled) setError(err.message || "Could not load appointment access.");
+        if (!cancelled) {
+          setError(readErrorMessage(err, "Could not load appointment access."));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -561,6 +753,9 @@ export default function Appointments() {
   const pageTitle = `Appointments${visibleSiteName ? ` - ${visibleSiteName}` : ""}`;
   const selectorSites = showSiteSelector ? bookableSites : sites;
   const selectedType = appointmentTypes.find((item) => item.id === form.appointmentTypeId) || null;
+  const detailSelectedType =
+    appointmentTypes.find((item) => item.id === detailForm.appointmentTypeId) || null;
+
   const calculatedEndTimeLabel =
     form.startTime && selectedType
       ? formatTimeRange(
@@ -571,6 +766,43 @@ export default function Appointments() {
           ).toISOString()
         ).split(" - ")[1]
       : "";
+
+  const detailEndTimeLabel =
+    detailForm.startTime && detailSelectedType
+      ? formatTimeRange(
+          toDateTimeIso(detailForm.date, detailForm.startTime),
+          new Date(
+            new Date(toDateTimeIso(detailForm.date, detailForm.startTime)).getTime() +
+              detailSelectedType.duration_minutes * 60000
+          ).toISOString()
+        ).split(" - ")[1]
+      : "";
+
+  const detailSiteId = detailAppointment
+    ? appointmentBranchToSiteId(detailAppointment.branch) || selectedSiteId
+    : selectedSiteId;
+
+  const detailArea = React.useMemo(
+    () => areas.find((item) => item.id === detailAppointment?.area_id) || null,
+    [areas, detailAppointment]
+  );
+
+  const detailLastChange = React.useMemo(
+    () => activityRows.find((row) => row.action === "updated" || row.action === "cancelled") || null,
+    [activityRows]
+  );
+
+  const canManageSelectedAppointment = React.useMemo(() => {
+    if (!detailAppointment || !profile) return false;
+    if (role === "admin") return true;
+    if (role === "manager") {
+      return siteIdToAppointmentBranch(profile.site_id) === detailAppointment.branch;
+    }
+    if (role === "agent") {
+      return detailAppointment.booked_by_user_id === profile.user_id;
+    }
+    return false;
+  }, [detailAppointment, profile, role]);
 
   function openCreateModal() {
     setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
@@ -585,14 +817,41 @@ export default function Appointments() {
     setFormError("");
   }
 
+  function openDetailModal(item) {
+    const nextSiteId = appointmentBranchToSiteId(item.branch) || selectedSiteId;
+    setDetailAppointment(item);
+    setDetailForm(buildDetailForm(item, nextSiteId));
+    setDetailError("");
+    setDetailEditing(false);
+    setDetailOpen(true);
+    loadActivity(item.id);
+  }
+
+  function closeDetailModal() {
+    setDetailOpen(false);
+    setDetailEditing(false);
+    setDetailSaving(false);
+    setDetailError("");
+    setDetailAppointment(null);
+    setActivityRows([]);
+    setActivityError("");
+  }
+
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function findLocalConflict(nextAreaId, nextStartAt, nextEndAt) {
-    if (form.siteId !== selectedSiteId || form.date !== selectedDate) return "";
+  function updateDetailForm(key, value) {
+    setDetailForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function findLocalConflict(nextAreaId, nextStartAt, nextEndAt, excludedAppointmentId = "") {
+    const compareSiteId = detailOpen ? detailSiteId : form.siteId;
+    const compareDate = detailOpen ? detailForm.date : form.date;
+    if (compareSiteId !== selectedSiteId || compareDate !== selectedDate) return "";
 
     const overlappingAppointment = appointments.find((item) => {
+      if (item.id === excludedAppointmentId) return false;
       if (item.area_id !== nextAreaId) return false;
       return rangesOverlap(nextStartAt, nextEndAt, item.start_at, item.end_at);
     });
@@ -680,10 +939,7 @@ export default function Appointments() {
         p_internal_notes: form.internalNotes.trim() || null,
       });
 
-      if (rpcError) {
-        throw rpcError;
-      }
-
+      if (rpcError) throw rpcError;
       if (!data || data.length === 0) {
         throw new Error("The appointment could not be created.");
       }
@@ -694,23 +950,118 @@ export default function Appointments() {
       await loadCalendar(form.siteId, form.date);
     } catch (err) {
       console.error("appointments: create failed", err);
-      setFormError(err.message || "Could not create the appointment.");
+      setFormError(readErrorMessage(err, "Could not create the appointment."));
     } finally {
       setSaving(false);
     }
   }
 
-  const baseInputStyle = {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: ui.radius.md,
-    border: `1px solid ${ui.colors.border}`,
-    background: ui.colors.cardBg,
-    color: ui.colors.text,
-    outline: "none",
-    boxSizing: "border-box",
-    fontFamily: ui.font.ui,
-  };
+  async function submitDetailUpdate(e) {
+    e.preventDefault();
+    setDetailError("");
+
+    if (!detailAppointment) {
+      setDetailError("This appointment is no longer available.");
+      return;
+    }
+    if (!detailForm.customerName.trim()) {
+      setDetailError("Customer name is required.");
+      return;
+    }
+    if (!detailForm.customerEmail.trim()) {
+      setDetailError("Customer email is required.");
+      return;
+    }
+    if (!detailForm.appointmentTypeId) {
+      setDetailError("Appointment type is required.");
+      return;
+    }
+    if (!detailForm.areaId) {
+      setDetailError("Appointment area is required.");
+      return;
+    }
+    if (!detailForm.startTime) {
+      setDetailError("Start time is required.");
+      return;
+    }
+
+    const typeRow = appointmentTypes.find((item) => item.id === detailForm.appointmentTypeId);
+    if (!typeRow) {
+      setDetailError("The selected appointment type is not available.");
+      return;
+    }
+
+    const startAt = toDateTimeIso(detailForm.date, detailForm.startTime);
+    if (!isWithinSelectedDay(detailForm.date, startAt)) {
+      setDetailError("Start time must stay within the selected calendar day.");
+      return;
+    }
+
+    const endAt = new Date(
+      new Date(startAt).getTime() + typeRow.duration_minutes * 60000
+    ).toISOString();
+
+    const localConflict = findLocalConflict(detailForm.areaId, startAt, endAt, detailAppointment.id);
+    if (localConflict) {
+      setDetailError(localConflict);
+      return;
+    }
+
+    setDetailSaving(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("update_appointment_staff", {
+        p_appointment_id: detailAppointment.id,
+        p_area_id: detailForm.areaId,
+        p_appointment_type_id: detailForm.appointmentTypeId,
+        p_start_at: startAt,
+        p_customer_name: detailForm.customerName.trim(),
+        p_customer_email: detailForm.customerEmail.trim(),
+        p_customer_phone: detailForm.customerPhone.trim() || null,
+        p_internal_notes: detailForm.internalNotes.trim() || null,
+      });
+
+      if (rpcError) throw rpcError;
+      if (!data || data.length === 0) {
+        throw new Error("The appointment could not be updated.");
+      }
+
+      const nextDate = detailForm.date;
+      setSelectedDate(nextDate);
+      setDetailEditing(false);
+      closeDetailModal();
+      await loadCalendar(selectedSiteId, nextDate);
+    } catch (err) {
+      console.error("appointments: update failed", err);
+      setDetailError(readErrorMessage(err, "Could not update the appointment."));
+    } finally {
+      setDetailSaving(false);
+    }
+  }
+
+  async function cancelAppointment() {
+    if (!detailAppointment) return;
+    if (!window.confirm("Cancel this appointment?")) return;
+
+    setDetailSaving(true);
+    setDetailError("");
+
+    try {
+      const { error: rpcError } = await supabase.rpc("cancel_appointment_staff", {
+        p_appointment_id: detailAppointment.id,
+      });
+
+      if (rpcError) throw rpcError;
+
+      closeDetailModal();
+      await loadCalendar(selectedSiteId, selectedDate);
+    } catch (err) {
+      console.error("appointments: cancel failed", err);
+      setDetailError(readErrorMessage(err, "Could not cancel the appointment."));
+    } finally {
+      setDetailSaving(false);
+    }
+  }
 
   return (
     <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
@@ -731,9 +1082,7 @@ export default function Appointments() {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>
-            {pageTitle}
-          </div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>{pageTitle}</div>
 
           <button
             type="button"
@@ -929,9 +1278,7 @@ export default function Appointments() {
                   }}
                 >
                   <div style={{ fontWeight: 900 }}>{canonicalAreaLabel(area)}</div>
-                  <div style={{ fontSize: 12, color: ui.colors.muted }}>
-                    {area.branch || ""}
-                  </div>
+                  <div style={{ fontSize: 12, color: ui.colors.muted }}>{area.branch || ""}</div>
                 </div>
               ))}
 
@@ -940,7 +1287,8 @@ export default function Appointments() {
                   position: "relative",
                   height: timelineHeight,
                   borderRight: `1px solid ${ui.colors.border}`,
-                  background: "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
+                  background:
+                    "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
                 }}
               >
                 {hourTicks.map((hour) => {
@@ -1059,6 +1407,7 @@ export default function Appointments() {
                         type="appointment"
                         startHour={timeline.startHour}
                         typesById={typesById}
+                        onClick={() => openDetailModal(item)}
                       />
                     ))}
 
@@ -1089,52 +1438,175 @@ export default function Appointments() {
       </div>
 
       {modalOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 18,
-            zIndex: 1000,
-          }}
+        <ModalShell
+          title="New appointment"
+          subtitle="Create a booked appointment without sending emails yet."
+          onClose={closeCreateModal}
+          maxWidth={640}
         >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 640,
-              maxHeight: "90vh",
-              overflow: "auto",
-              background: ui.colors.cardBg,
-              border: `1px solid ${ui.colors.border}`,
-              borderRadius: ui.radius.lg,
-              boxShadow: ui.shadow.card,
-            }}
-          >
+          <form onSubmit={submitCreateAppointment} style={{ padding: 16 }}>
             <div
               style={{
-                padding: 16,
-                borderBottom: `1px solid ${ui.colors.border}`,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: 12,
               }}
             >
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>New appointment</div>
-                <div style={ui.text.subtitle}>
-                  Create a booked appointment without sending emails yet.
-                </div>
-              </div>
+              {showSiteSelector ? (
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <select
+                    value={form.siteId}
+                    onChange={(e) => updateForm("siteId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    {bookableSites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name || prettySiteName(site.id)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <input
+                    value={prettySiteName(form.siteId)}
+                    readOnly
+                    style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                  />
+                </label>
+              )}
 
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Date
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => updateForm("date", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Appointment area
+                <select
+                  value={form.areaId}
+                  onChange={(e) => updateForm("areaId", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                  disabled={modalAreasLoading || modalAreas.length === 0}
+                >
+                  <option value="">{modalAreasLoading ? "Loading areas..." : "Select an area..."}</option>
+                  {modalAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {canonicalAreaLabel(area)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Appointment type
+                <select
+                  value={form.appointmentTypeId}
+                  onChange={(e) => updateForm("appointmentTypeId", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                >
+                  <option value="">Select a type...</option>
+                  {appointmentTypes.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.duration_minutes} mins)
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Start time
+                <input
+                  type="time"
+                  value={form.startTime}
+                  onChange={(e) => updateForm("startTime", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                End time
+                <input
+                  value={calculatedEndTimeLabel || "Calculated from appointment type"}
+                  readOnly
+                  style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                Customer name
+                <input
+                  value={form.customerName}
+                  onChange={(e) => updateForm("customerName", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Customer email
+                <input
+                  type="email"
+                  value={form.customerEmail}
+                  onChange={(e) => updateForm("customerEmail", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Customer phone
+                <input
+                  value={form.customerPhone}
+                  onChange={(e) => updateForm("customerPhone", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                Internal notes
+                <textarea
+                  rows={4}
+                  value={form.internalNotes}
+                  onChange={(e) => updateForm("internalNotes", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6, resize: "vertical" }}
+                />
+              </label>
+            </div>
+
+            {formError ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.35)",
+                }}
+              >
+                {formError}
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 type="button"
                 onClick={closeCreateModal}
                 style={{
-                  padding: "8px 12px",
+                  padding: "9px 12px",
                   borderRadius: ui.radius.md,
                   border: `1px solid ${ui.colors.border}`,
                   background: ui.colors.cardBg,
@@ -1143,11 +1615,43 @@ export default function Appointments() {
                   fontWeight: 800,
                 }}
               >
-                Close
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: ui.radius.md,
+                  border: `1px solid rgba(168,85,247,0.35)`,
+                  background: ui.colors.brandSoft,
+                  color: ui.colors.text,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontWeight: 900,
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                {saving ? "Saving..." : "Save appointment"}
               </button>
             </div>
+          </form>
+        </ModalShell>
+      ) : null}
 
-            <form onSubmit={submitCreateAppointment} style={{ padding: 16 }}>
+      {detailOpen && detailAppointment ? (
+        <ModalShell
+          title={detailEditing ? "Edit appointment" : "Appointment details"}
+          subtitle={
+            detailEditing
+              ? "Update this appointment through the controlled staff RPC."
+              : "View customer details, accountability, and activity."
+          }
+          onClose={closeDetailModal}
+          maxWidth={760}
+        >
+          {detailEditing ? (
+            <form onSubmit={submitDetailUpdate} style={{ padding: 16 }}>
               <div
                 style={{
                   display: "grid",
@@ -1155,38 +1659,21 @@ export default function Appointments() {
                   gap: 12,
                 }}
               >
-                {showSiteSelector ? (
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Site
-                    <select
-                      value={form.siteId}
-                      onChange={(e) => updateForm("siteId", e.target.value)}
-                      style={{ ...baseInputStyle, marginTop: 6 }}
-                    >
-                      {bookableSites.map((site) => (
-                        <option key={site.id} value={site.id}>
-                          {site.name || prettySiteName(site.id)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Site
-                    <input
-                      value={prettySiteName(form.siteId)}
-                      readOnly
-                      style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
-                    />
-                  </label>
-                )}
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <input
+                    value={prettySiteName(detailSiteId)}
+                    readOnly
+                    style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                  />
+                </label>
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Date
                   <input
                     type="date"
-                    value={form.date}
-                    onChange={(e) => updateForm("date", e.target.value)}
+                    value={detailForm.date}
+                    onChange={(e) => updateDetailForm("date", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   />
                 </label>
@@ -1194,15 +1681,13 @@ export default function Appointments() {
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Appointment area
                   <select
-                    value={form.areaId}
-                    onChange={(e) => updateForm("areaId", e.target.value)}
+                    value={detailForm.areaId}
+                    onChange={(e) => updateDetailForm("areaId", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
-                    disabled={modalAreasLoading || modalAreas.length === 0}
+                    disabled={areas.length === 0}
                   >
-                    <option value="">
-                      {modalAreasLoading ? "Loading areas..." : "Select an area..."}
-                    </option>
-                    {modalAreas.map((area) => (
+                    <option value="">Select an area...</option>
+                    {areas.map((area) => (
                       <option key={area.id} value={area.id}>
                         {canonicalAreaLabel(area)}
                       </option>
@@ -1213,8 +1698,8 @@ export default function Appointments() {
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Appointment type
                   <select
-                    value={form.appointmentTypeId}
-                    onChange={(e) => updateForm("appointmentTypeId", e.target.value)}
+                    value={detailForm.appointmentTypeId}
+                    onChange={(e) => updateDetailForm("appointmentTypeId", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   >
                     <option value="">Select a type...</option>
@@ -1230,8 +1715,8 @@ export default function Appointments() {
                   Start time
                   <input
                     type="time"
-                    value={form.startTime}
-                    onChange={(e) => updateForm("startTime", e.target.value)}
+                    value={detailForm.startTime}
+                    onChange={(e) => updateDetailForm("startTime", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   />
                 </label>
@@ -1239,7 +1724,7 @@ export default function Appointments() {
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   End time
                   <input
-                    value={calculatedEndTimeLabel || "Calculated from appointment type"}
+                    value={detailEndTimeLabel || "Calculated from appointment type"}
                     readOnly
                     style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
                   />
@@ -1248,8 +1733,8 @@ export default function Appointments() {
                 <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
                   Customer name
                   <input
-                    value={form.customerName}
-                    onChange={(e) => updateForm("customerName", e.target.value)}
+                    value={detailForm.customerName}
+                    onChange={(e) => updateDetailForm("customerName", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   />
                 </label>
@@ -1258,8 +1743,8 @@ export default function Appointments() {
                   Customer email
                   <input
                     type="email"
-                    value={form.customerEmail}
-                    onChange={(e) => updateForm("customerEmail", e.target.value)}
+                    value={detailForm.customerEmail}
+                    onChange={(e) => updateDetailForm("customerEmail", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   />
                 </label>
@@ -1267,8 +1752,8 @@ export default function Appointments() {
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Customer phone
                   <input
-                    value={form.customerPhone}
-                    onChange={(e) => updateForm("customerPhone", e.target.value)}
+                    value={detailForm.customerPhone}
+                    onChange={(e) => updateDetailForm("customerPhone", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   />
                 </label>
@@ -1277,14 +1762,14 @@ export default function Appointments() {
                   Internal notes
                   <textarea
                     rows={4}
-                    value={form.internalNotes}
-                    onChange={(e) => updateForm("internalNotes", e.target.value)}
+                    value={detailForm.internalNotes}
+                    onChange={(e) => updateDetailForm("internalNotes", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6, resize: "vertical" }}
                   />
                 </label>
               </div>
 
-              {formError ? (
+              {detailError ? (
                 <div
                   style={{
                     marginTop: 12,
@@ -1294,7 +1779,7 @@ export default function Appointments() {
                     border: "1px solid rgba(239,68,68,0.35)",
                   }}
                 >
-                  {formError}
+                  {detailError}
                 </div>
               ) : null}
 
@@ -1309,7 +1794,11 @@ export default function Appointments() {
               >
                 <button
                   type="button"
-                  onClick={closeCreateModal}
+                  onClick={() => {
+                    setDetailEditing(false);
+                    setDetailForm(buildDetailForm(detailAppointment, detailSiteId));
+                    setDetailError("");
+                  }}
                   style={{
                     padding: "9px 12px",
                     borderRadius: ui.radius.md,
@@ -1320,29 +1809,207 @@ export default function Appointments() {
                     fontWeight: 800,
                   }}
                 >
-                  Cancel
+                  Cancel edit
                 </button>
 
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={detailSaving}
                   style={{
                     padding: "9px 12px",
                     borderRadius: ui.radius.md,
                     border: `1px solid rgba(168,85,247,0.35)`,
                     background: ui.colors.brandSoft,
                     color: ui.colors.text,
-                    cursor: saving ? "not-allowed" : "pointer",
+                    cursor: detailSaving ? "not-allowed" : "pointer",
                     fontWeight: 900,
-                    opacity: saving ? 0.6 : 1,
+                    opacity: detailSaving ? 0.6 : 1,
                   }}
                 >
-                  {saving ? "Saving..." : "Save appointment"}
+                  {detailSaving ? "Saving..." : "Save changes"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          ) : (
+            <div style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <FieldValue label="Customer name" value={detailAppointment.customer_name} />
+                <FieldValue label="Customer email" value={detailAppointment.customer_email} />
+                <FieldValue label="Customer phone" value={detailAppointment.customer_phone} />
+                <FieldValue
+                  label="Appointment type"
+                  value={appointmentTypeLabel(detailAppointment, typesById)}
+                />
+                <FieldValue label="Date" value={formatDateLabel(detailAppointment.start_at)} />
+                <FieldValue label="Time" value={formatTimeRange(detailAppointment.start_at, detailAppointment.end_at)} />
+                <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
+                <FieldValue label="Area / resource" value={canonicalAreaLabel(detailArea)} />
+                <FieldValue label="Booked by" value={bookedByLabel(detailAppointment)} />
+                <FieldValue label="Created at" value={formatDateTimeLabel(detailAppointment.created_at)} />
+                <FieldValue
+                  label="Last updated"
+                  value={detailLastChange ? formatDateTimeLabel(detailLastChange.created_at) : formatDateTimeLabel(detailAppointment.updated_at)}
+                />
+                <FieldValue
+                  label="Last updated by"
+                  value={detailLastChange?.changed_by_name || "Not available"}
+                />
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(2, 6, 23, 0.03)",
+                    border: `1px solid ${ui.colors.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>Internal notes</div>
+                  <div style={{ marginTop: 6, whiteSpace: "pre-wrap", fontWeight: 700 }}>
+                    {detailAppointment.internal_notes || "No internal notes"}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: "rgba(2, 6, 23, 0.02)",
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
+
+                {activityLoading ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>Loading activity...</div>
+                ) : activityError ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 10,
+                      background: "rgba(245,158,11,0.12)",
+                      border: "1px solid rgba(245,158,11,0.35)",
+                    }}
+                  >
+                    {activityError}
+                  </div>
+                ) : activityRows.length === 0 ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>No activity has been recorded yet.</div>
+                ) : (
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {activityRows.map((row) => (
+                      <div
+                        key={row.id}
+                        style={{
+                          padding: 10,
+                          borderRadius: 10,
+                          background: ui.colors.cardBg,
+                          border: `1px solid ${ui.colors.border}`,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, textTransform: "capitalize" }}>{row.action}</div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
+                          {formatDateTimeLabel(row.created_at)}
+                          {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {detailError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {detailError}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                {canManageSelectedAppointment ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDetailEditing(true);
+                      setDetailForm(buildDetailForm(detailAppointment, detailSiteId));
+                      setDetailError("");
+                    }}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: `1px solid rgba(168,85,247,0.35)`,
+                      background: ui.colors.brandSoft,
+                      color: ui.colors.text,
+                      cursor: "pointer",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Edit
+                  </button>
+                ) : null}
+
+                {canManageSelectedAppointment ? (
+                  <button
+                    type="button"
+                    onClick={cancelAppointment}
+                    disabled={detailSaving}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(239,68,68,0.35)",
+                      background: "rgba(239,68,68,0.12)",
+                      color: ui.colors.text,
+                      cursor: detailSaving ? "not-allowed" : "pointer",
+                      fontWeight: 900,
+                      opacity: detailSaving ? 0.6 : 1,
+                    }}
+                  >
+                    Cancel appointment
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={closeDetailModal}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid ${ui.colors.border}`,
+                    background: ui.colors.cardBg,
+                    color: ui.colors.text,
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </ModalShell>
       ) : null}
     </div>
   );
