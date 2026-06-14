@@ -92,6 +92,33 @@ function appointmentTypeLabel(item, typesById) {
   );
 }
 
+function toDateTimeIso(dateString, timeString) {
+  return new Date(`${dateString}T${timeString}:00`).toISOString();
+}
+
+function isWithinSelectedDay(dateString, isoValue) {
+  return new Date(isoValue).toISOString().slice(0, 10) === dateString;
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return new Date(startA).getTime() < new Date(endB).getTime() &&
+    new Date(endA).getTime() > new Date(startB).getTime();
+}
+
+function buildInitialForm({ siteId, date }) {
+  return {
+    siteId: siteId || "",
+    date: date || todayInputValue(),
+    areaId: "",
+    appointmentTypeId: "",
+    startTime: "",
+    customerName: "",
+    customerEmail: "",
+    customerPhone: "",
+    internalNotes: "",
+  };
+}
+
 function TimelineItem({ item, type, startHour, typesById }) {
   const top = toPosition(item.start_at, startHour);
   const height = itemHeight(item.start_at, item.end_at);
@@ -155,13 +182,151 @@ export default function Appointments() {
   const [areas, setAreas] = React.useState([]);
   const [appointments, setAppointments] = React.useState([]);
   const [blocks, setBlocks] = React.useState([]);
+  const [appointmentTypes, setAppointmentTypes] = React.useState([]);
   const [typesById, setTypesById] = React.useState({});
+
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [formError, setFormError] = React.useState("");
+  const [modalAreas, setModalAreas] = React.useState([]);
+  const [modalAreasLoading, setModalAreasLoading] = React.useState(false);
+  const [form, setForm] = React.useState(() => buildInitialForm({}));
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const showSiteSelector = isAdmin || isManager;
   const bookableSites = React.useMemo(() => getBookableAppointmentSites(sites), [sites]);
   const selectedSiteIsBookable = isBookableAppointmentSite(selectedSiteId);
+  const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
+
+  const loadAreasForSite = React.useCallback(async (siteId) => {
+    const branchCode = siteIdToAppointmentBranch(siteId);
+    if (!branchCode) return [];
+
+    const { data, error: loadError } = await supabase
+      .from("appointment_areas")
+      .select("id, branch, name, sort_order, is_active")
+      .eq("branch", branchCode)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (loadError) throw loadError;
+    return data || [];
+  }, []);
+
+  const loadCalendar = React.useCallback(
+    async (siteIdParam, dateParam) => {
+      if (!siteIdParam || !profile?.site_id) return;
+
+      setLoading(true);
+      setError("");
+      setBlockWarning("");
+      setCalendarWarning("");
+
+      const branchCode = siteIdToAppointmentBranch(siteIdParam);
+      if (!branchCode) {
+        setAreas([]);
+        setAppointments([]);
+        setBlocks([]);
+        setError(`Appointments are not available for ${prettySiteName(siteIdParam)}.`);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const areasReq = loadAreasForSite(siteIdParam);
+        const typesReq = supabase
+          .from("appointment_types")
+          .select("id, name, duration_minutes, is_active, sort_order")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true });
+
+        const calendarReq = supabase.rpc("get_calendar_day_agent", {
+          p_branch: branchCode,
+          p_day: dateParam,
+        });
+
+        const blocksReq = supabase.rpc("get_blocks_day_agent", {
+          p_branch: branchCode,
+          p_day: dateParam,
+        });
+
+        const [areasRes, typesRes, calendarRes, blocksRes] = await Promise.allSettled([
+          areasReq,
+          typesReq,
+          calendarReq,
+          blocksReq,
+        ]);
+
+        if (areasRes.status === "fulfilled") {
+          setAreas(areasRes.value);
+        } else {
+          throw areasRes.reason;
+        }
+
+        if (typesRes.status === "fulfilled") {
+          if (typesRes.value.error) {
+            console.error("appointments: types load failed", typesRes.value.error);
+            setAppointmentTypes([]);
+            setTypesById({});
+          } else {
+            const nextTypes = typesRes.value.data || [];
+            const map = {};
+            for (const item of nextTypes) map[item.id] = item;
+            setAppointmentTypes(nextTypes);
+            setTypesById(map);
+          }
+        } else {
+          console.error("appointments: types load failed", typesRes.reason);
+          setAppointmentTypes([]);
+          setTypesById({});
+        }
+
+        if (calendarRes.status === "fulfilled") {
+          if (calendarRes.value.error) {
+            console.error("appointments: get_calendar_day_agent failed", calendarRes.value.error);
+            setAppointments([]);
+            setCalendarWarning(
+              "Calendar appointments could not be loaded from the existing appointment RPC."
+            );
+          } else {
+            setAppointments(calendarRes.value.data || []);
+          }
+        } else {
+          console.error("appointments: get_calendar_day_agent crashed", calendarRes.reason);
+          setAppointments([]);
+          setCalendarWarning(
+            "Calendar appointments could not be loaded from the existing appointment RPC."
+          );
+        }
+
+        if (blocksRes.status === "fulfilled") {
+          if (blocksRes.value.error) {
+            console.error("appointments: get_blocks_day_agent failed", blocksRes.value.error);
+            setBlocks([]);
+            setBlockWarning("Blocked-out periods could not be loaded for this date.");
+          } else {
+            setBlocks(blocksRes.value.data || []);
+          }
+        } else {
+          console.error("appointments: get_blocks_day_agent crashed", blocksRes.reason);
+          setBlocks([]);
+          setBlockWarning("Blocked-out periods could not be loaded for this date.");
+        }
+      } catch (err) {
+        console.error("appointments: load failed", err);
+        setAreas([]);
+        setAppointments([]);
+        setBlocks([]);
+        setError(err.message || "Could not load appointment calendar.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadAreasForSite, profile?.site_id]
+  );
 
   React.useEffect(() => {
     if (!showSiteSelector) return;
@@ -175,7 +340,7 @@ export default function Appointments() {
     });
 
     if (fallbackSiteId) setSelectedSiteId(fallbackSiteId);
-  }, [profile?.site_id, selectedSiteId, selectedSiteIsBookable, showSiteSelector, sites]);
+  }, [profile?.site_id, selectedSiteIsBookable, showSiteSelector, sites]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -217,12 +382,10 @@ export default function Appointments() {
 
         if (cancelled) return;
 
-        setProfile(ownProfile);
-        setRole(nextRole);
-
         const safeSites = siteRows?.length
           ? siteRows
           : [{ id: ownProfile.site_id, name: prettySiteName(ownProfile.site_id) }];
+
         const preferredSiteId =
           nextRole === "admin" || nextRole === "manager"
             ? getDefaultAppointmentSiteId({
@@ -232,16 +395,13 @@ export default function Appointments() {
               })
             : ownProfile.site_id || "";
 
+        setProfile(ownProfile);
+        setRole(nextRole);
         setSites(safeSites);
-        setSelectedSiteId((prev) => {
-          if (prev) return prev;
-          return preferredSiteId;
-        });
+        setSelectedSiteId((prev) => prev || preferredSiteId);
       } catch (err) {
         console.error("appointments: bootstrap failed", err);
-        if (!cancelled) {
-          setError(err.message || "Could not load appointment access.");
-        }
+        if (!cancelled) setError(err.message || "Could not load appointment access.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -255,145 +415,58 @@ export default function Appointments() {
   }, []);
 
   React.useEffect(() => {
+    if (!selectedSiteId || !profile?.site_id) return;
+    loadCalendar(selectedSiteId, selectedDate);
+  }, [loadCalendar, profile?.site_id, selectedDate, selectedSiteId]);
+
+  React.useEffect(() => {
     let cancelled = false;
 
-    async function loadCalendar() {
-      if (!selectedSiteId || !profile?.site_id) return;
-
-      setLoading(true);
-      setError("");
-      setBlockWarning("");
-      setCalendarWarning("");
-
-      const branchCode = siteIdToAppointmentBranch(selectedSiteId);
-      if (!branchCode) {
-        setAreas([]);
-        setAppointments([]);
-        setBlocks([]);
-        setError(`Appointments are not available for ${prettySiteName(selectedSiteId)}.`);
-        setLoading(false);
+    async function loadModalAreas() {
+      if (!modalOpen) return;
+      if (!form.siteId) {
+        setModalAreas([]);
         return;
       }
 
+      if (!isBookableAppointmentSite(form.siteId)) {
+        setModalAreas([]);
+        return;
+      }
+
+      setModalAreasLoading(true);
       try {
-        const areasReq = supabase
-          .from("appointment_areas")
-          .select("id, branch, name, sort_order, is_active")
-          .eq("branch", branchCode)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true })
-          .order("name", { ascending: true });
-
-        const typesReq = supabase
-          .from("appointment_types")
-          .select("id, name, duration_minutes, is_active")
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true })
-          .order("name", { ascending: true });
-
-        const calendarReq = supabase.rpc("get_calendar_day_agent", {
-          p_branch: branchCode,
-          p_day: selectedDate,
-        });
-
-        const blocksReq = supabase.rpc("get_blocks_day_agent", {
-          p_branch: branchCode,
-          p_day: selectedDate,
-        });
-
-        const [areasRes, typesRes, calendarRes, blocksRes] = await Promise.allSettled([
-          areasReq,
-          typesReq,
-          calendarReq,
-          blocksReq,
-        ]);
+        const nextAreas =
+          form.siteId === selectedSiteId ? areas : await loadAreasForSite(form.siteId);
 
         if (cancelled) return;
-
-        if (areasRes.status === "fulfilled") {
-          if (areasRes.value.error) throw areasRes.value.error;
-          setAreas(areasRes.value.data || []);
-        } else {
-          throw areasRes.reason;
-        }
-
-        if (typesRes.status === "fulfilled") {
-          if (typesRes.value.error) {
-            console.error("appointments: types load failed", typesRes.value.error);
-            setTypesById({});
-          } else {
-            const map = {};
-            for (const item of typesRes.value.data || []) {
-              map[item.id] = item;
-            }
-            setTypesById(map);
-          }
-        } else {
-          console.error("appointments: types load failed", typesRes.reason);
-          setTypesById({});
-        }
-
-        if (calendarRes.status === "fulfilled") {
-          if (calendarRes.value.error) {
-            console.error("appointments: get_calendar_day_agent failed", calendarRes.value.error);
-            setAppointments([]);
-            setCalendarWarning(
-              "Calendar appointments could not be loaded from the existing appointment RPC."
-            );
-          } else {
-            setAppointments(calendarRes.value.data || []);
-          }
-        } else {
-          console.error("appointments: get_calendar_day_agent crashed", calendarRes.reason);
-          setAppointments([]);
-          setCalendarWarning(
-            "Calendar appointments could not be loaded from the existing appointment RPC."
-          );
-        }
-
-        if (blocksRes.status === "fulfilled") {
-          if (blocksRes.value.error) {
-            console.error("appointments: get_blocks_day_agent failed", blocksRes.value.error);
-            setBlocks([]);
-            setBlockWarning("Blocked-out periods could not be loaded for this date.");
-          } else {
-            setBlocks(blocksRes.value.data || []);
-          }
-        } else {
-          console.error("appointments: get_blocks_day_agent crashed", blocksRes.reason);
-          setBlocks([]);
-          setBlockWarning("Blocked-out periods could not be loaded for this date.");
-        }
+        setModalAreas(nextAreas);
+        setForm((prev) => {
+          if (nextAreas.some((item) => item.id === prev.areaId)) return prev;
+          return { ...prev, areaId: nextAreas[0]?.id || "" };
+        });
       } catch (err) {
-        console.error("appointments: load failed", err);
+        console.error("appointments: modal areas load failed", err);
         if (!cancelled) {
-          setAreas([]);
-          setAppointments([]);
-          setBlocks([]);
-          setError(err.message || "Could not load appointment calendar.");
+          setModalAreas([]);
+          setFormError("Could not load appointment areas for that site.");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setModalAreasLoading(false);
       }
     }
 
-    loadCalendar();
+    loadModalAreas();
 
     return () => {
       cancelled = true;
     };
-  }, [profile?.site_id, selectedDate, selectedSiteId]);
+  }, [areas, form.siteId, loadAreasForSite, modalOpen, selectedSiteId]);
 
   const visibleSiteName = React.useMemo(
     () => prettySiteName(selectedSiteId || profile?.site_id),
     [profile?.site_id, selectedSiteId]
   );
-
-  const areasById = React.useMemo(() => {
-    const map = {};
-    for (const area of areas) map[area.id] = area;
-    return map;
-  }, [areas]);
 
   const timeline = React.useMemo(
     () => buildVisibleWindow(appointments, blocks),
@@ -425,28 +498,207 @@ export default function Appointments() {
     const map = {};
     for (const area of areas) map[area.id] = [];
     for (const item of blocks) {
-      if (!item.area_id) continue;
-      if (!map[item.area_id]) map[item.area_id] = [];
-      map[item.area_id].push(item);
+      const key = item.area_id || "__branch__";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
     }
     return map;
   }, [blocks, areas]);
 
   const pageTitle = `Appointments${visibleSiteName ? ` - ${visibleSiteName}` : ""}`;
   const selectorSites = showSiteSelector ? bookableSites : sites;
+  const selectedType = appointmentTypes.find((item) => item.id === form.appointmentTypeId) || null;
+  const calculatedEndTimeLabel =
+    form.startTime && selectedType
+      ? formatTimeRange(
+          toDateTimeIso(form.date, form.startTime),
+          new Date(
+            new Date(toDateTimeIso(form.date, form.startTime)).getTime() +
+              selectedType.duration_minutes * 60000
+          ).toISOString()
+        ).split(" - ")[1]
+      : "";
+
+  function openCreateModal() {
+    setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
+    setFormError("");
+    setModalAreas(areas);
+    setModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setModalOpen(false);
+    setSaving(false);
+    setFormError("");
+  }
+
+  function updateForm(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function findLocalConflict(nextAreaId, nextStartAt, nextEndAt) {
+    if (form.siteId !== selectedSiteId || form.date !== selectedDate) return "";
+
+    const overlappingAppointment = appointments.find((item) => {
+      if (item.area_id !== nextAreaId) return false;
+      return rangesOverlap(nextStartAt, nextEndAt, item.start_at, item.end_at);
+    });
+
+    if (overlappingAppointment) {
+      return "That appointment overlaps an existing booking in this area.";
+    }
+
+    const overlappingBlock = blocks.find((item) => {
+      const isAreaMatch = item.area_id === nextAreaId;
+      const isBranchWide = !item.area_id;
+      if (!isAreaMatch && !isBranchWide) return false;
+      return rangesOverlap(nextStartAt, nextEndAt, item.start_at, item.end_at);
+    });
+
+    if (overlappingBlock) {
+      return "That appointment overlaps a blocked-out period.";
+    }
+
+    return "";
+  }
+
+  async function submitCreateAppointment(e) {
+    e.preventDefault();
+    setFormError("");
+
+    if (!form.customerName.trim()) {
+      setFormError("Customer name is required.");
+      return;
+    }
+    if (!form.customerEmail.trim()) {
+      setFormError("Customer email is required.");
+      return;
+    }
+    if (!form.appointmentTypeId) {
+      setFormError("Appointment type is required.");
+      return;
+    }
+    if (!form.areaId) {
+      setFormError("Appointment area is required.");
+      return;
+    }
+    if (!form.startTime) {
+      setFormError("Start time is required.");
+      return;
+    }
+    if (!isBookableAppointmentSite(form.siteId)) {
+      setFormError("Appointments can only be created for Duke Street or St Enoch.");
+      return;
+    }
+
+    const typeRow = appointmentTypes.find((item) => item.id === form.appointmentTypeId);
+    if (!typeRow) {
+      setFormError("The selected appointment type is not available.");
+      return;
+    }
+
+    const startAt = toDateTimeIso(form.date, form.startTime);
+    if (!isWithinSelectedDay(form.date, startAt)) {
+      setFormError("Start time must stay within the selected calendar day.");
+      return;
+    }
+
+    const endAt = new Date(
+      new Date(startAt).getTime() + typeRow.duration_minutes * 60000
+    ).toISOString();
+
+    const localConflict = findLocalConflict(form.areaId, startAt, endAt);
+    if (localConflict) {
+      setFormError(localConflict);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("create_appointment_staff", {
+        p_site_id: form.siteId,
+        p_area_id: form.areaId,
+        p_appointment_type_id: form.appointmentTypeId,
+        p_start_at: startAt,
+        p_customer_name: form.customerName.trim(),
+        p_customer_email: form.customerEmail.trim(),
+        p_customer_phone: form.customerPhone.trim() || null,
+        p_internal_notes: form.internalNotes.trim() || null,
+      });
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error("The appointment could not be created.");
+      }
+
+      setSelectedSiteId(form.siteId);
+      setSelectedDate(form.date);
+      closeCreateModal();
+      await loadCalendar(form.siteId, form.date);
+    } catch (err) {
+      console.error("appointments: create failed", err);
+      setFormError(err.message || "Could not create the appointment.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const baseInputStyle = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: ui.radius.md,
+    border: `1px solid ${ui.colors.border}`,
+    background: ui.colors.cardBg,
+    color: ui.colors.text,
+    outline: "none",
+    boxSizing: "border-box",
+    fontFamily: ui.font.ui,
+  };
 
   return (
     <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <h2 style={{ margin: 0 }}>Appointments</h2>
           <div style={ui.text.subtitle}>
-            Read-only day view using the existing appointment areas and calendar RPCs.
+            Day view with safe staff-created appointments through the existing appointment schema.
           </div>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>
-          {pageTitle}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}>
+            {pageTitle}
+          </div>
+
+          <button
+            type="button"
+            disabled={!canOpenCreate}
+            onClick={openCreateModal}
+            style={{
+              padding: "8px 12px",
+              borderRadius: ui.radius.md,
+              border: `1px solid rgba(168,85,247,0.35)`,
+              background: ui.colors.brandSoft,
+              color: ui.colors.text,
+              cursor: canOpenCreate ? "pointer" : "not-allowed",
+              fontWeight: 900,
+              opacity: canOpenCreate ? 1 : 0.55,
+            }}
+          >
+            New appointment
+          </button>
         </div>
       </div>
 
@@ -469,17 +721,7 @@ export default function Appointments() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            style={{
-              display: "block",
-              marginTop: 6,
-              padding: "10px 12px",
-              borderRadius: ui.radius.md,
-              border: `1px solid ${ui.colors.border}`,
-              background: ui.colors.cardBg,
-              color: ui.colors.text,
-              outline: "none",
-              boxSizing: "border-box",
-            }}
+            style={{ ...baseInputStyle, display: "block", marginTop: 6 }}
           />
         </label>
 
@@ -489,18 +731,7 @@ export default function Appointments() {
             <select
               value={selectedSiteId}
               onChange={(e) => setSelectedSiteId(e.target.value)}
-              style={{
-                display: "block",
-                marginTop: 6,
-                padding: "10px 12px",
-                borderRadius: ui.radius.md,
-                border: `1px solid ${ui.colors.border}`,
-                background: ui.colors.cardBg,
-                color: ui.colors.text,
-                outline: "none",
-                boxSizing: "border-box",
-                minWidth: 180,
-              }}
+              style={{ ...baseInputStyle, display: "block", marginTop: 6, minWidth: 180 }}
             >
               {selectorSites.map((site) => (
                 <option key={site.id} value={site.id}>
@@ -646,7 +877,7 @@ export default function Appointments() {
                 >
                   <div style={{ fontWeight: 900 }}>{area.name}</div>
                   <div style={{ fontSize: 12, color: ui.colors.muted }}>
-                    {areasById[area.id]?.branch || ""}
+                    {area.branch || ""}
                   </div>
                 </div>
               ))}
@@ -694,7 +925,10 @@ export default function Appointments() {
 
               {areas.map((area) => {
                 const areaAppointments = appointmentsByArea[area.id] || [];
-                const areaBlocks = blocksByArea[area.id] || [];
+                const areaBlocks = [
+                  ...(blocksByArea[area.id] || []),
+                  ...(blocksByArea.__branch__ || []),
+                ];
                 const hasItems = areaAppointments.length > 0 || areaBlocks.length > 0;
 
                 return (
@@ -725,7 +959,7 @@ export default function Appointments() {
 
                     {areaBlocks.map((item) => (
                       <TimelineItem
-                        key={`block-${item.id}`}
+                        key={`block-${area.id}-${item.id}`}
                         item={item}
                         type="block"
                         startHour={timeline.startHour}
@@ -768,6 +1002,263 @@ export default function Appointments() {
           </div>
         )}
       </div>
+
+      {modalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 18,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 640,
+              maxHeight: "90vh",
+              overflow: "auto",
+              background: ui.colors.cardBg,
+              border: `1px solid ${ui.colors.border}`,
+              borderRadius: ui.radius.lg,
+              boxShadow: ui.shadow.card,
+            }}
+          >
+            <div
+              style={{
+                padding: 16,
+                borderBottom: `1px solid ${ui.colors.border}`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 900 }}>New appointment</div>
+                <div style={ui.text.subtitle}>
+                  Create a booked appointment without sending emails yet.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: ui.radius.md,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: ui.colors.cardBg,
+                  color: ui.colors.text,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={submitCreateAppointment} style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {showSiteSelector ? (
+                  <label style={{ fontSize: 13, fontWeight: 700 }}>
+                    Site
+                    <select
+                      value={form.siteId}
+                      onChange={(e) => updateForm("siteId", e.target.value)}
+                      style={{ ...baseInputStyle, marginTop: 6 }}
+                    >
+                      {bookableSites.map((site) => (
+                        <option key={site.id} value={site.id}>
+                          {site.name || prettySiteName(site.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label style={{ fontSize: 13, fontWeight: 700 }}>
+                    Site
+                    <input
+                      value={prettySiteName(form.siteId)}
+                      readOnly
+                      style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                    />
+                  </label>
+                )}
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Date
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => updateForm("date", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Appointment area
+                  <select
+                    value={form.areaId}
+                    onChange={(e) => updateForm("areaId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                    disabled={modalAreasLoading || modalAreas.length === 0}
+                  >
+                    <option value="">
+                      {modalAreasLoading ? "Loading areas..." : "Select an area..."}
+                    </option>
+                    {modalAreas.map((area) => (
+                      <option key={area.id} value={area.id}>
+                        {area.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Appointment type
+                  <select
+                    value={form.appointmentTypeId}
+                    onChange={(e) => updateForm("appointmentTypeId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a type...</option>
+                    {appointmentTypes.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.duration_minutes} mins)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Start time
+                  <input
+                    type="time"
+                    value={form.startTime}
+                    onChange={(e) => updateForm("startTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  End time
+                  <input
+                    value={calculatedEndTimeLabel || "Calculated from appointment type"}
+                    readOnly
+                    style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                  Customer name
+                  <input
+                    value={form.customerName}
+                    onChange={(e) => updateForm("customerName", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Customer email
+                  <input
+                    type="email"
+                    value={form.customerEmail}
+                    onChange={(e) => updateForm("customerEmail", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Customer phone
+                  <input
+                    value={form.customerPhone}
+                    onChange={(e) => updateForm("customerPhone", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                  Internal notes
+                  <textarea
+                    rows={4}
+                    value={form.internalNotes}
+                    onChange={(e) => updateForm("internalNotes", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6, resize: "vertical" }}
+                  />
+                </label>
+              </div>
+
+              {formError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {formError}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid ${ui.colors.border}`,
+                    background: ui.colors.cardBg,
+                    color: ui.colors.text,
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid rgba(168,85,247,0.35)`,
+                    background: ui.colors.brandSoft,
+                    color: ui.colors.text,
+                    cursor: saving ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? "Saving..." : "Save appointment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
