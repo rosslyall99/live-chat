@@ -52,6 +52,15 @@ function formatTimeRange(startAt, endAt) {
   })}`;
 }
 
+function formatTimeLabel(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDateLabel(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown date";
@@ -220,6 +229,37 @@ function buildDetailForm(appointment, siteId) {
 
 function readErrorMessage(err, fallback) {
   return err?.message || err?.error_description || fallback;
+}
+
+function normalizeAuditComparable(value) {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function describeActivity(row) {
+  if (!row) return "";
+  if (row.action === "created") return "Appointment created.";
+  if (row.action === "cancelled") return "Appointment cancelled.";
+
+  const beforeData = row.before_data || {};
+  const afterData = row.after_data || {};
+  const fields = [
+    ["customer_name", "customer name"],
+    ["customer_email", "customer email"],
+    ["customer_phone", "customer phone"],
+    ["appointment_type_id", "appointment type"],
+    ["area_id", "area / resource"],
+    ["start_at", "start time"],
+    ["end_at", "end time"],
+    ["internal_notes", "internal notes"],
+  ];
+
+  const changedLabels = fields
+    .filter(([key]) => normalizeAuditComparable(beforeData[key]) !== normalizeAuditComparable(afterData[key]))
+    .map(([, label]) => label);
+
+  if (changedLabels.length === 0) return "Appointment updated.";
+  return `Changed ${changedLabels.join(", ")}.`;
 }
 
 function TimelineItem({ item, type, startHour, typesById, onClick }) {
@@ -794,14 +834,7 @@ export default function Appointments() {
 
   const canManageSelectedAppointment = React.useMemo(() => {
     if (!detailAppointment || !profile) return false;
-    if (role === "admin") return true;
-    if (role === "manager") {
-      return siteIdToAppointmentBranch(profile.site_id) === detailAppointment.branch;
-    }
-    if (role === "agent") {
-      return detailAppointment.booked_by_user_id === profile.user_id;
-    }
-    return false;
+    return role === "admin" || role === "manager" || role === "agent";
   }, [detailAppointment, profile, role]);
 
   function openCreateModal() {
@@ -1847,7 +1880,8 @@ export default function Appointments() {
                   value={appointmentTypeLabel(detailAppointment, typesById)}
                 />
                 <FieldValue label="Date" value={formatDateLabel(detailAppointment.start_at)} />
-                <FieldValue label="Time" value={formatTimeRange(detailAppointment.start_at, detailAppointment.end_at)} />
+                <FieldValue label="Start time" value={formatTimeLabel(detailAppointment.start_at)} />
+                <FieldValue label="End time" value={formatTimeLabel(detailAppointment.end_at)} />
                 <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
                 <FieldValue label="Area / resource" value={canonicalAreaLabel(detailArea)} />
                 <FieldValue label="Booked by" value={bookedByLabel(detailAppointment)} />
@@ -1919,6 +1953,9 @@ export default function Appointments() {
                         <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
                           {formatDateTimeLabel(row.created_at)}
                           {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: ui.colors.text }}>
+                          {describeActivity(row)}
                         </div>
                       </div>
                     ))}
