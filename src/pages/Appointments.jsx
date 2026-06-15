@@ -1,6 +1,7 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
+import { invokeAuthed } from "../lib/invokeAuthed";
 import {
   appointmentBranchToSiteId,
   getBookableAppointmentSites,
@@ -13,6 +14,7 @@ import {
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
 const HOUR_HEIGHT = 72;
+const TIME_OPTION_INTERVAL_MINUTES = 15;
 
 function todayInputValue() {
   const now = new Date();
@@ -126,6 +128,20 @@ function hourLabel(hour) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
+function buildTimeOptions(startHour = DEFAULT_START_HOUR, endHour = DEFAULT_END_HOUR) {
+  const items = [];
+  const startMinutes = startHour * 60;
+  const endMinutes = endHour * 60;
+
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += TIME_OPTION_INTERVAL_MINUTES) {
+    const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+    const mm = String(minutes % 60).padStart(2, "0");
+    items.push(`${hh}:${mm}`);
+  }
+
+  return items;
+}
+
 function areaSlotNumber(name) {
   const match = String(name || "").trim().match(/^(area|column)\s+(\d+)$/i);
   if (!match) return null;
@@ -227,6 +243,28 @@ function buildDetailForm(appointment, siteId) {
   };
 }
 
+function buildInitialBlockForm({ siteId, date }) {
+  return {
+    siteId: siteId || "",
+    date: date || todayInputValue(),
+    areaId: "",
+    startTime: "",
+    endTime: "",
+    reason: "",
+  };
+}
+
+function buildBlockDetailForm(block, siteId) {
+  return {
+    siteId: siteId || "",
+    date: inputDateValueFromIso(block?.start_at),
+    areaId: block?.area_id || "",
+    startTime: inputTimeValueFromIso(block?.start_at),
+    endTime: inputTimeValueFromIso(block?.end_at),
+    reason: block?.reason || "",
+  };
+}
+
 function readErrorMessage(err, fallback) {
   return err?.message || err?.error_description || fallback;
 }
@@ -240,6 +278,7 @@ function describeActivity(row) {
   if (!row) return "";
   if (row.action === "created") return "Appointment created.";
   if (row.action === "cancelled") return "Appointment cancelled.";
+  if (row.action === "confirmation_sent") return "Confirmation email sent.";
 
   const beforeData = row.before_data || {};
   const afterData = row.after_data || {};
@@ -262,17 +301,45 @@ function describeActivity(row) {
   return `Changed ${changedLabels.join(", ")}.`;
 }
 
+function activityActionLabel(action) {
+  if (!action) return "Activity";
+  return String(action).replaceAll("_", " ");
+}
+
+function describeBlockActivity(row) {
+  if (!row) return "";
+  if (row.action === "created") return "Block created.";
+  if (row.action === "cancelled") return "Block cancelled.";
+
+  const beforeData = row.before_data || {};
+  const afterData = row.after_data || {};
+  const fields = [
+    ["area_id", "scope"],
+    ["start_at", "start time"],
+    ["end_at", "end time"],
+    ["reason", "reason"],
+  ];
+
+  const changedLabels = fields
+    .filter(([key]) => normalizeAuditComparable(beforeData[key]) !== normalizeAuditComparable(afterData[key]))
+    .map(([, label]) => label);
+
+  if (changedLabels.length === 0) return "Block updated.";
+  return `Changed ${changedLabels.join(", ")}.`;
+}
+
 function TimelineItem({ item, type, startHour, typesById, onClick }) {
   const top = toPosition(item.start_at, startHour);
   const height = itemHeight(item.start_at, item.end_at);
   const isBlock = type === "block";
   const bookedBy = bookedByLabel(item);
+  const blockLabel = item.area_id ? "Blocked" : "Whole site blocked";
 
   return (
     <button
       type="button"
-      onClick={isBlock ? undefined : onClick}
-      disabled={isBlock || !onClick}
+      onClick={onClick}
+      disabled={!onClick}
       style={{
         position: "absolute",
         left: 8,
@@ -281,32 +348,38 @@ function TimelineItem({ item, type, startHour, typesById, onClick }) {
         minHeight: height,
         borderRadius: 12,
         border: isBlock
-          ? "1px solid rgba(239,68,68,0.35)"
+          ? "1px solid rgba(100,116,139,0.45)"
           : "1px solid rgba(59,130,246,0.28)",
-        background: isBlock ? "rgba(239,68,68,0.14)" : "rgba(59,130,246,0.14)",
+        background: isBlock
+          ? "repeating-linear-gradient(-45deg, rgba(148,163,184,0.2), rgba(148,163,184,0.2) 8px, rgba(100,116,139,0.12) 8px, rgba(100,116,139,0.12) 16px)"
+          : "rgba(59,130,246,0.14)",
         padding: 8,
         boxSizing: "border-box",
         overflow: "hidden",
-        boxShadow: isBlock ? "none" : "0 4px 10px rgba(59,130,246,0.10)",
-        cursor: isBlock ? "default" : "pointer",
+        boxShadow: isBlock ? "inset 0 0 0 1px rgba(255,255,255,0.25)" : "0 4px 10px rgba(59,130,246,0.10)",
+        cursor: onClick ? "pointer" : "default",
         textAlign: "left",
         fontFamily: ui.font.ui,
       }}
-      title={isBlock ? item.reason : item.customer_name}
+      title={isBlock ? `${blockLabel}${item.reason ? `: ${item.reason}` : ""}` : item.customer_name}
     >
       <div style={{ fontSize: 11, fontWeight: 900, color: ui.colors.muted }}>
         {formatTimeRange(item.start_at, item.end_at)}
       </div>
 
       <div style={{ marginTop: 4, fontWeight: 900, color: ui.colors.text }}>
-        {isBlock ? item.reason : item.customer_name || "Unnamed customer"}
+        {isBlock ? blockLabel : item.customer_name || "Unnamed customer"}
       </div>
 
-      {!isBlock ? (
+      {isBlock ? (
+        <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.text }}>
+          {item.reason || "Unavailable"}
+        </div>
+      ) : (
         <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.text }}>
           {appointmentTypeLabel(item, typesById)}
         </div>
-      ) : null}
+      )}
 
       {!isBlock && bookedBy ? (
         <div style={{ marginTop: 4, fontSize: 11, color: ui.colors.muted }}>
@@ -433,13 +506,37 @@ export default function Appointments() {
   const [activityRows, setActivityRows] = React.useState([]);
   const [activityLoading, setActivityLoading] = React.useState(false);
   const [activityError, setActivityError] = React.useState("");
+  const [emailLogRows, setEmailLogRows] = React.useState([]);
+  const [emailLogLoading, setEmailLogLoading] = React.useState(false);
+  const [emailLogError, setEmailLogError] = React.useState("");
+  const [sendingConfirmation, setSendingConfirmation] = React.useState(false);
+  const [sendConfirmationMessage, setSendConfirmationMessage] = React.useState("");
+
+  const [blockModalOpen, setBlockModalOpen] = React.useState(false);
+  const [blockSaving, setBlockSaving] = React.useState(false);
+  const [blockFormError, setBlockFormError] = React.useState("");
+  const [blockModalAreas, setBlockModalAreas] = React.useState([]);
+  const [blockModalAreasLoading, setBlockModalAreasLoading] = React.useState(false);
+  const [blockForm, setBlockForm] = React.useState(() => buildInitialBlockForm({}));
+
+  const [blockDetailOpen, setBlockDetailOpen] = React.useState(false);
+  const [blockDetailEditing, setBlockDetailEditing] = React.useState(false);
+  const [blockDetailSaving, setBlockDetailSaving] = React.useState(false);
+  const [blockDetailError, setBlockDetailError] = React.useState("");
+  const [detailBlock, setDetailBlock] = React.useState(null);
+  const [detailBlockForm, setDetailBlockForm] = React.useState(() => buildInitialBlockForm({}));
+  const [blockActivityRows, setBlockActivityRows] = React.useState([]);
+  const [blockActivityLoading, setBlockActivityLoading] = React.useState(false);
+  const [blockActivityError, setBlockActivityError] = React.useState("");
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const showSiteSelector = isAdmin || isManager;
+  const canManageBlocks = isAdmin || isManager;
   const bookableSites = React.useMemo(() => getBookableAppointmentSites(sites), [sites]);
   const selectedSiteIsBookable = isBookableAppointmentSite(selectedSiteId);
   const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
+  const canOpenBlock = canManageBlocks && selectedSiteIsBookable;
 
   const baseInputStyle = React.useMemo(
     () => ({
@@ -611,6 +708,58 @@ export default function Appointments() {
     }
   }, []);
 
+  const loadBlockActivity = React.useCallback(async (blockId) => {
+    if (!blockId) {
+      setBlockActivityRows([]);
+      setBlockActivityError("");
+      return;
+    }
+
+    setBlockActivityLoading(true);
+    setBlockActivityError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("get_appointment_block_audit_staff", {
+        p_block_id: blockId,
+      });
+
+      if (rpcError) throw rpcError;
+      setBlockActivityRows(data || []);
+    } catch (err) {
+      console.error("appointments: block activity load failed", err);
+      setBlockActivityRows([]);
+      setBlockActivityError("Block activity history could not be loaded.");
+    } finally {
+      setBlockActivityLoading(false);
+    }
+  }, []);
+
+  const loadEmailLog = React.useCallback(async (appointmentId) => {
+    if (!appointmentId) {
+      setEmailLogRows([]);
+      setEmailLogError("");
+      return;
+    }
+
+    setEmailLogLoading(true);
+    setEmailLogError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("get_appointment_email_log_staff", {
+        p_appointment_id: appointmentId,
+      });
+
+      if (rpcError) throw rpcError;
+      setEmailLogRows(data || []);
+    } catch (err) {
+      console.error("appointments: email log load failed", err);
+      setEmailLogRows([]);
+      setEmailLogError("Email send history could not be loaded.");
+    } finally {
+      setEmailLogLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (!showSiteSelector) return;
     if (!sites.length) return;
@@ -748,6 +897,46 @@ export default function Appointments() {
     };
   }, [areas, form.siteId, loadAreasForSite, modalOpen, selectedSiteId]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadBlockModalAreas() {
+      if (!blockModalOpen) return;
+      if (!blockForm.siteId || !isBookableAppointmentSite(blockForm.siteId)) {
+        setBlockModalAreas([]);
+        return;
+      }
+
+      setBlockModalAreasLoading(true);
+      try {
+        const nextAreas =
+          blockForm.siteId === selectedSiteId ? areas : await loadAreasForSite(blockForm.siteId);
+
+        if (cancelled) return;
+        setBlockModalAreas(nextAreas);
+        setBlockForm((prev) => {
+          if (!prev.areaId) return prev;
+          if (nextAreas.some((item) => item.id === prev.areaId)) return prev;
+          return { ...prev, areaId: "" };
+        });
+      } catch (err) {
+        console.error("appointments: block modal areas load failed", err);
+        if (!cancelled) {
+          setBlockModalAreas([]);
+          setBlockFormError("Could not load appointment areas for that site.");
+        }
+      } finally {
+        if (!cancelled) setBlockModalAreasLoading(false);
+      }
+    }
+
+    loadBlockModalAreas();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [areas, blockForm.siteId, blockModalOpen, loadAreasForSite, selectedSiteId]);
+
   const visibleSiteName = React.useMemo(
     () => prettySiteName(selectedSiteId || profile?.site_id),
     [profile?.site_id, selectedSiteId]
@@ -792,6 +981,10 @@ export default function Appointments() {
 
   const pageTitle = `Appointments${visibleSiteName ? ` - ${visibleSiteName}` : ""}`;
   const selectorSites = showSiteSelector ? bookableSites : sites;
+  const timeOptions = React.useMemo(
+    () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
+    []
+  );
   const selectedType = appointmentTypes.find((item) => item.id === form.appointmentTypeId) || null;
   const detailSelectedType =
     appointmentTypes.find((item) => item.id === detailForm.appointmentTypeId) || null;
@@ -832,10 +1025,42 @@ export default function Appointments() {
     [activityRows]
   );
 
+  const latestConfirmationEmail = React.useMemo(
+    () => emailLogRows.find((row) => row.email_type === "confirmation" && row.status === "sent") || null,
+    [emailLogRows]
+  );
+
+  const detailBlockSiteId = detailBlock
+    ? appointmentBranchToSiteId(detailBlock.branch) || selectedSiteId
+    : selectedSiteId;
+
+  const detailBlockArea = React.useMemo(
+    () => areas.find((item) => item.id === detailBlock?.area_id) || null,
+    [areas, detailBlock]
+  );
+
+  const detailBlockLastChange = React.useMemo(
+    () =>
+      blockActivityRows.find((row) => row.action === "updated" || row.action === "cancelled") || null,
+    [blockActivityRows]
+  );
+
   const canManageSelectedAppointment = React.useMemo(() => {
     if (!detailAppointment || !profile) return false;
     return role === "admin" || role === "manager" || role === "agent";
   }, [detailAppointment, profile, role]);
+
+  const canSendConfirmation = React.useMemo(() => {
+    if (!detailAppointment) return false;
+    if (!canManageSelectedAppointment) return false;
+    if (detailAppointment.status === "cancelled") return false;
+    return !!String(detailAppointment.customer_email || "").trim();
+  }, [canManageSelectedAppointment, detailAppointment]);
+
+  const canManageSelectedBlock = React.useMemo(() => {
+    if (!detailBlock || !profile) return false;
+    return role === "admin" || role === "manager";
+  }, [detailBlock, profile, role]);
 
   function openCreateModal() {
     setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
@@ -850,14 +1075,39 @@ export default function Appointments() {
     setFormError("");
   }
 
+  function openBlockModal() {
+    setBlockForm(buildInitialBlockForm({ siteId: selectedSiteId, date: selectedDate }));
+    setBlockFormError("");
+    setBlockModalAreas(areas);
+    setBlockModalOpen(true);
+  }
+
+  function closeBlockModal() {
+    setBlockModalOpen(false);
+    setBlockSaving(false);
+    setBlockFormError("");
+  }
+
   function openDetailModal(item) {
     const nextSiteId = appointmentBranchToSiteId(item.branch) || selectedSiteId;
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
     setDetailError("");
+    setSendConfirmationMessage("");
     setDetailEditing(false);
     setDetailOpen(true);
     loadActivity(item.id);
+    loadEmailLog(item.id);
+  }
+
+  function openBlockDetailModal(item) {
+    const nextSiteId = appointmentBranchToSiteId(item.branch) || selectedSiteId;
+    setDetailBlock(item);
+    setDetailBlockForm(buildBlockDetailForm(item, nextSiteId));
+    setBlockDetailError("");
+    setBlockDetailEditing(false);
+    setBlockDetailOpen(true);
+    loadBlockActivity(item.id);
   }
 
   function closeDetailModal() {
@@ -868,6 +1118,20 @@ export default function Appointments() {
     setDetailAppointment(null);
     setActivityRows([]);
     setActivityError("");
+    setEmailLogRows([]);
+    setEmailLogError("");
+    setSendingConfirmation(false);
+    setSendConfirmationMessage("");
+  }
+
+  function closeBlockDetailModal() {
+    setBlockDetailOpen(false);
+    setBlockDetailEditing(false);
+    setBlockDetailSaving(false);
+    setBlockDetailError("");
+    setDetailBlock(null);
+    setBlockActivityRows([]);
+    setBlockActivityError("");
   }
 
   function updateForm(key, value) {
@@ -876,6 +1140,14 @@ export default function Appointments() {
 
   function updateDetailForm(key, value) {
     setDetailForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateBlockForm(key, value) {
+    setBlockForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateDetailBlockForm(key, value) {
+    setDetailBlockForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function findLocalConflict(nextAreaId, nextStartAt, nextEndAt, excludedAppointmentId = "") {
@@ -902,6 +1174,39 @@ export default function Appointments() {
 
     if (overlappingBlock) {
       return "That appointment overlaps a blocked-out period.";
+    }
+
+    return "";
+  }
+
+  function findLocalBlockConflict(
+    nextAreaId,
+    nextStartAt,
+    nextEndAt,
+    excludedBlockId = "",
+    compareSiteId = selectedSiteId,
+    compareDate = selectedDate
+  ) {
+    if (compareSiteId !== selectedSiteId || compareDate !== selectedDate) return "";
+
+    const overlappingAppointment = appointments.find((item) => {
+      if (nextAreaId && item.area_id !== nextAreaId) return false;
+      return rangesOverlap(nextStartAt, nextEndAt, item.start_at, item.end_at);
+    });
+
+    if (overlappingAppointment) {
+      return "That block overlaps an existing appointment.";
+    }
+
+    const overlappingBlock = blocks.find((item) => {
+      if (item.id === excludedBlockId) return false;
+      const areaMatch = !nextAreaId || !item.area_id || item.area_id === nextAreaId;
+      if (!areaMatch) return false;
+      return rangesOverlap(nextStartAt, nextEndAt, item.start_at, item.end_at);
+    });
+
+    if (overlappingBlock) {
+      return "That block overlaps an existing block.";
     }
 
     return "";
@@ -986,6 +1291,86 @@ export default function Appointments() {
       setFormError(readErrorMessage(err, "Could not create the appointment."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function submitCreateBlock(e) {
+    e.preventDefault();
+    setBlockFormError("");
+
+    if (!canManageBlocks) {
+      setBlockFormError("Only managers and admins can create blocks.");
+      return;
+    }
+    if (!isBookableAppointmentSite(blockForm.siteId)) {
+      setBlockFormError("Blocks can only be created for Duke Street or St Enoch.");
+      return;
+    }
+    if (!blockForm.startTime) {
+      setBlockFormError("Block start time is required.");
+      return;
+    }
+    if (!blockForm.endTime) {
+      setBlockFormError("Block end time is required.");
+      return;
+    }
+    if (!blockForm.reason.trim()) {
+      setBlockFormError("Block reason is required.");
+      return;
+    }
+
+    const startAt = toDateTimeIso(blockForm.date, blockForm.startTime);
+    const endAt = toDateTimeIso(blockForm.date, blockForm.endTime);
+
+    if (!isWithinSelectedDay(blockForm.date, startAt) || !isWithinSelectedDay(blockForm.date, endAt)) {
+      setBlockFormError("Block times must stay within the selected calendar day.");
+      return;
+    }
+
+    if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+      setBlockFormError("Block end time must be after the start time.");
+      return;
+    }
+
+    const localConflict = findLocalBlockConflict(
+      blockForm.areaId || null,
+      startAt,
+      endAt,
+      "",
+      blockForm.siteId,
+      blockForm.date
+    );
+
+    if (localConflict) {
+      setBlockFormError(localConflict);
+      return;
+    }
+
+    setBlockSaving(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("create_appointment_block_staff", {
+        p_site_id: blockForm.siteId,
+        p_area_id: blockForm.areaId || null,
+        p_start_at: startAt,
+        p_end_at: endAt,
+        p_reason: blockForm.reason.trim(),
+      });
+
+      if (rpcError) throw rpcError;
+      if (!data || data.length === 0) {
+        throw new Error("The block could not be created.");
+      }
+
+      setSelectedSiteId(blockForm.siteId);
+      setSelectedDate(blockForm.date);
+      closeBlockModal();
+      await loadCalendar(blockForm.siteId, blockForm.date);
+    } catch (err) {
+      console.error("appointments: create block failed", err);
+      setBlockFormError(readErrorMessage(err, "Could not create the block."));
+    } finally {
+      setBlockSaving(false);
     }
   }
 
@@ -1096,6 +1481,137 @@ export default function Appointments() {
     }
   }
 
+  async function sendConfirmationEmail() {
+    if (!detailAppointment) return;
+
+    setSendingConfirmation(true);
+    setDetailError("");
+    setSendConfirmationMessage("");
+
+    try {
+      const { data, error } = await invokeAuthed("send_appointment_confirmation", {
+        appointment_id: detailAppointment.id,
+      });
+
+      if (error) {
+        throw new Error(error.message || "The confirmation email could not be sent.");
+      }
+
+      setSendConfirmationMessage("Confirmation email sent.");
+      await Promise.all([
+        loadActivity(detailAppointment.id),
+        loadEmailLog(detailAppointment.id),
+      ]);
+    } catch (err) {
+      console.error("appointments: send confirmation failed", err);
+      setDetailError(readErrorMessage(err, "Could not send the confirmation email."));
+    } finally {
+      setSendingConfirmation(false);
+    }
+  }
+
+  async function submitBlockUpdate(e) {
+    e.preventDefault();
+    setBlockDetailError("");
+
+    if (!detailBlock) {
+      setBlockDetailError("This block is no longer available.");
+      return;
+    }
+    if (!detailBlockForm.startTime) {
+      setBlockDetailError("Block start time is required.");
+      return;
+    }
+    if (!detailBlockForm.endTime) {
+      setBlockDetailError("Block end time is required.");
+      return;
+    }
+    if (!detailBlockForm.reason.trim()) {
+      setBlockDetailError("Block reason is required.");
+      return;
+    }
+
+    const startAt = toDateTimeIso(detailBlockForm.date, detailBlockForm.startTime);
+    const endAt = toDateTimeIso(detailBlockForm.date, detailBlockForm.endTime);
+
+    if (
+      !isWithinSelectedDay(detailBlockForm.date, startAt) ||
+      !isWithinSelectedDay(detailBlockForm.date, endAt)
+    ) {
+      setBlockDetailError("Block times must stay within the selected calendar day.");
+      return;
+    }
+
+    if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+      setBlockDetailError("Block end time must be after the start time.");
+      return;
+    }
+
+    const localConflict = findLocalBlockConflict(
+      detailBlockForm.areaId || null,
+      startAt,
+      endAt,
+      detailBlock.id,
+      detailBlockSiteId,
+      detailBlockForm.date
+    );
+
+    if (localConflict) {
+      setBlockDetailError(localConflict);
+      return;
+    }
+
+    setBlockDetailSaving(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc("update_appointment_block_staff", {
+        p_block_id: detailBlock.id,
+        p_area_id: detailBlockForm.areaId || null,
+        p_start_at: startAt,
+        p_end_at: endAt,
+        p_reason: detailBlockForm.reason.trim(),
+      });
+
+      if (rpcError) throw rpcError;
+      if (!data || data.length === 0) {
+        throw new Error("The block could not be updated.");
+      }
+
+      setSelectedDate(detailBlockForm.date);
+      closeBlockDetailModal();
+      await loadCalendar(detailBlockSiteId, detailBlockForm.date);
+    } catch (err) {
+      console.error("appointments: update block failed", err);
+      setBlockDetailError(readErrorMessage(err, "Could not update the block."));
+    } finally {
+      setBlockDetailSaving(false);
+    }
+  }
+
+  async function cancelBlock() {
+    if (!detailBlock) return;
+    if (!window.confirm("Remove this block?")) return;
+
+    setBlockDetailSaving(true);
+    setBlockDetailError("");
+
+    try {
+      const { error: rpcError } = await supabase.rpc("cancel_appointment_block_staff", {
+        p_block_id: detailBlock.id,
+      });
+
+      if (rpcError) throw rpcError;
+
+      closeBlockDetailModal();
+      await loadCalendar(detailBlockSiteId, selectedDate);
+    } catch (err) {
+      console.error("appointments: cancel block failed", err);
+      setBlockDetailError(readErrorMessage(err, "Could not remove the block."));
+    } finally {
+      setBlockDetailSaving(false);
+    }
+  }
+
   return (
     <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
       <div
@@ -1134,6 +1650,26 @@ export default function Appointments() {
           >
             New appointment
           </button>
+
+          {canManageBlocks ? (
+            <button
+              type="button"
+              disabled={!canOpenBlock}
+              onClick={openBlockModal}
+              style={{
+                padding: "8px 12px",
+                borderRadius: ui.radius.md,
+                border: "1px solid rgba(100,116,139,0.35)",
+                background: "rgba(100,116,139,0.12)",
+                color: ui.colors.text,
+                cursor: canOpenBlock ? "pointer" : "not-allowed",
+                fontWeight: 900,
+                opacity: canOpenBlock ? 1 : 0.55,
+              }}
+            >
+              New block
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1430,6 +1966,7 @@ export default function Appointments() {
                         type="block"
                         startHour={timeline.startHour}
                         typesById={typesById}
+                        onClick={() => openBlockDetailModal(item)}
                       />
                     ))}
 
@@ -1556,12 +2093,18 @@ export default function Appointments() {
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
                 Start time
-                <input
-                  type="time"
+                <select
                   value={form.startTime}
                   onChange={(e) => updateForm("startTime", e.target.value)}
                   style={{ ...baseInputStyle, marginTop: 6 }}
-                />
+                >
+                  <option value="">Select a time...</option>
+                  {timeOptions.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
@@ -1672,6 +2215,177 @@ export default function Appointments() {
         </ModalShell>
       ) : null}
 
+      {blockModalOpen ? (
+        <ModalShell
+          title="New block"
+          subtitle="Block unavailable appointment time for one area or the whole site."
+          onClose={closeBlockModal}
+          maxWidth={640}
+        >
+          <form onSubmit={submitCreateBlock} style={{ padding: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              {showSiteSelector ? (
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <select
+                    value={blockForm.siteId}
+                    onChange={(e) => updateBlockForm("siteId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    {bookableSites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name || prettySiteName(site.id)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <input
+                    value={prettySiteName(blockForm.siteId)}
+                    readOnly
+                    style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                  />
+                </label>
+              )}
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Date
+                <input
+                  type="date"
+                  value={blockForm.date}
+                  onChange={(e) => updateBlockForm("date", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                Area / resource
+                <select
+                  value={blockForm.areaId}
+                  onChange={(e) => updateBlockForm("areaId", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                  disabled={blockModalAreasLoading}
+                >
+                  <option value="">Whole site</option>
+                  {blockModalAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {canonicalAreaLabel(area)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                Start time
+                <select
+                  value={blockForm.startTime}
+                  onChange={(e) => updateBlockForm("startTime", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                >
+                  <option value="">Select a time...</option>
+                  {timeOptions.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700 }}>
+                End time
+                <select
+                  value={blockForm.endTime}
+                  onChange={(e) => updateBlockForm("endTime", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                >
+                  <option value="">Select a time...</option>
+                  {timeOptions.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                Reason
+                <textarea
+                  rows={4}
+                  value={blockForm.reason}
+                  onChange={(e) => updateBlockForm("reason", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6, resize: "vertical" }}
+                />
+              </label>
+            </div>
+
+            {blockFormError ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.35)",
+                }}
+              >
+                {blockFormError}
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeBlockModal}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: ui.radius.md,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: ui.colors.cardBg,
+                  color: ui.colors.text,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={blockSaving}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: ui.radius.md,
+                  border: "1px solid rgba(100,116,139,0.35)",
+                  background: "rgba(100,116,139,0.12)",
+                  color: ui.colors.text,
+                  cursor: blockSaving ? "not-allowed" : "pointer",
+                  fontWeight: 900,
+                  opacity: blockSaving ? 0.6 : 1,
+                }}
+              >
+                {blockSaving ? "Saving..." : "Save block"}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
       {detailOpen && detailAppointment ? (
         <ModalShell
           title={detailEditing ? "Edit appointment" : "Appointment details"}
@@ -1746,12 +2460,18 @@ export default function Appointments() {
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Start time
-                  <input
-                    type="time"
+                  <select
                     value={detailForm.startTime}
                     onChange={(e) => updateDetailForm("startTime", e.target.value)}
                     style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
+                  >
+                    <option value="">Select a time...</option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
@@ -1813,6 +2533,20 @@ export default function Appointments() {
                   }}
                 >
                   {detailError}
+                </div>
+              ) : null}
+
+              {sendConfirmationMessage ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(34,197,94,0.10)",
+                    border: "1px solid rgba(34,197,94,0.35)",
+                  }}
+                >
+                  {sendConfirmationMessage}
                 </div>
               ) : null}
 
@@ -1885,6 +2619,18 @@ export default function Appointments() {
                 <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
                 <FieldValue label="Area / resource" value={canonicalAreaLabel(detailArea)} />
                 <FieldValue label="Booked by" value={bookedByLabel(detailAppointment)} />
+                <FieldValue
+                  label="Latest confirmation sent"
+                  value={
+                    latestConfirmationEmail
+                      ? `${formatDateTimeLabel(latestConfirmationEmail.sent_at)}${
+                          latestConfirmationEmail.sent_by_name
+                            ? ` by ${latestConfirmationEmail.sent_by_name}`
+                            : ""
+                        }`
+                      : "Not sent yet"
+                  }
+                />
                 <FieldValue label="Created at" value={formatDateTimeLabel(detailAppointment.created_at)} />
                 <FieldValue
                   label="Last updated"
@@ -1963,6 +2709,68 @@ export default function Appointments() {
                 )}
               </div>
 
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: "rgba(2, 6, 23, 0.02)",
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 900 }}>Email history</div>
+
+                {emailLogLoading ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>Loading email history...</div>
+                ) : emailLogError ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 10,
+                      background: "rgba(245,158,11,0.12)",
+                      border: "1px solid rgba(245,158,11,0.35)",
+                    }}
+                  >
+                    {emailLogError}
+                  </div>
+                ) : emailLogRows.length === 0 ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                    No confirmation emails have been logged yet.
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {emailLogRows.map((row) => (
+                      <div
+                        key={row.id}
+                        style={{
+                          padding: 10,
+                          borderRadius: 10,
+                          background: ui.colors.cardBg,
+                          border: `1px solid ${ui.colors.border}`,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, textTransform: "capitalize" }}>
+                          {row.email_type} - {row.status}
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
+                          {formatDateTimeLabel(row.sent_at)}
+                          {row.sent_by_name ? ` by ${row.sent_by_name}` : ""}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: ui.colors.text }}>
+                          {row.recipient_email}
+                        </div>
+                        {row.error_message ? (
+                          <div style={{ marginTop: 6, fontSize: 13, color: ui.colors.muted }}>
+                            {row.error_message}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {detailError ? (
                 <div
                   style={{
@@ -1986,6 +2794,31 @@ export default function Appointments() {
                   flexWrap: "wrap",
                 }}
               >
+                {canManageSelectedAppointment ? (
+                  <button
+                    type="button"
+                    onClick={sendConfirmationEmail}
+                    disabled={!canSendConfirmation || sendingConfirmation}
+                    title={
+                      detailAppointment.customer_email
+                        ? undefined
+                        : "Customer email is required before sending confirmation."
+                    }
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(16,185,129,0.35)",
+                      background: "rgba(16,185,129,0.12)",
+                      color: ui.colors.text,
+                      cursor: !canSendConfirmation || sendingConfirmation ? "not-allowed" : "pointer",
+                      fontWeight: 900,
+                      opacity: !canSendConfirmation || sendingConfirmation ? 0.6 : 1,
+                    }}
+                  >
+                    {sendingConfirmation ? "Sending..." : "Send confirmation"}
+                  </button>
+                ) : null}
+
                 {canManageSelectedAppointment ? (
                   <button
                     type="button"
@@ -2031,6 +2864,340 @@ export default function Appointments() {
                 <button
                   type="button"
                   onClick={closeDetailModal}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid ${ui.colors.border}`,
+                    background: ui.colors.cardBg,
+                    color: ui.colors.text,
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </ModalShell>
+      ) : null}
+
+      {blockDetailOpen && detailBlock ? (
+        <ModalShell
+          title={blockDetailEditing ? "Edit block" : "Block details"}
+          subtitle={
+            blockDetailEditing
+              ? "Update this block through the controlled manager/admin RPC."
+              : "View block details and accountability."
+          }
+          onClose={closeBlockDetailModal}
+          maxWidth={760}
+        >
+          {blockDetailEditing ? (
+            <form onSubmit={submitBlockUpdate} style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Site
+                  <input
+                    value={prettySiteName(detailBlockSiteId)}
+                    readOnly
+                    style={{ ...baseInputStyle, marginTop: 6, background: "rgba(2, 6, 23, 0.03)" }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Date
+                  <input
+                    type="date"
+                    value={detailBlockForm.date}
+                    onChange={(e) => updateDetailBlockForm("date", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                  Area / resource
+                  <select
+                    value={detailBlockForm.areaId}
+                    onChange={(e) => updateDetailBlockForm("areaId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Whole site</option>
+                    {areas.map((area) => (
+                      <option key={area.id} value={area.id}>
+                        {canonicalAreaLabel(area)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Start time
+                  <select
+                    value={detailBlockForm.startTime}
+                    onChange={(e) => updateDetailBlockForm("startTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a time...</option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  End time
+                  <select
+                    value={detailBlockForm.endTime}
+                    onChange={(e) => updateDetailBlockForm("endTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a time...</option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}>
+                  Reason
+                  <textarea
+                    rows={4}
+                    value={detailBlockForm.reason}
+                    onChange={(e) => updateDetailBlockForm("reason", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6, resize: "vertical" }}
+                  />
+                </label>
+              </div>
+
+              {blockDetailError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {blockDetailError}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBlockDetailEditing(false);
+                    setDetailBlockForm(buildBlockDetailForm(detailBlock, detailBlockSiteId));
+                    setBlockDetailError("");
+                  }}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid ${ui.colors.border}`,
+                    background: ui.colors.cardBg,
+                    color: ui.colors.text,
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  Cancel edit
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={blockDetailSaving}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: "1px solid rgba(100,116,139,0.35)",
+                    background: "rgba(100,116,139,0.12)",
+                    color: ui.colors.text,
+                    cursor: blockDetailSaving ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    opacity: blockDetailSaving ? 0.6 : 1,
+                  }}
+                >
+                  {blockDetailSaving ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <FieldValue label="Scope" value={detailBlock.area_id ? "One area / resource" : "Whole site"} />
+                <FieldValue
+                  label="Area / resource"
+                  value={detailBlock.area_id ? canonicalAreaLabel(detailBlockArea) : "Whole site"}
+                />
+                <FieldValue label="Date" value={formatDateLabel(detailBlock.start_at)} />
+                <FieldValue label="Time" value={formatTimeRange(detailBlock.start_at, detailBlock.end_at)} />
+                <FieldValue label="Site" value={prettySiteName(detailBlockSiteId)} />
+                <FieldValue label="Reason" value={detailBlock.reason} />
+                <FieldValue label="Created by" value={detailBlock.created_by_name} />
+                <FieldValue label="Created at" value={formatDateTimeLabel(detailBlock.created_at)} />
+                <FieldValue
+                  label="Last updated by"
+                  value={detailBlockLastChange?.changed_by_name || detailBlock.updated_by_name || "Not available"}
+                />
+                <FieldValue
+                  label="Last updated"
+                  value={
+                    detailBlockLastChange
+                      ? formatDateTimeLabel(detailBlockLastChange.created_at)
+                      : formatDateTimeLabel(detailBlock.updated_at)
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: "rgba(2, 6, 23, 0.02)",
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
+
+                {blockActivityLoading ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>Loading activity...</div>
+                ) : blockActivityError ? (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: 10,
+                      background: "rgba(245,158,11,0.12)",
+                      border: "1px solid rgba(245,158,11,0.35)",
+                    }}
+                  >
+                    {blockActivityError}
+                  </div>
+                ) : blockActivityRows.length === 0 ? (
+                  <div style={{ marginTop: 10, color: ui.colors.muted }}>No activity has been recorded yet.</div>
+                ) : (
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {blockActivityRows.map((row) => (
+                      <div
+                        key={row.id}
+                        style={{
+                          padding: 10,
+                          borderRadius: 10,
+                          background: ui.colors.cardBg,
+                          border: `1px solid ${ui.colors.border}`,
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, textTransform: "capitalize" }}>
+                          {activityActionLabel(row.action)}
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
+                          {formatDateTimeLabel(row.created_at)}
+                          {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: ui.colors.text }}>
+                          {describeBlockActivity(row)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {blockDetailError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {blockDetailError}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                {canManageSelectedBlock ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBlockDetailEditing(true);
+                      setDetailBlockForm(buildBlockDetailForm(detailBlock, detailBlockSiteId));
+                      setBlockDetailError("");
+                    }}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(100,116,139,0.35)",
+                      background: "rgba(100,116,139,0.12)",
+                      color: ui.colors.text,
+                      cursor: "pointer",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Edit
+                  </button>
+                ) : null}
+
+                {canManageSelectedBlock ? (
+                  <button
+                    type="button"
+                    onClick={cancelBlock}
+                    disabled={blockDetailSaving}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(239,68,68,0.35)",
+                      background: "rgba(239,68,68,0.12)",
+                      color: ui.colors.text,
+                      cursor: blockDetailSaving ? "not-allowed" : "pointer",
+                      fontWeight: 900,
+                      opacity: blockDetailSaving ? 0.6 : 1,
+                    }}
+                  >
+                    Cancel block
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={closeBlockDetailModal}
                   style={{
                     padding: "9px 12px",
                     borderRadius: ui.radius.md,
