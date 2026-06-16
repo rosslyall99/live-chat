@@ -61,7 +61,10 @@ function Item({ to, label }) {
 }
 
 export default function Sidebar({ role = "agent" }) {
-    const isAdmin = String(role).toLowerCase() === "admin";
+    const normalizedRole = String(role).toLowerCase();
+    const isAdmin = normalizedRole === "admin";
+    const isManager = normalizedRole === "manager";
+    const canViewAppointmentEmails = isAdmin || isManager;
 
     return (
         <aside
@@ -134,9 +137,15 @@ export default function Sidebar({ role = "agent" }) {
                 <SectionTitle>User</SectionTitle>
                 <Item to="/change-pin" label="Change PIN" />
 
-                {isAdmin && (
+                {canViewAppointmentEmails && (
                     <>
                         <SectionTitle>Admin</SectionTitle>
+                        <Item to="/admin/appointment-emails" label="Appointment Emails" />
+                    </>
+                )}
+
+                {isAdmin && (
+                    <>
                         <Item to="/admin/live" label="Active Chats" />
                         <Item to="/admin/insights" label="Insights" />
                         <Item to="/admin/users" label="Users" />

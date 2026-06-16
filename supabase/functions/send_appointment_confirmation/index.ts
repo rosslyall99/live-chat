@@ -28,6 +28,12 @@ type StaffProfile = {
   is_active: boolean;
 };
 
+type AppointmentEmailTemplateRow = {
+  subject: string;
+  body_text: string;
+  body_html: string | null;
+};
+
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -170,7 +176,7 @@ Deno.serve(async (req) => {
     return json(400, { error: "This appointment does not have a customer email address." });
   }
 
-  const [{ data: appointmentType }, { data: area }] = await Promise.all([
+  const [{ data: appointmentType }, { data: area }, { data: templateRows }] = await Promise.all([
     adminClient
       .from("appointment_types")
       .select("name, email_subject, email_body_html, email_body_text")
@@ -181,6 +187,13 @@ Deno.serve(async (req) => {
       .select("name")
       .eq("id", appointment.area_id)
       .maybeSingle(),
+    adminClient
+      .from("appointment_email_templates")
+      .select("subject, body_text, body_html, appointment_type_id, is_active, updated_at")
+      .eq("template_type", "confirmation")
+      .eq("is_active", true)
+      .or(`appointment_type_id.eq.${appointment.appointment_type_id},appointment_type_id.is.null`)
+      .order("updated_at", { ascending: false }),
   ]);
 
   const staffName =
@@ -219,18 +232,27 @@ Deno.serve(async (req) => {
     "Slanj Kilts",
   ].join("\n");
 
+  const templateRowsSafe = Array.isArray(templateRows) ? templateRows : [];
+  const specificTemplate = templateRowsSafe.find(
+    (row) => row.appointment_type_id === appointment.appointment_type_id
+  ) as (AppointmentEmailTemplateRow & { appointment_type_id?: string | null }) | undefined;
+  const generalTemplate = templateRowsSafe.find(
+    (row) => row.appointment_type_id == null
+  ) as (AppointmentEmailTemplateRow & { appointment_type_id?: string | null }) | undefined;
+  const selectedTemplate = specificTemplate || generalTemplate || null;
+
   const subject = applyPlaceholders(
-    String(appointmentType?.email_subject || "").trim() || fallbackSubject,
+    String(selectedTemplate?.subject || appointmentType?.email_subject || "").trim() || fallbackSubject,
     replacements
   );
 
   const bodyText = applyPlaceholders(
-    String(appointmentType?.email_body_text || "").trim() || fallbackText,
+    String(selectedTemplate?.body_text || appointmentType?.email_body_text || "").trim() || fallbackText,
     replacements
   );
 
   const bodyHtml = applyPlaceholders(
-    String(appointmentType?.email_body_html || "").trim() || textToHtml(fallbackText),
+    String(selectedTemplate?.body_html || appointmentType?.email_body_html || "").trim() || textToHtml(bodyText),
     replacements
   );
 
