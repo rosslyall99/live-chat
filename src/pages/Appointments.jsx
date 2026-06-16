@@ -279,6 +279,7 @@ function describeActivity(row) {
   if (row.action === "created") return "Appointment created.";
   if (row.action === "cancelled") return "Appointment cancelled.";
   if (row.action === "confirmation_sent") return "Confirmation email sent.";
+  if (row.action === "reminder_sent") return "Reminder email sent.";
 
   const beforeData = row.before_data || {};
   const afterData = row.after_data || {};
@@ -511,6 +512,8 @@ export default function Appointments() {
   const [emailLogError, setEmailLogError] = React.useState("");
   const [sendingConfirmation, setSendingConfirmation] = React.useState(false);
   const [sendConfirmationMessage, setSendConfirmationMessage] = React.useState("");
+  const [sendingReminder, setSendingReminder] = React.useState(false);
+  const [sendReminderMessage, setSendReminderMessage] = React.useState("");
 
   const [blockModalOpen, setBlockModalOpen] = React.useState(false);
   const [blockSaving, setBlockSaving] = React.useState(false);
@@ -1057,6 +1060,13 @@ export default function Appointments() {
     return !!String(detailAppointment.customer_email || "").trim();
   }, [canManageSelectedAppointment, detailAppointment]);
 
+  const canSendReminder = React.useMemo(() => {
+    if (!detailAppointment) return false;
+    if (!canManageSelectedAppointment) return false;
+    if (detailAppointment.status === "cancelled") return false;
+    return !!String(detailAppointment.customer_email || "").trim();
+  }, [canManageSelectedAppointment, detailAppointment]);
+
   const canManageSelectedBlock = React.useMemo(() => {
     if (!detailBlock || !profile) return false;
     return role === "admin" || role === "manager";
@@ -1094,6 +1104,7 @@ export default function Appointments() {
     setDetailForm(buildDetailForm(item, nextSiteId));
     setDetailError("");
     setSendConfirmationMessage("");
+    setSendReminderMessage("");
     setDetailEditing(false);
     setDetailOpen(true);
     loadActivity(item.id);
@@ -1122,6 +1133,8 @@ export default function Appointments() {
     setEmailLogError("");
     setSendingConfirmation(false);
     setSendConfirmationMessage("");
+    setSendingReminder(false);
+    setSendReminderMessage("");
   }
 
   function closeBlockDetailModal() {
@@ -1487,6 +1500,7 @@ export default function Appointments() {
     setSendingConfirmation(true);
     setDetailError("");
     setSendConfirmationMessage("");
+    setSendReminderMessage("");
 
     try {
       const { data, error } = await invokeAuthed("send_appointment_confirmation", {
@@ -1507,6 +1521,36 @@ export default function Appointments() {
       setDetailError(readErrorMessage(err, "Could not send the confirmation email."));
     } finally {
       setSendingConfirmation(false);
+    }
+  }
+
+  async function sendReminderEmail() {
+    if (!detailAppointment) return;
+
+    setSendingReminder(true);
+    setDetailError("");
+    setSendReminderMessage("");
+    setSendConfirmationMessage("");
+
+    try {
+      const { data, error } = await invokeAuthed("send_appointment_reminder", {
+        appointment_id: detailAppointment.id,
+      });
+
+      if (error) {
+        throw new Error(error.message || "The reminder email could not be sent.");
+      }
+
+      setSendReminderMessage(data?.message || "Reminder email sent.");
+      await Promise.all([
+        loadActivity(detailAppointment.id),
+        loadEmailLog(detailAppointment.id),
+      ]);
+    } catch (err) {
+      console.error("appointments: send reminder failed", err);
+      setDetailError(readErrorMessage(err, "Could not send the reminder email."));
+    } finally {
+      setSendingReminder(false);
     }
   }
 
@@ -2736,7 +2780,7 @@ export default function Appointments() {
                   </div>
                 ) : emailLogRows.length === 0 ? (
                   <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    No confirmation emails have been logged yet.
+                    No confirmation or reminder emails have been logged yet.
                   </div>
                 ) : (
                   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -2771,6 +2815,49 @@ export default function Appointments() {
                 )}
               </div>
 
+              {detailAppointment.status !== "cancelled" && !String(detailAppointment.customer_email || "").trim() ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(245,158,11,0.10)",
+                    border: "1px solid rgba(245,158,11,0.35)",
+                    color: ui.colors.text,
+                  }}
+                >
+                  Customer email required before sending reminder.
+                </div>
+              ) : null}
+
+              {sendConfirmationMessage ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(34,197,94,0.10)",
+                    border: "1px solid rgba(34,197,94,0.35)",
+                  }}
+                >
+                  {sendConfirmationMessage}
+                </div>
+              ) : null}
+
+              {sendReminderMessage ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(34,197,94,0.10)",
+                    border: "1px solid rgba(34,197,94,0.35)",
+                  }}
+                >
+                  {sendReminderMessage}
+                </div>
+              ) : null}
+
               {detailError ? (
                 <div
                   style={{
@@ -2794,6 +2881,31 @@ export default function Appointments() {
                   flexWrap: "wrap",
                 }}
               >
+                {canManageSelectedAppointment && detailAppointment.status !== "cancelled" ? (
+                  <button
+                    type="button"
+                    onClick={sendReminderEmail}
+                    disabled={!canSendReminder || sendingReminder}
+                    title={
+                      detailAppointment.customer_email
+                        ? undefined
+                        : "Customer email required before sending reminder."
+                    }
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(59,130,246,0.35)",
+                      background: "rgba(59,130,246,0.12)",
+                      color: ui.colors.text,
+                      cursor: !canSendReminder || sendingReminder ? "not-allowed" : "pointer",
+                      fontWeight: 900,
+                      opacity: !canSendReminder || sendingReminder ? 0.6 : 1,
+                    }}
+                  >
+                    {sendingReminder ? "Sending..." : "Send reminder"}
+                  </button>
+                ) : null}
+
                 {canManageSelectedAppointment ? (
                   <button
                     type="button"
