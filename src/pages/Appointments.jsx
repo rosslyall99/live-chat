@@ -13,8 +13,12 @@ import {
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
-const HOUR_HEIGHT = 72;
+const CALENDAR_START_MINUTES = 9 * 60 + 30;
+const CALENDAR_END_MINUTES = 17 * 60 + 30;
+const CALENDAR_TOTAL_MINUTES = CALENDAR_END_MINUTES - CALENDAR_START_MINUTES;
+const HOUR_HEIGHT = 52;
 const TIME_OPTION_INTERVAL_MINUTES = 15;
+const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 245px)";
 
 function todayInputValue() {
   const now = new Date();
@@ -24,13 +28,18 @@ function todayInputValue() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function tomorrowInputValue() {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  const yyyy = next.getFullYear();
-  const mm = String(next.getMonth() + 1).padStart(2, "0");
-  const dd = String(next.getDate()).padStart(2, "0");
+function shiftInputDateValue(dateValue, dayOffset) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return todayInputValue();
+  date.setDate(date.getDate() + dayOffset);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function tomorrowInputValue() {
+  return shiftInputDateValue(todayInputValue(), 1);
 }
 
 function inputDateValueFromIso(iso) {
@@ -83,6 +92,17 @@ function formatDateLabel(iso) {
   });
 }
 
+function formatDateHeading(dateValue) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Choose a date";
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function formatDateTimeLabel(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Not available";
@@ -100,44 +120,40 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function buildVisibleWindow(appointments, blocks) {
-  const times = [...appointments, ...blocks]
-    .flatMap((item) => [item.start_at, item.end_at])
-    .map((iso) => new Date(iso))
-    .filter((date) => !Number.isNaN(date.getTime()));
-
-  if (times.length === 0) {
-    return { startHour: DEFAULT_START_HOUR, endHour: DEFAULT_END_HOUR };
-  }
-
-  const minHour = Math.min(...times.map((date) => date.getHours()));
-  const maxHour = Math.max(
-    ...times.map((date) => date.getHours() + (date.getMinutes() > 0 ? 1 : 0)),
-  );
-
-  return {
-    startHour: clamp(minHour - 1, 7, 20),
-    endHour: clamp(Math.max(maxHour + 1, DEFAULT_END_HOUR), 8, 22),
-  };
-}
-
-function toPosition(iso, startHour) {
+function minutesFromIso(iso) {
   const date = new Date(iso);
-  return (
-    (((date.getHours() - startHour) * 60 + date.getMinutes()) / 60) *
-    HOUR_HEIGHT
+  if (Number.isNaN(date.getTime())) return CALENDAR_START_MINUTES;
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function toPosition(iso, timelineStartMinutes, timelineHeight) {
+  const relativeMinutes = clamp(
+    minutesFromIso(iso) - timelineStartMinutes,
+    0,
+    CALENDAR_TOTAL_MINUTES,
   );
+  return (relativeMinutes / CALENDAR_TOTAL_MINUTES) * timelineHeight;
 }
 
-function itemHeight(startAt, endAt) {
-  const start = new Date(startAt).getTime();
-  const end = new Date(endAt).getTime();
-  const hours = Math.max((end - start) / 3600000, 0.5);
-  return hours * HOUR_HEIGHT;
+function itemHeight(startAt, endAt, timelineStartMinutes, timelineHeight) {
+  const clampedStart = clamp(
+    minutesFromIso(startAt) - timelineStartMinutes,
+    0,
+    CALENDAR_TOTAL_MINUTES,
+  );
+  const clampedEnd = clamp(
+    minutesFromIso(endAt) - timelineStartMinutes,
+    0,
+    CALENDAR_TOTAL_MINUTES,
+  );
+  const durationMinutes = Math.max(clampedEnd - clampedStart, 12);
+  return (durationMinutes / CALENDAR_TOTAL_MINUTES) * timelineHeight;
 }
 
-function hourLabel(hour) {
-  return `${String(hour).padStart(2, "0")}:00`;
+function timeLabelFromMinutes(totalMinutes) {
+  const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const mm = String(totalMinutes % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function buildTimeOptions(
@@ -230,6 +246,36 @@ function appointmentTypeLabel(item, typesById) {
     typesById[item.appointment_type_id]?.name ||
     "Appointment"
   );
+}
+
+function appointmentTypeAccent(label) {
+  const value = String(label || "").toLowerCase();
+  if (value.includes("measurement")) {
+    return {
+      background: "rgba(16,185,129,0.14)",
+      border: "rgba(16,185,129,0.32)",
+      pill: "rgba(16,185,129,0.18)",
+    };
+  }
+  if (value.includes("hire")) {
+    return {
+      background: "rgba(59,130,246,0.14)",
+      border: "rgba(59,130,246,0.30)",
+      pill: "rgba(59,130,246,0.18)",
+    };
+  }
+  if (value.includes("fitting")) {
+    return {
+      background: "rgba(245,158,11,0.14)",
+      border: "rgba(245,158,11,0.32)",
+      pill: "rgba(245,158,11,0.18)",
+    };
+  }
+  return {
+    background: "rgba(99,102,241,0.12)",
+    border: "rgba(99,102,241,0.24)",
+    pill: "rgba(99,102,241,0.16)",
+  };
 }
 
 function toDateTimeIso(dateString, timeString) {
@@ -376,12 +422,27 @@ function describeBlockActivity(row) {
   return `Changed ${changedLabels.join(", ")}.`;
 }
 
-function TimelineItem({ item, type, startHour, typesById, onClick }) {
-  const top = toPosition(item.start_at, startHour);
-  const height = itemHeight(item.start_at, item.end_at);
+function TimelineItem({
+  item,
+  type,
+  timelineStartMinutes,
+  timelineHeight,
+  typesById,
+  onClick,
+}) {
+  const top = toPosition(item.start_at, timelineStartMinutes, timelineHeight);
+  const height = itemHeight(
+    item.start_at,
+    item.end_at,
+    timelineStartMinutes,
+    timelineHeight,
+  );
   const isBlock = type === "block";
   const bookedBy = bookedByLabel(item);
   const blockLabel = item.area_id ? "Blocked" : "Whole site blocked";
+  const appointmentType = appointmentTypeLabel(item, typesById);
+  const appointmentAccent = appointmentTypeAccent(appointmentType);
+  const cardAreaLabel = item.area_name || "Area";
 
   return (
     <button
@@ -393,20 +454,20 @@ function TimelineItem({ item, type, startHour, typesById, onClick }) {
         left: 8,
         right: 8,
         top,
-        minHeight: height,
-        borderRadius: 12,
+        height,
+        borderRadius: 10,
         border: isBlock
           ? "1px solid rgba(100,116,139,0.45)"
-          : "1px solid rgba(59,130,246,0.28)",
+          : `1px solid ${appointmentAccent.border}`,
         background: isBlock
           ? "repeating-linear-gradient(-45deg, rgba(148,163,184,0.2), rgba(148,163,184,0.2) 8px, rgba(100,116,139,0.12) 8px, rgba(100,116,139,0.12) 16px)"
-          : "rgba(59,130,246,0.14)",
-        padding: 8,
+          : appointmentAccent.background,
+        padding: 6,
         boxSizing: "border-box",
         overflow: "hidden",
         boxShadow: isBlock
           ? "inset 0 0 0 1px rgba(255,255,255,0.25)"
-          : "0 4px 10px rgba(59,130,246,0.10)",
+          : "0 6px 14px rgba(15,23,42,0.08)",
         cursor: onClick ? "pointer" : "default",
         textAlign: "left",
         fontFamily: ui.font.ui,
@@ -414,32 +475,89 @@ function TimelineItem({ item, type, startHour, typesById, onClick }) {
       title={
         isBlock
           ? `${blockLabel}${item.reason ? `: ${item.reason}` : ""}`
-          : item.customer_name
+          : `${formatTimeRange(item.start_at, item.end_at)} | ${
+              item.customer_name || "Unnamed customer"
+            } | ${appointmentType}${bookedBy ? ` | Booked by ${bookedBy}` : ""}${
+              cardAreaLabel ? ` | ${cardAreaLabel}` : ""
+            }`
       }
     >
-      <div style={{ fontSize: 11, fontWeight: 900, color: ui.colors.muted }}>
-        {formatTimeRange(item.start_at, item.end_at)}
-      </div>
-
-      <div style={{ marginTop: 4, fontWeight: 900, color: ui.colors.text }}>
-        {isBlock ? blockLabel : item.customer_name || "Unnamed customer"}
-      </div>
-
       {isBlock ? (
-        <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.text }}>
-          {item.reason || "Unavailable"}
+        <div
+          style={{
+            fontSize: 12,
+            lineHeight: 1.2,
+            fontWeight: 900,
+            color: ui.colors.text,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {formatTimeRange(item.start_at, item.end_at)} | {blockLabel}
+          {item.reason ? ` | ${item.reason}` : ""}
         </div>
       ) : (
-        <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.text }}>
-          {appointmentTypeLabel(item, typesById)}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+            fontSize: 12,
+            lineHeight: 1.2,
+            color: ui.colors.text,
+          }}
+        >
+          <div
+            style={{
+              flex: "0 0 auto",
+              fontSize: 12,
+              fontWeight: 900,
+              color: ui.colors.muted,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {formatTimeRange(item.start_at, item.end_at)}
+          </div>
+
+          <div
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              fontWeight: 900,
+              color: ui.colors.text,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {item.customer_name || "Unnamed customer"}
+          </div>
+
+          <div
+            style={{
+              flex: "0 1 auto",
+              minWidth: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              maxWidth: "44%",
+              padding: "1px 6px",
+              borderRadius: 999,
+              background: appointmentAccent.pill,
+              fontSize: 12,
+              fontWeight: 900,
+              color: ui.colors.text,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {appointmentType}
+          </div>
+
         </div>
       )}
-
-      {!isBlock && bookedBy ? (
-        <div style={{ marginTop: 4, fontSize: 11, color: ui.colors.muted }}>
-          Booked by {bookedBy}
-        </div>
-      ) : null}
     </button>
   );
 }
@@ -528,6 +646,80 @@ function FieldValue({ label, value }) {
   );
 }
 
+function SectionCard({ title, subtitle, children, tone = "default" }) {
+  const background =
+    tone === "softBlue"
+      ? "rgba(59,130,246,0.06)"
+      : tone === "softSlate"
+        ? "rgba(2, 6, 23, 0.02)"
+        : "rgba(2, 6, 23, 0.03)";
+
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 14,
+        background,
+        border: `1px solid ${ui.colors.border}`,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 900 }}>{title}</div>
+      {subtitle ? (
+        <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+          {subtitle}
+        </div>
+      ) : null}
+      <div style={{ marginTop: 12 }}>{children}</div>
+    </div>
+  );
+}
+
+function CollapsibleCard({ title, subtitle, open, onToggle, children }) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 12,
+        border: `1px solid ${ui.colors.border}`,
+        background: "rgba(59,130,246,0.05)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          border: "none",
+          background: "transparent",
+          padding: 0,
+          cursor: "pointer",
+          color: ui.colors.text,
+          textAlign: "left",
+          fontFamily: ui.font.ui,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 900 }}>{title}</div>
+          {subtitle ? (
+            <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 900, color: ui.colors.muted }}>
+          {open ? "Hide" : "Show"}
+        </div>
+      </button>
+      {open ? <div style={{ marginTop: 12 }}>{children}</div> : null}
+    </div>
+  );
+}
+
 export default function Appointments() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -589,6 +781,15 @@ export default function Appointments() {
   const [reminderBatchSending, setReminderBatchSending] = React.useState(false);
   const [reminderRunRows, setReminderRunRows] = React.useState([]);
   const [reminderRunLoading, setReminderRunLoading] = React.useState(false);
+  const [activitySectionOpen, setActivitySectionOpen] = React.useState(true);
+  const [emailSectionOpen, setEmailSectionOpen] = React.useState(true);
+  const [isDesktopToolsLayout, setIsDesktopToolsLayout] = React.useState(
+    typeof window === "undefined" ? true : window.innerWidth >= 1080,
+  );
+  const [viewportHeight, setViewportHeight] = React.useState(
+    typeof window === "undefined" ? 900 : window.innerHeight,
+  );
+  const calendarDateInputRef = React.useRef(null);
 
   const [blockModalOpen, setBlockModalOpen] = React.useState(false);
   const [blockSaving, setBlockSaving] = React.useState(false);
@@ -1120,21 +1321,26 @@ export default function Appointments() {
     [profile?.site_id, selectedSiteId],
   );
 
-  const timeline = React.useMemo(
-    () => buildVisibleWindow(appointments, blocks),
-    [appointments, blocks],
-  );
+  const timelineStartMinutes = CALENDAR_START_MINUTES;
+  const timelineEndMinutes = CALENDAR_END_MINUTES;
+  const timelineHeight = React.useMemo(() => {
+    if (!isDesktopToolsLayout) {
+      return Math.max((CALENDAR_TOTAL_MINUTES / 60) * HOUR_HEIGHT, 560);
+    }
+    return Math.max(viewportHeight - 360, 560);
+  }, [isDesktopToolsLayout, viewportHeight]);
 
-  const totalHours = Math.max(timeline.endHour - timeline.startHour, 1);
-  const timelineHeight = totalHours * HOUR_HEIGHT;
-
-  const hourTicks = React.useMemo(() => {
+  const timeTicks = React.useMemo(() => {
     const items = [];
-    for (let hour = timeline.startHour; hour <= timeline.endHour; hour += 1) {
-      items.push(hour);
+    for (
+      let minutes = timelineStartMinutes;
+      minutes <= timelineEndMinutes;
+      minutes += 30
+    ) {
+      items.push(minutes);
     }
     return items;
-  }, [timeline.endHour, timeline.startHour]);
+  }, [timelineEndMinutes, timelineStartMinutes]);
 
   const appointmentsByArea = React.useMemo(() => {
     const map = {};
@@ -1156,6 +1362,7 @@ export default function Appointments() {
     }
     return map;
   }, [blocks, areas]);
+  const hasAnyCalendarItems = appointments.length > 0 || blocks.length > 0;
 
   const pageTitle = `Appointments${visibleSiteName ? ` - ${visibleSiteName}` : ""}`;
   const selectorSites = showSiteSelector ? bookableSites : sites;
@@ -1216,6 +1423,23 @@ export default function Appointments() {
         (row) => row.email_type === "confirmation" && row.status === "sent",
       ) || null,
     [emailLogRows],
+  );
+
+  const latestReminderEmail = React.useMemo(
+    () =>
+      emailLogRows.find(
+        (row) => row.email_type === "reminder" && row.status === "sent",
+      ) || null,
+    [emailLogRows],
+  );
+
+  const visibleActivityRows = React.useMemo(
+    () =>
+      activityRows.filter(
+        (row) =>
+          row.action !== "confirmation_sent" && row.action !== "reminder_sent",
+      ),
+    [activityRows],
   );
 
   const detailBlockSiteId = detailBlock
@@ -1298,6 +1522,8 @@ export default function Appointments() {
     setDetailError("");
     setSendConfirmationMessage("");
     setSendReminderMessage("");
+    setActivitySectionOpen(true);
+    setEmailSectionOpen(true);
     setDetailEditing(false);
     setDetailOpen(true);
     loadActivity(item.id);
@@ -1328,6 +1554,8 @@ export default function Appointments() {
     setSendConfirmationMessage("");
     setSendingReminder(false);
     setSendReminderMessage("");
+    setActivitySectionOpen(true);
+    setEmailSectionOpen(true);
   }
 
   function closeBlockDetailModal() {
@@ -1977,6 +2205,17 @@ export default function Appointments() {
     loadReminderRuns();
   }, [loadReminderRuns]);
 
+  React.useEffect(() => {
+    function handleResize() {
+      setIsDesktopToolsLayout(window.innerWidth >= 1080);
+      setViewportHeight(window.innerHeight);
+    }
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   async function submitBlockUpdate(e) {
     e.preventDefault();
     setBlockDetailError("");
@@ -2090,6 +2329,365 @@ export default function Appointments() {
     }
   }
 
+  const quickJumpButtons = [
+    {
+      label: "<",
+      onClick: () => setSelectedDate((prev) => shiftInputDateValue(prev, -1)),
+    },
+    { label: "Today", onClick: () => setSelectedDate(todayInputValue()) },
+    {
+      label: ">",
+      onClick: () => setSelectedDate((prev) => shiftInputDateValue(prev, 1)),
+    },
+  ];
+
+  const calendarPanel = (
+    <div
+      style={{
+        border: `1px solid ${ui.colors.border}`,
+        borderRadius: 12,
+        overflow: "hidden",
+        background: ui.colors.cardBg,
+        height: isDesktopToolsLayout
+          ? `max(620px, ${CALENDAR_VIEWPORT_HEIGHT})`
+          : "auto",
+        minHeight: isDesktopToolsLayout ? 620 : undefined,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          padding: 14,
+          borderBottom: `1px solid ${ui.colors.border}`,
+          background: "rgba(2, 6, 23, 0.03)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            minWidth: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (calendarDateInputRef.current?.showPicker) {
+                calendarDateInputRef.current.showPicker();
+                return;
+              }
+              calendarDateInputRef.current?.click();
+            }}
+            style={{
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              color: ui.colors.text,
+              cursor: "pointer",
+              fontSize: 24,
+              fontWeight: 900,
+              lineHeight: 1.1,
+              textAlign: "left",
+            }}
+            aria-label={`Selected date ${formatDateHeading(selectedDate)}. Change date.`}
+          >
+            {formatDateHeading(selectedDate)}
+          </button>
+          <input
+            ref={calendarDateInputRef}
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            aria-label="Change calendar date"
+            style={{
+              position: "absolute",
+              opacity: 0,
+              pointerEvents: "none",
+              width: 1,
+              height: 1,
+            }}
+            tabIndex={-1}
+          />
+          {quickJumpButtons.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.onClick}
+              style={{
+                padding: item.label === "Today" ? "7px 12px" : "7px 10px",
+                minWidth: item.label === "Today" ? undefined : 36,
+                fontSize: 12,
+                borderRadius: ui.radius.md,
+                border: `1px solid ${ui.colors.border}`,
+                background: ui.colors.cardBg,
+                color: ui.colors.text,
+                cursor: "pointer",
+                fontWeight: 800,
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ minWidth: 180, marginLeft: "auto" }}>
+          {showSiteSelector ? (
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 800,
+                color: ui.colors.muted,
+              }}
+            >
+              Site
+              <select
+                value={selectedSiteId}
+                onChange={(e) => setSelectedSiteId(e.target.value)}
+                style={{
+                  ...baseInputStyle,
+                  padding: "9px 12px",
+                  marginTop: 0,
+                }}
+              >
+                {selectorSites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name || prettySiteName(site.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div style={{ fontSize: 12, color: ui.colors.muted }}>
+              <div style={{ fontWeight: 800 }}>Site</div>
+              <div style={{ marginTop: 6, fontSize: 14, color: ui.colors.text }}>
+                {visibleSiteName}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 16, color: ui.colors.muted, flex: 1 }}>
+          Loading this day&apos;s appointments and blocks...
+        </div>
+      ) : areas.length === 0 ? (
+        <div style={{ padding: 16, color: ui.colors.muted, flex: 1 }}>
+          Appointment areas/resources need to be seeded for this site before the
+          calendar can display columns.
+        </div>
+      ) : (
+        <div
+          style={{
+            overflowX: "auto",
+            overflowY: "auto",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {!hasAnyCalendarItems ? (
+            <div
+              style={{
+                padding: 14,
+                borderBottom: `1px solid ${ui.colors.border}`,
+                background: "rgba(2, 6, 23, 0.02)",
+                color: ui.colors.muted,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              No appointments or blocks are booked for this day yet.
+            </div>
+          ) : null}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `74px repeat(${areas.length}, minmax(190px, 1fr))`,
+              minWidth: 74 + areas.length * 190,
+            }}
+          >
+            <div
+              style={{
+                padding: 10,
+                borderRight: `1px solid ${ui.colors.border}`,
+                borderBottom: `1px solid ${ui.colors.border}`,
+                background: "rgba(2, 6, 23, 0.03)",
+                fontWeight: 800,
+              }}
+            >
+              Time
+            </div>
+
+            {areas.map((area) => (
+              <div
+                key={area.id}
+                style={{
+                  padding: 10,
+                  borderRight: `1px solid ${ui.colors.border}`,
+                  borderBottom: `1px solid ${ui.colors.border}`,
+                  background: "rgba(2, 6, 23, 0.03)",
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>{canonicalAreaLabel(area)}</div>
+                <div style={{ fontSize: 11, color: ui.colors.muted }}>
+                  {area.branch || ""}
+                </div>
+              </div>
+            ))}
+
+            <div
+              style={{
+                position: "relative",
+                height: timelineHeight,
+                borderRight: `1px solid ${ui.colors.border}`,
+                background:
+                  "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
+              }}
+            >
+              {timeTicks.map((minutes, index) => {
+                const top =
+                  ((minutes - timelineStartMinutes) / CALENDAR_TOTAL_MINUTES) *
+                  timelineHeight;
+                const isHour = minutes % 60 === 0;
+                const isLast = index === timeTicks.length - 1;
+                return (
+                  <div
+                    key={minutes}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top,
+                      height: 0,
+                      borderTop: isLast
+                        ? "1px solid rgba(2, 6, 23, 0.08)"
+                        : isHour
+                          ? "1px solid rgba(2, 6, 23, 0.08)"
+                          : "1px dashed rgba(2, 6, 23, 0.08)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: -8,
+                        left: 6,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        color: ui.colors.muted,
+                        background: "rgba(255,255,255,0.92)",
+                        padding: "0 4px",
+                      }}
+                    >
+                      {timeLabelFromMinutes(minutes)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {areas.map((area) => {
+              const areaAppointments = appointmentsByArea[area.id] || [];
+              const areaBlocks = [
+                ...(blocksByArea[area.id] || []),
+                ...(blocksByArea.__branch__ || []),
+              ];
+              const hasItems = areaAppointments.length > 0 || areaBlocks.length > 0;
+
+              return (
+                <div
+                  key={area.id}
+                  style={{
+                    position: "relative",
+                    height: timelineHeight,
+                    borderRight: `1px solid ${ui.colors.border}`,
+                    background: "#fff",
+                  }}
+                >
+                  {timeTicks.map((minutes, index) => {
+                    const top =
+                      ((minutes - timelineStartMinutes) / CALENDAR_TOTAL_MINUTES) *
+                      timelineHeight;
+                    const isHour = minutes % 60 === 0;
+                    const isLast = index === timeTicks.length - 1;
+                    return (
+                      <div
+                        key={minutes}
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          top,
+                          borderTop: isLast
+                            ? "1px solid rgba(2, 6, 23, 0.08)"
+                            : isHour
+                              ? "1px solid rgba(2, 6, 23, 0.08)"
+                              : "1px dashed rgba(2, 6, 23, 0.06)",
+                        }}
+                      />
+                    );
+                  })}
+
+                  {areaBlocks.map((item) => (
+                    <TimelineItem
+                      key={`block-${area.id}-${item.id}`}
+                      item={item}
+                      type="block"
+                      timelineStartMinutes={timelineStartMinutes}
+                      timelineHeight={timelineHeight}
+                      typesById={typesById}
+                      onClick={() => openBlockDetailModal(item)}
+                    />
+                  ))}
+
+                  {areaAppointments.map((item) => (
+                    <TimelineItem
+                      key={`appt-${item.id}`}
+                      item={item}
+                      type="appointment"
+                      timelineStartMinutes={timelineStartMinutes}
+                      timelineHeight={timelineHeight}
+                      typesById={typesById}
+                      onClick={() => openDetailModal(item)}
+                    />
+                  ))}
+
+                  {!hasItems ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 16,
+                        textAlign: "center",
+                        color: ui.colors.muted,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Clear for this area
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}
@@ -2165,57 +2763,6 @@ export default function Appointments() {
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: `1px solid ${ui.colors.border}`,
-          borderRadius: 12,
-          background: "rgba(2, 6, 23, 0.02)",
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          alignItems: "end",
-        }}
-      >
-        <label style={{ fontSize: 13, fontWeight: 700 }}>
-          Date
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            style={{ ...baseInputStyle, display: "block", marginTop: 6 }}
-          />
-        </label>
-
-        {showSiteSelector ? (
-          <label style={{ fontSize: 13, fontWeight: 700 }}>
-            Site
-            <select
-              value={selectedSiteId}
-              onChange={(e) => setSelectedSiteId(e.target.value)}
-              style={{
-                ...baseInputStyle,
-                display: "block",
-                marginTop: 6,
-                minWidth: 180,
-              }}
-            >
-              {selectorSites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name || prettySiteName(site.id)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <div style={{ fontSize: 13 }}>
-            <div style={{ fontWeight: 700 }}>Site</div>
-            <div style={{ marginTop: 8 }}>{visibleSiteName}</div>
-          </div>
-        )}
-      </div>
-
       {!showSiteSelector && !selectedSiteIsBookable ? (
         <div
           style={{
@@ -2243,308 +2790,6 @@ export default function Appointments() {
         >
           No bookable appointment sites are available yet. Seed Duke Street and
           St Enoch appointment areas first.
-        </div>
-      ) : null}
-
-      {canManageReminderBatch ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            border: `1px solid ${ui.colors.border}`,
-            background: "rgba(59,130,246,0.05)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 900 }}>
-                Send tomorrow&apos;s reminders
-              </div>
-              <div
-                style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}
-              >
-                Preview eligible appointments first, then send reminders
-                deliberately from the server.
-              </div>
-              <div
-                style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
-              >
-                {reminderRunLoading
-                  ? "Loading reminder run status..."
-                  : reminderRunRows.length === 0
-                    ? "No scheduled reminder runs recorded yet."
-                    : `Latest scheduled run: ${formatDateTimeLabel(
-                        reminderRunRows.find(
-                          (row) => row.triggered_by === "scheduled",
-                        )?.finished_at || reminderRunRows[0]?.finished_at,
-                      )}`}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "end",
-              }}
-            >
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Date
-                <input
-                  type="date"
-                  value={reminderBatchDate}
-                  onChange={(e) => setReminderBatchDate(e.target.value)}
-                  style={{ ...baseInputStyle, display: "block", marginTop: 6 }}
-                />
-              </label>
-
-              {isAdmin ? (
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <select
-                    value={reminderBatchSiteId}
-                    onChange={(e) => setReminderBatchSiteId(e.target.value)}
-                    style={{
-                      ...baseInputStyle,
-                      display: "block",
-                      marginTop: 6,
-                      minWidth: 180,
-                    }}
-                  >
-                    {reminderBatchSiteOptions.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name || prettySiteName(site.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <div style={{ fontSize: 13 }}>
-                  <div style={{ fontWeight: 700 }}>Site</div>
-                  <div style={{ marginTop: 8 }}>
-                    {prettySiteName(effectiveReminderBatchSiteId)}
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={loadReminderBatchPreview}
-                disabled={reminderBatchLoading || reminderBatchSending}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: ui.colors.cardBg,
-                  color: ui.colors.text,
-                  cursor:
-                    reminderBatchLoading || reminderBatchSending
-                      ? "not-allowed"
-                      : "pointer",
-                  fontWeight: 800,
-                  opacity:
-                    reminderBatchLoading || reminderBatchSending ? 0.6 : 1,
-                }}
-              >
-                {reminderBatchLoading ? "Loading..." : "Preview reminders"}
-              </button>
-
-              <button
-                type="button"
-                onClick={sendReminderBatch}
-                disabled={
-                  reminderBatchSending ||
-                  reminderBatchLoading ||
-                  !reminderBatchSummary ||
-                  Number(reminderBatchSummary.eligible_count || 0) === 0
-                }
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: "1px solid rgba(59,130,246,0.35)",
-                  background: "rgba(59,130,246,0.12)",
-                  color: ui.colors.text,
-                  cursor:
-                    reminderBatchSending ||
-                    reminderBatchLoading ||
-                    !reminderBatchSummary ||
-                    Number(reminderBatchSummary.eligible_count || 0) === 0
-                      ? "not-allowed"
-                      : "pointer",
-                  fontWeight: 900,
-                  opacity:
-                    reminderBatchSending ||
-                    reminderBatchLoading ||
-                    !reminderBatchSummary ||
-                    Number(reminderBatchSummary.eligible_count || 0) === 0
-                      ? 0.6
-                      : 1,
-                }}
-              >
-                {reminderBatchSending ? "Sending..." : "Send reminders"}
-              </button>
-            </div>
-          </div>
-
-          {reminderBatchError ? (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 12,
-                borderRadius: 12,
-                background: "rgba(239,68,68,0.08)",
-                border: "1px solid rgba(239,68,68,0.35)",
-              }}
-            >
-              {reminderBatchError}
-            </div>
-          ) : null}
-
-          {reminderBatchMessage ? (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 12,
-                borderRadius: 12,
-                background: "rgba(34,197,94,0.10)",
-                border: "1px solid rgba(34,197,94,0.35)",
-              }}
-            >
-              {reminderBatchMessage}
-            </div>
-          ) : null}
-
-          {reminderBatchSummary ? (
-            <div
-              style={{
-                marginTop: 12,
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                gap: 10,
-              }}
-            >
-              <FieldValue
-                label="Found"
-                value={String(reminderBatchSummary.total_found || 0)}
-              />
-              <FieldValue
-                label="Eligible"
-                value={String(reminderBatchSummary.eligible_count || 0)}
-              />
-              <FieldValue
-                label="Sent"
-                value={String(reminderBatchSummary.sent_count || 0)}
-              />
-              <FieldValue
-                label="Already sent"
-                value={String(
-                  reminderBatchSummary.skipped_already_sent_count || 0,
-                )}
-              />
-              <FieldValue
-                label="Missing email"
-                value={String(
-                  reminderBatchSummary.skipped_missing_email_count || 0,
-                )}
-              />
-              <FieldValue
-                label="Failed"
-                value={String(reminderBatchSummary.failed_count || 0)}
-              />
-            </div>
-          ) : null}
-
-          {reminderBatchRows.length > 0 ? (
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              {reminderBatchRows.map((row) => (
-                <div
-                  key={row.appointment_id}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    background: ui.colors.cardBg,
-                    border: `1px solid ${ui.colors.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ fontWeight: 900 }}>
-                      {row.customer_name || "Customer"}
-                    </div>
-                    <div style={{ fontSize: 13, color: ui.colors.muted }}>
-                      {row.appointment_time} • {row.site_name} • {row.area_name}
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 13 }}>
-                    {row.customer_email || "No email address"}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 13,
-                      color: ui.colors.muted,
-                    }}
-                  >
-                    {row.appointment_type}
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700 }}>
-                    {row.message}
-                    {row.send_result === "failed" && row.error
-                      ? `: ${row.error}`
-                      : ""}
-                    {row.send_result === "sent" ? " - Reminder sent." : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {reminderRunRows.length > 0 ? (
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              {reminderRunRows.slice(0, 3).map((row) => (
-                <div
-                  key={row.id}
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    background: "rgba(2, 6, 23, 0.03)",
-                    border: `1px solid ${ui.colors.border}`,
-                    fontSize: 13,
-                  }}
-                >
-                  <strong>
-                    {row.triggered_by === "scheduled"
-                      ? "Scheduled"
-                      : "Manual"}{" "}
-                    run
-                  </strong>{" "}
-                  for {row.run_for_date}: sent {row.sent_count}, skipped{" "}
-                  {row.skipped_count}, failed {row.failed_count}
-                  <div style={{ marginTop: 4, color: ui.colors.muted }}>
-                    {formatDateTimeLabel(row.finished_at)}
-                    {row.initiated_by_name ? ` by ${row.initiated_by_name}` : ""}
-                    {row.dry_run ? " • dry run" : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
         </div>
       ) : null}
 
@@ -2610,237 +2855,13 @@ export default function Appointments() {
         </div>
       ) : null}
 
-      <div
-        style={{
-          marginTop: 16,
-          border: `1px solid ${ui.colors.border}`,
-          borderRadius: 12,
-          overflow: "hidden",
-          background: ui.colors.cardBg,
-        }}
-      >
-        <div
-          style={{
-            padding: 12,
-            borderBottom: `1px solid ${ui.colors.border}`,
-            background: "rgba(2, 6, 23, 0.03)",
-            fontWeight: 900,
-          }}
-        >
-          Day View
-        </div>
+      <div style={{ marginTop: 16 }}>{calendarPanel}</div>
 
-        {loading ? (
-          <div style={{ padding: 16 }}>Loading appointments...</div>
-        ) : areas.length === 0 ? (
-          <div style={{ padding: 16, color: ui.colors.muted }}>
-            Appointment areas/resources need to be seeded for this site before
-            the calendar can display columns.
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `84px repeat(${areas.length}, minmax(220px, 1fr))`,
-                minWidth: 84 + areas.length * 220,
-              }}
-            >
-              <div
-                style={{
-                  padding: 12,
-                  borderRight: `1px solid ${ui.colors.border}`,
-                  borderBottom: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.03)",
-                  fontWeight: 800,
-                }}
-              >
-                Time
-              </div>
-
-              {areas.map((area) => (
-                <div
-                  key={area.id}
-                  style={{
-                    padding: 12,
-                    borderRight: `1px solid ${ui.colors.border}`,
-                    borderBottom: `1px solid ${ui.colors.border}`,
-                    background: "rgba(2, 6, 23, 0.03)",
-                  }}
-                >
-                  <div style={{ fontWeight: 900 }}>
-                    {canonicalAreaLabel(area)}
-                  </div>
-                  <div style={{ fontSize: 12, color: ui.colors.muted }}>
-                    {area.branch || ""}
-                  </div>
-                </div>
-              ))}
-
-              <div
-                style={{
-                  position: "relative",
-                  height: timelineHeight,
-                  borderRight: `1px solid ${ui.colors.border}`,
-                  background:
-                    "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
-                }}
-              >
-                {hourTicks.map((hour) => {
-                  const top = (hour - timeline.startHour) * HOUR_HEIGHT;
-                  return (
-                    <div
-                      key={hour}
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        top,
-                        height: 0,
-                        borderTop: "1px solid rgba(2, 6, 23, 0.08)",
-                      }}
-                    >
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: -9,
-                          left: 8,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: ui.colors.muted,
-                          background: "rgba(212,212,212,0.9)",
-                          padding: "0 4px",
-                        }}
-                      >
-                        {hourLabel(hour)}
-                      </span>
-                    </div>
-                  );
-                })}
-
-                {Array.from({ length: Math.max(totalHours, 1) }, (_, index) => {
-                  const top = index * HOUR_HEIGHT + HOUR_HEIGHT / 2;
-                  return (
-                    <div
-                      key={`half-${index}`}
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        top,
-                        borderTop: "1px dashed rgba(2, 6, 23, 0.08)",
-                      }}
-                    />
-                  );
-                })}
-              </div>
-
-              {areas.map((area) => {
-                const areaAppointments = appointmentsByArea[area.id] || [];
-                const areaBlocks = [
-                  ...(blocksByArea[area.id] || []),
-                  ...(blocksByArea.__branch__ || []),
-                ];
-                const hasItems =
-                  areaAppointments.length > 0 || areaBlocks.length > 0;
-
-                return (
-                  <div
-                    key={area.id}
-                    style={{
-                      position: "relative",
-                      height: timelineHeight,
-                      borderRight: `1px solid ${ui.colors.border}`,
-                      background: "#fff",
-                    }}
-                  >
-                    {hourTicks.map((hour) => {
-                      const top = (hour - timeline.startHour) * HOUR_HEIGHT;
-                      return (
-                        <div
-                          key={hour}
-                          style={{
-                            position: "absolute",
-                            left: 0,
-                            right: 0,
-                            top,
-                            borderTop: "1px solid rgba(2, 6, 23, 0.08)",
-                          }}
-                        />
-                      );
-                    })}
-
-                    {Array.from(
-                      { length: Math.max(totalHours, 1) },
-                      (_, index) => {
-                        const top = index * HOUR_HEIGHT + HOUR_HEIGHT / 2;
-                        return (
-                          <div
-                            key={`half-${area.id}-${index}`}
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              right: 0,
-                              top,
-                              borderTop: "1px dashed rgba(2, 6, 23, 0.06)",
-                            }}
-                          />
-                        );
-                      },
-                    )}
-
-                    {areaBlocks.map((item) => (
-                      <TimelineItem
-                        key={`block-${area.id}-${item.id}`}
-                        item={item}
-                        type="block"
-                        startHour={timeline.startHour}
-                        typesById={typesById}
-                        onClick={() => openBlockDetailModal(item)}
-                      />
-                    ))}
-
-                    {areaAppointments.map((item) => (
-                      <TimelineItem
-                        key={`appt-${item.id}`}
-                        item={item}
-                        type="appointment"
-                        startHour={timeline.startHour}
-                        typesById={typesById}
-                        onClick={() => openDetailModal(item)}
-                      />
-                    ))}
-
-                    {!hasItems ? (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: 16,
-                          textAlign: "center",
-                          color: ui.colors.muted,
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        No appointments or blocks
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
 
       {modalOpen ? (
         <ModalShell
           title="New appointment"
-          subtitle="Create a booked appointment without sending emails yet."
+          subtitle="Create a booked appointment and confirm the customer details before saving."
           onClose={closeCreateModal}
           maxWidth={640}
         >
@@ -2852,6 +2873,15 @@ export default function Appointments() {
                 gap: 12,
               }}
             >
+              <div style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontSize: 13, fontWeight: 900 }}>
+                  Appointment details
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                  Choose the site, slot, resource, and appointment type first.
+                </div>
+              </div>
+
               {showSiteSelector ? (
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Site
@@ -2965,6 +2995,9 @@ export default function Appointments() {
               <label
                 style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
               >
+                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  Customer details
+                </div>
                 Customer name
                 <input
                   value={form.customerName}
@@ -2991,6 +3024,7 @@ export default function Appointments() {
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
+                  marginTop: 4,
                 }}
               >
                 <input
@@ -3033,6 +3067,9 @@ export default function Appointments() {
               <label
                 style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
               >
+                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  Internal notes
+                </div>
                 Internal notes
                 <textarea
                   rows={4}
@@ -3126,6 +3163,15 @@ export default function Appointments() {
                 gap: 12,
               }}
             >
+              <div style={{ gridColumn: "1 / -1" }}>
+                <div style={{ fontSize: 13, fontWeight: 900 }}>
+                  Block details
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                  Choose whether this blocks one area or the whole site before setting the time range.
+                </div>
+              </div>
+
               {showSiteSelector ? (
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Site
@@ -3183,6 +3229,11 @@ export default function Appointments() {
                     </option>
                   ))}
                 </select>
+                <div style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}>
+                  {blockForm.areaId
+                    ? "This block applies only to the selected area/resource."
+                    : "This block applies to the whole site across every area."}
+                </div>
               </label>
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
@@ -3220,6 +3271,9 @@ export default function Appointments() {
               <label
                 style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
               >
+                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  Reason
+                </div>
                 Reason
                 <textarea
                   rows={4}
@@ -3306,7 +3360,10 @@ export default function Appointments() {
           maxWidth={760}
         >
           {detailEditing ? (
-            <form onSubmit={submitDetailUpdate} style={{ padding: 16 }}>
+            <form
+              onSubmit={submitDetailUpdate}
+              style={{ padding: 16, paddingBottom: 16 }}
+            >
               <div
                 style={{
                   display: "grid",
@@ -3314,6 +3371,15 @@ export default function Appointments() {
                   gap: 12,
                 }}
               >
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: 13, fontWeight: 900 }}>
+                    Appointment details
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                    Update the date, time, area, and appointment type here.
+                  </div>
+                </div>
+
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Site
                   <input
@@ -3412,6 +3478,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
+                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                    Customer details
+                  </div>
                   Customer name
                   <input
                     value={detailForm.customerName}
@@ -3452,6 +3521,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
+                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                    Internal notes
+                  </div>
                   Internal notes
                   <textarea
                     rows={4}
@@ -3498,11 +3570,21 @@ export default function Appointments() {
 
               <div
                 style={{
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 2,
                   marginTop: 16,
+                  marginLeft: -16,
+                  marginRight: -16,
+                  marginBottom: -12,
+                  padding: 12,
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: 10,
                   flexWrap: "wrap",
+                  background: ui.colors.cardBg,
+                  borderTop: `1px solid ${ui.colors.border}`,
+                  boxShadow: "0 -8px 18px rgba(15,23,42,0.06)",
                 }}
               >
                 <button
@@ -3546,274 +3628,272 @@ export default function Appointments() {
               </div>
             </form>
           ) : (
-            <div style={{ padding: 16 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <FieldValue
-                  label="Customer name"
-                  value={detailAppointment.customer_name}
-                />
-                <FieldValue
-                  label="Customer email"
-                  value={detailAppointment.customer_email}
-                />
-                <FieldValue
-                  label="Customer phone"
-                  value={detailAppointment.customer_phone}
-                />
-                <FieldValue
-                  label="Appointment type"
-                  value={appointmentTypeLabel(detailAppointment, typesById)}
-                />
-                <FieldValue
-                  label="Date"
-                  value={formatDateLabel(detailAppointment.start_at)}
-                />
-                <FieldValue
-                  label="Start time"
-                  value={formatTimeLabel(detailAppointment.start_at)}
-                />
-                <FieldValue
-                  label="End time"
-                  value={formatTimeLabel(detailAppointment.end_at)}
-                />
-                <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
-                <FieldValue
-                  label="Area / resource"
-                  value={canonicalAreaLabel(detailArea)}
-                />
-                <FieldValue
-                  label="Booked by"
-                  value={bookedByLabel(detailAppointment)}
-                />
-                <FieldValue
-                  label="Latest confirmation sent"
-                  value={
-                    latestConfirmationEmail
-                      ? `${formatDateTimeLabel(latestConfirmationEmail.sent_at)}${
-                          latestConfirmationEmail.sent_by_name
-                            ? ` by ${latestConfirmationEmail.sent_by_name}`
-                            : ""
-                        }`
-                      : "Not sent yet"
-                  }
-                />
-                <FieldValue
-                  label="Created at"
-                  value={formatDateTimeLabel(detailAppointment.created_at)}
-                />
-                <FieldValue
-                  label="Last updated"
-                  value={
-                    detailLastChange
-                      ? formatDateTimeLabel(detailLastChange.created_at)
-                      : formatDateTimeLabel(detailAppointment.updated_at)
-                  }
-                />
-                <FieldValue
-                  label="Last updated by"
-                  value={detailLastChange?.changed_by_name || "Not available"}
-                />
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(2, 6, 23, 0.03)",
-                    border: `1px solid ${ui.colors.border}`,
-                  }}
+            <div style={{ padding: 16, paddingBottom: 16 }}>
+              <div style={{ display: "grid", gap: 16 }}>
+                <SectionCard title="Customer details">
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <FieldValue label="Customer name" value={detailAppointment.customer_name} />
+                    <FieldValue label="Customer email" value={detailAppointment.customer_email} />
+                    <FieldValue label="Customer phone" value={detailAppointment.customer_phone} />
+                    <FieldValue label="Booked by" value={bookedByLabel(detailAppointment)} />
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Appointment details">
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <FieldValue
+                      label="Appointment type"
+                      value={appointmentTypeLabel(detailAppointment, typesById)}
+                    />
+                    <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
+                    <FieldValue label="Date" value={formatDateLabel(detailAppointment.start_at)} />
+                    <FieldValue label="Area / resource" value={canonicalAreaLabel(detailArea)} />
+                    <FieldValue label="Start time" value={formatTimeLabel(detailAppointment.start_at)} />
+                    <FieldValue label="End time" value={formatTimeLabel(detailAppointment.end_at)} />
+                  </div>
+                </SectionCard>
+
+                <SectionCard
+                  title="Email and accountability"
+                  subtitle="Confirmation and reminder status are based on successful email logs only."
+                  tone="softBlue"
                 >
                   <div
                     style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: ui.colors.muted,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
                     }}
                   >
-                    Internal notes
+                    <FieldValue
+                      label="Confirmation"
+                      value={
+                        latestConfirmationEmail
+                          ? `Sent ${formatDateTimeLabel(latestConfirmationEmail.sent_at)}${
+                              latestConfirmationEmail.sent_by_name
+                                ? ` by ${latestConfirmationEmail.sent_by_name}`
+                                : ""
+                            }`
+                          : "No confirmation logged"
+                      }
+                    />
+                    <FieldValue
+                      label="Reminder"
+                      value={
+                        latestReminderEmail
+                          ? `Sent ${formatDateTimeLabel(latestReminderEmail.sent_at)}${
+                              latestReminderEmail.sent_by_name
+                                ? ` by ${latestReminderEmail.sent_by_name}`
+                                : ""
+                            }`
+                          : detailAppointment.customer_email
+                            ? "No reminder logged"
+                            : "No email address on appointment"
+                      }
+                    />
+                    <FieldValue label="Created at" value={formatDateTimeLabel(detailAppointment.created_at)} />
+                    <FieldValue
+                      label="Last updated"
+                      value={
+                        detailLastChange
+                          ? formatDateTimeLabel(detailLastChange.created_at)
+                          : formatDateTimeLabel(detailAppointment.updated_at)
+                      }
+                    />
+                    <FieldValue
+                      label="Last updated by"
+                      value={detailLastChange?.changed_by_name || "Not available"}
+                    />
+                    <FieldValue
+                      label="Email status"
+                      value={
+                        !detailAppointment.customer_email
+                          ? "No email"
+                          : latestReminderEmail
+                            ? "Reminder sent"
+                            : latestConfirmationEmail
+                              ? "Confirmation sent"
+                              : "No email logged"
+                      }
+                    />
                   </div>
+                </SectionCard>
+
+                <SectionCard title="Internal notes" tone="softSlate">
                   <div
                     style={{
-                      marginTop: 6,
                       whiteSpace: "pre-wrap",
                       fontWeight: 700,
                     }}
                   >
                     {detailAppointment.internal_notes || "No internal notes"}
                   </div>
-                </div>
-              </div>
+                </SectionCard>
 
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
-
-                {activityLoading ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    Loading activity...
-                  </div>
-                ) : activityError ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 10,
-                      background: "rgba(245,158,11,0.12)",
-                      border: "1px solid rgba(245,158,11,0.35)",
-                    }}
-                  >
-                    {activityError}
-                  </div>
-                ) : activityRows.length === 0 ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    No activity has been recorded yet.
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                    {activityRows.map((row) => (
-                      <div
-                        key={row.id}
-                        style={{
-                          padding: 10,
-                          borderRadius: 10,
-                          background: ui.colors.cardBg,
-                          border: `1px solid ${ui.colors.border}`,
-                        }}
-                      >
+                <CollapsibleCard
+                  title="Email history"
+                  subtitle="Confirmation and reminder sends recorded against this appointment."
+                  open={emailSectionOpen}
+                  onToggle={() => setEmailSectionOpen((prev) => !prev)}
+                >
+                  {emailLogLoading ? (
+                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                      Loading email history...
+                    </div>
+                  ) : emailLogError ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "rgba(245,158,11,0.12)",
+                        border: "1px solid rgba(245,158,11,0.35)",
+                      }}
+                    >
+                      {emailLogError}
+                    </div>
+                  ) : emailLogRows.length === 0 ? (
+                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                      No confirmation or reminder emails have been logged yet.
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                      {emailLogRows.map((row) => (
                         <div
+                          key={row.id}
                           style={{
-                            fontWeight: 800,
-                            textTransform: "capitalize",
+                            padding: 10,
+                            borderRadius: 10,
+                            background: ui.colors.cardBg,
+                            border: `1px solid ${ui.colors.border}`,
                           }}
                         >
-                          {row.action}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 13,
-                            color: ui.colors.muted,
-                          }}
-                        >
-                          {formatDateTimeLabel(row.created_at)}
-                          {row.changed_by_name
-                            ? ` by ${row.changed_by_name}`
-                            : ""}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            fontSize: 13,
-                            color: ui.colors.text,
-                          }}
-                        >
-                          {describeActivity(row)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 900 }}>
-                  Email history
-                </div>
-
-                {emailLogLoading ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    Loading email history...
-                  </div>
-                ) : emailLogError ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 10,
-                      background: "rgba(245,158,11,0.12)",
-                      border: "1px solid rgba(245,158,11,0.35)",
-                    }}
-                  >
-                    {emailLogError}
-                  </div>
-                ) : emailLogRows.length === 0 ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    No confirmation or reminder emails have been logged yet.
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                    {emailLogRows.map((row) => (
-                      <div
-                        key={row.id}
-                        style={{
-                          padding: 10,
-                          borderRadius: 10,
-                          background: ui.colors.cardBg,
-                          border: `1px solid ${ui.colors.border}`,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {row.email_type} - {row.status}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 13,
-                            color: ui.colors.muted,
-                          }}
-                        >
-                          {formatDateTimeLabel(row.sent_at)}
-                          {row.sent_by_name ? ` by ${row.sent_by_name}` : ""}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            fontSize: 13,
-                            color: ui.colors.text,
-                          }}
-                        >
-                          {row.recipient_email}
-                        </div>
-                        {row.error_message ? (
                           <div
                             style={{
-                              marginTop: 6,
+                              fontWeight: 800,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {row.email_type} - {row.status}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
                               fontSize: 13,
                               color: ui.colors.muted,
                             }}
                           >
-                            {row.error_message}
+                            {formatDateTimeLabel(row.sent_at)}
+                            {row.sent_by_name ? ` by ${row.sent_by_name}` : ""}
                           </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 13,
+                              color: ui.colors.text,
+                            }}
+                          >
+                            {row.recipient_email}
+                          </div>
+                          {row.error_message ? (
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 13,
+                                color: ui.colors.muted,
+                              }}
+                            >
+                              {row.error_message}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CollapsibleCard>
+
+                <CollapsibleCard
+                  title="Activity"
+                  subtitle="Appointment updates and accountability trail."
+                  open={activitySectionOpen}
+                  onToggle={() => setActivitySectionOpen((prev) => !prev)}
+                >
+                  {activityLoading ? (
+                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                      Loading activity...
+                    </div>
+                  ) : activityError ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "rgba(245,158,11,0.12)",
+                        border: "1px solid rgba(245,158,11,0.35)",
+                      }}
+                    >
+                      {activityError}
+                    </div>
+                  ) : visibleActivityRows.length === 0 ? (
+                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                      No appointment activity has been recorded yet.
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                      {visibleActivityRows.map((row) => (
+                        <div
+                          key={row.id}
+                          style={{
+                            padding: 10,
+                            borderRadius: 10,
+                            background: ui.colors.cardBg,
+                            border: `1px solid ${ui.colors.border}`,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {row.action}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 13,
+                              color: ui.colors.muted,
+                            }}
+                          >
+                            {formatDateTimeLabel(row.created_at)}
+                            {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 13,
+                              color: ui.colors.text,
+                            }}
+                          >
+                            {describeActivity(row)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CollapsibleCard>
               </div>
 
               {detailAppointment.status !== "cancelled" &&
@@ -3876,11 +3956,21 @@ export default function Appointments() {
 
               <div
                 style={{
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 2,
                   marginTop: 16,
+                  marginLeft: -16,
+                  marginRight: -16,
+                  marginBottom: -12,
+                  padding: 12,
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: 10,
                   flexWrap: "wrap",
+                  background: ui.colors.cardBg,
+                  borderTop: `1px solid ${ui.colors.border}`,
+                  boxShadow: "0 -8px 18px rgba(15,23,42,0.06)",
                 }}
               >
                 {canManageSelectedAppointment &&
@@ -4026,6 +4116,15 @@ export default function Appointments() {
                   gap: 12,
                 }}
               >
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: 13, fontWeight: 900 }}>
+                    Block details
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                    Adjust the date, scope, and reason for this blocked-out time.
+                  </div>
+                </div>
+
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Site
                   <input
@@ -4073,6 +4172,11 @@ export default function Appointments() {
                       </option>
                     ))}
                   </select>
+                  <div style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}>
+                    {detailBlockForm.areaId
+                      ? "This block affects only the selected area/resource."
+                      : "This block affects the whole site."}
+                  </div>
                 </label>
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
@@ -4118,6 +4222,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
+                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                    Reason
+                  </div>
                   Reason
                   <textarea
                     rows={4}
