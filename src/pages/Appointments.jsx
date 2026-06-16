@@ -587,6 +587,8 @@ export default function Appointments() {
   const [reminderBatchMessage, setReminderBatchMessage] = React.useState("");
   const [reminderBatchLoading, setReminderBatchLoading] = React.useState(false);
   const [reminderBatchSending, setReminderBatchSending] = React.useState(false);
+  const [reminderRunRows, setReminderRunRows] = React.useState([]);
+  const [reminderRunLoading, setReminderRunLoading] = React.useState(false);
 
   const [blockModalOpen, setBlockModalOpen] = React.useState(false);
   const [blockSaving, setBlockSaving] = React.useState(false);
@@ -636,6 +638,8 @@ export default function Appointments() {
   const effectiveReminderBatchSiteId = isAdmin
     ? reminderBatchSiteId
     : profile?.site_id || "";
+  const reminderBatchBranch =
+    siteIdToAppointmentBranch(effectiveReminderBatchSiteId);
 
   const baseInputStyle = React.useMemo(
     () => ({
@@ -1884,6 +1888,7 @@ export default function Appointments() {
 
       setReminderBatchRows(Array.isArray(data?.results) ? data.results : []);
       setReminderBatchSummary(data || null);
+      await loadReminderRuns();
     } catch (err) {
       console.error("appointments: reminder batch preview failed", err);
       setReminderBatchRows([]);
@@ -1932,6 +1937,7 @@ export default function Appointments() {
         `Sent ${Number(data?.sent_count || 0)} reminder${Number(data?.sent_count || 0) === 1 ? "" : "s"}.`,
       );
       await loadReminderBatchPreview();
+      await loadReminderRuns();
     } catch (err) {
       console.error("appointments: reminder batch send failed", err);
       setReminderBatchError(readErrorMessage(err, "Could not send reminders."));
@@ -1939,6 +1945,37 @@ export default function Appointments() {
       setReminderBatchSending(false);
     }
   }
+
+  const loadReminderRuns = React.useCallback(async () => {
+    if (!canManageReminderBatch || !reminderBatchBranch) {
+      setReminderRunRows([]);
+      return;
+    }
+
+    setReminderRunLoading(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        "get_appointment_reminder_runs_staff",
+        {
+          p_branch: reminderBatchBranch,
+          p_limit: 5,
+        },
+      );
+
+      if (rpcError) throw rpcError;
+      setReminderRunRows(data || []);
+    } catch (err) {
+      console.error("appointments: reminder run load failed", err);
+      setReminderRunRows([]);
+    } finally {
+      setReminderRunLoading(false);
+    }
+  }, [canManageReminderBatch, reminderBatchBranch]);
+
+  React.useEffect(() => {
+    loadReminderRuns();
+  }, [loadReminderRuns]);
 
   async function submitBlockUpdate(e) {
     e.preventDefault();
@@ -2238,6 +2275,19 @@ export default function Appointments() {
                 Preview eligible appointments first, then send reminders
                 deliberately from the server.
               </div>
+              <div
+                style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
+              >
+                {reminderRunLoading
+                  ? "Loading reminder run status..."
+                  : reminderRunRows.length === 0
+                    ? "No scheduled reminder runs recorded yet."
+                    : `Latest scheduled run: ${formatDateTimeLabel(
+                        reminderRunRows.find(
+                          (row) => row.triggered_by === "scheduled",
+                        )?.finished_at || reminderRunRows[0]?.finished_at,
+                      )}`}
+              </div>
             </div>
 
             <div
@@ -2459,6 +2509,37 @@ export default function Appointments() {
                       ? `: ${row.error}`
                       : ""}
                     {row.send_result === "sent" ? " - Reminder sent." : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {reminderRunRows.length > 0 ? (
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {reminderRunRows.slice(0, 3).map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    padding: 10,
+                    borderRadius: 10,
+                    background: "rgba(2, 6, 23, 0.03)",
+                    border: `1px solid ${ui.colors.border}`,
+                    fontSize: 13,
+                  }}
+                >
+                  <strong>
+                    {row.triggered_by === "scheduled"
+                      ? "Scheduled"
+                      : "Manual"}{" "}
+                    run
+                  </strong>{" "}
+                  for {row.run_for_date}: sent {row.sent_count}, skipped{" "}
+                  {row.skipped_count}, failed {row.failed_count}
+                  <div style={{ marginTop: 4, color: ui.colors.muted }}>
+                    {formatDateTimeLabel(row.finished_at)}
+                    {row.initiated_by_name ? ` by ${row.initiated_by_name}` : ""}
+                    {row.dry_run ? " • dry run" : ""}
                   </div>
                 </div>
               ))}
