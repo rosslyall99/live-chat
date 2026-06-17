@@ -2,6 +2,7 @@ import React from "react";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import { invokeAuthed } from "../lib/invokeAuthed";
+import "./Appointments.css";
 import {
   appointmentBranchToSiteId,
   getBookableAppointmentSites,
@@ -36,10 +37,6 @@ function shiftInputDateValue(dateValue, dayOffset) {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function tomorrowInputValue() {
-  return shiftInputDateValue(todayInputValue(), 1);
 }
 
 function inputDateValueFromIso(iso) {
@@ -300,6 +297,7 @@ function buildInitialForm({ siteId, date }) {
     areaId: "",
     appointmentTypeId: "",
     startTime: "",
+    endTime: "",
     customerName: "",
     customerEmail: "",
     customerPhone: "",
@@ -315,6 +313,7 @@ function buildDetailForm(appointment, siteId) {
     areaId: appointment?.area_id || "",
     appointmentTypeId: appointment?.appointment_type_id || "",
     startTime: inputTimeValueFromIso(appointment?.start_at),
+    endTime: inputTimeValueFromIso(appointment?.end_at),
     customerName: appointment?.customer_name || "",
     customerEmail: appointment?.customer_email || "",
     customerPhone: appointment?.customer_phone || "",
@@ -346,6 +345,25 @@ function buildBlockDetailForm(block, siteId) {
 
 function readErrorMessage(err, fallback) {
   return err?.message || err?.error_description || fallback;
+}
+
+function addMinutesToTimeValue(timeValue, minutesToAdd) {
+  const [hh, mm] = String(timeValue || "").split(":");
+  const baseHours = Number(hh);
+  const baseMinutes = Number(mm);
+  if (
+    !Number.isInteger(baseHours) ||
+    !Number.isInteger(baseMinutes) ||
+    !Number.isFinite(minutesToAdd)
+  ) {
+    return "";
+  }
+
+  const totalMinutes = baseHours * 60 + baseMinutes + minutesToAdd;
+  if (totalMinutes < 0) return "";
+  const nextHours = Math.floor(totalMinutes / 60);
+  const nextMinutes = totalMinutes % 60;
+  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(2, "0")}`;
 }
 
 function isLikelyEmail(value) {
@@ -446,31 +464,29 @@ function TimelineItem({
 
   return (
     <button
+      className={
+        isBlock
+          ? "appointment-entry appointment-block-entry"
+          : "appointment-entry"
+      }
       type="button"
       onClick={onClick}
       disabled={!onClick}
       style={{
-        position: "absolute",
         left: 8,
         right: 8,
         top,
         height,
-        borderRadius: 10,
-        border: isBlock
-          ? "1px solid rgba(100,116,139,0.45)"
-          : `1px solid ${appointmentAccent.border}`,
-        background: isBlock
+        "--appointment-entry-border": isBlock
+          ? "rgba(100,116,139,0.45)"
+          : appointmentAccent.border,
+        "--appointment-entry-bg": isBlock
           ? "repeating-linear-gradient(-45deg, rgba(148,163,184,0.2), rgba(148,163,184,0.2) 8px, rgba(100,116,139,0.12) 8px, rgba(100,116,139,0.12) 16px)"
           : appointmentAccent.background,
-        padding: 6,
-        boxSizing: "border-box",
-        overflow: "hidden",
-        boxShadow: isBlock
+        "--appointment-entry-shadow": isBlock
           ? "inset 0 0 0 1px rgba(255,255,255,0.25)"
           : "0 6px 14px rgba(15,23,42,0.08)",
-        cursor: onClick ? "pointer" : "default",
-        textAlign: "left",
-        fontFamily: ui.font.ui,
+        "--appointment-entry-pill-bg": appointmentAccent.pill,
       }}
       title={
         isBlock
@@ -483,79 +499,23 @@ function TimelineItem({
       }
     >
       {isBlock ? (
-        <div
-          style={{
-            fontSize: 12,
-            lineHeight: 1.2,
-            fontWeight: 900,
-            color: ui.colors.text,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div className="appointment-block-entry-text">
           {formatTimeRange(item.start_at, item.end_at)} | {blockLabel}
           {item.reason ? ` | ${item.reason}` : ""}
         </div>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            minWidth: 0,
-            fontSize: 12,
-            lineHeight: 1.2,
-            color: ui.colors.text,
-          }}
-        >
-          <div
-            style={{
-              flex: "0 0 auto",
-              fontSize: 12,
-              fontWeight: 900,
-              color: ui.colors.muted,
-              whiteSpace: "nowrap",
-            }}
-          >
+        <div className="appointment-entry-content">
+          <div className="appointment-entry-time">
             {formatTimeRange(item.start_at, item.end_at)}
           </div>
 
-          <div
-            style={{
-              flex: "1 1 auto",
-              minWidth: 0,
-              fontWeight: 900,
-              color: ui.colors.text,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div className="appointment-entry-customer">
             {item.customer_name || "Unnamed customer"}
           </div>
 
-          <div
-            style={{
-              flex: "0 1 auto",
-              minWidth: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              maxWidth: "44%",
-              padding: "1px 6px",
-              borderRadius: 999,
-              background: appointmentAccent.pill,
-              fontSize: 12,
-              fontWeight: 900,
-              color: ui.colors.text,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div className="appointment-entry-type">
             {appointmentType}
           </div>
-
         </div>
       )}
     </button>
@@ -722,9 +682,7 @@ function CollapsibleCard({ title, subtitle, open, onToggle, children }) {
 
 export default function Appointments() {
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
-  const [blockWarning, setBlockWarning] = React.useState("");
-  const [calendarWarning, setCalendarWarning] = React.useState("");
+  const [toast, setToast] = React.useState(null);
 
   const [role, setRole] = React.useState("");
   const [profile, setProfile] = React.useState(null);
@@ -742,8 +700,6 @@ export default function Appointments() {
   const [saving, setSaving] = React.useState(false);
   const [savePhase, setSavePhase] = React.useState("");
   const [formError, setFormError] = React.useState("");
-  const [formNotice, setFormNotice] = React.useState("");
-  const [formNoticeTone, setFormNoticeTone] = React.useState("success");
   const [modalAreas, setModalAreas] = React.useState([]);
   const [modalAreasLoading, setModalAreasLoading] = React.useState(false);
   const [form, setForm] = React.useState(() => buildInitialForm({}));
@@ -765,22 +721,7 @@ export default function Appointments() {
   const [emailLogLoading, setEmailLogLoading] = React.useState(false);
   const [emailLogError, setEmailLogError] = React.useState("");
   const [sendingConfirmation, setSendingConfirmation] = React.useState(false);
-  const [sendConfirmationMessage, setSendConfirmationMessage] =
-    React.useState("");
   const [sendingReminder, setSendingReminder] = React.useState(false);
-  const [sendReminderMessage, setSendReminderMessage] = React.useState("");
-  const [reminderBatchDate, setReminderBatchDate] = React.useState(() =>
-    tomorrowInputValue(),
-  );
-  const [reminderBatchSiteId, setReminderBatchSiteId] = React.useState("");
-  const [reminderBatchRows, setReminderBatchRows] = React.useState([]);
-  const [reminderBatchSummary, setReminderBatchSummary] = React.useState(null);
-  const [reminderBatchError, setReminderBatchError] = React.useState("");
-  const [reminderBatchMessage, setReminderBatchMessage] = React.useState("");
-  const [reminderBatchLoading, setReminderBatchLoading] = React.useState(false);
-  const [reminderBatchSending, setReminderBatchSending] = React.useState(false);
-  const [reminderRunRows, setReminderRunRows] = React.useState([]);
-  const [reminderRunLoading, setReminderRunLoading] = React.useState(false);
   const [activitySectionOpen, setActivitySectionOpen] = React.useState(true);
   const [emailSectionOpen, setEmailSectionOpen] = React.useState(true);
   const [isDesktopToolsLayout, setIsDesktopToolsLayout] = React.useState(
@@ -790,6 +731,7 @@ export default function Appointments() {
     typeof window === "undefined" ? 900 : window.innerHeight,
   );
   const calendarDateInputRef = React.useRef(null);
+  const toastTimerRef = React.useRef(null);
 
   const [blockModalOpen, setBlockModalOpen] = React.useState(false);
   const [blockSaving, setBlockSaving] = React.useState(false);
@@ -817,7 +759,6 @@ export default function Appointments() {
   const isManager = role === "manager";
   const showSiteSelector = isAdmin || isManager;
   const canManageBlocks = isAdmin || isManager;
-  const canManageReminderBatch = isAdmin || isManager;
   const bookableSites = React.useMemo(
     () => getBookableAppointmentSites(sites),
     [sites],
@@ -826,21 +767,6 @@ export default function Appointments() {
   const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
   const canOpenBlock = canManageBlocks && selectedSiteIsBookable;
   const canAutoSendConfirmationOnCreate = isLikelyEmail(form.customerEmail);
-  const reminderBatchSiteOptions = React.useMemo(() => {
-    if (isAdmin) return bookableSites;
-    if (profile?.site_id && isBookableAppointmentSite(profile.site_id)) {
-      const matched = bookableSites.find((site) => site.id === profile.site_id);
-      return matched
-        ? [matched]
-        : [{ id: profile.site_id, name: prettySiteName(profile.site_id) }];
-    }
-    return [];
-  }, [bookableSites, isAdmin, profile?.site_id]);
-  const effectiveReminderBatchSiteId = isAdmin
-    ? reminderBatchSiteId
-    : profile?.site_id || "";
-  const reminderBatchBranch =
-    siteIdToAppointmentBranch(effectiveReminderBatchSiteId);
 
   const baseInputStyle = React.useMemo(
     () => ({
@@ -856,6 +782,34 @@ export default function Appointments() {
     }),
     [],
   );
+
+  const showToast = React.useCallback((type, message, timeoutMs) => {
+    if (!message) return;
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+
+    setToast({ type, message });
+
+    const dismissAfter =
+      timeoutMs ?? (type === "error" ? 9000 : 5000);
+
+    if (dismissAfter > 0) {
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, dismissAfter);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadAreasForSite = React.useCallback(async (siteId) => {
     const branchCode = siteIdToAppointmentBranch(siteId);
@@ -878,16 +832,14 @@ export default function Appointments() {
       if (!siteIdParam || !profile?.site_id) return;
 
       setLoading(true);
-      setError("");
-      setBlockWarning("");
-      setCalendarWarning("");
 
       const branchCode = siteIdToAppointmentBranch(siteIdParam);
       if (!branchCode) {
         setAreas([]);
         setAppointments([]);
         setBlocks([]);
-        setError(
+        showToast(
+          "error",
           `Appointments are not available for ${prettySiteName(siteIdParam)}.`,
         );
         setLoading(false);
@@ -955,7 +907,8 @@ export default function Appointments() {
               calendarRes.value.error,
             );
             setAppointments([]);
-            setCalendarWarning(
+            showToast(
+              "error",
               "Calendar appointments could not be loaded from the existing appointment RPC.",
             );
           } else {
@@ -967,7 +920,8 @@ export default function Appointments() {
             calendarRes.reason,
           );
           setAppointments([]);
-          setCalendarWarning(
+          showToast(
+            "error",
             "Calendar appointments could not be loaded from the existing appointment RPC.",
           );
         }
@@ -979,7 +933,8 @@ export default function Appointments() {
               blocksRes.value.error,
             );
             setBlocks([]);
-            setBlockWarning(
+            showToast(
+              "info",
               "Blocked-out periods could not be loaded for this date.",
             );
           } else {
@@ -991,7 +946,8 @@ export default function Appointments() {
             blocksRes.reason,
           );
           setBlocks([]);
-          setBlockWarning(
+          showToast(
+            "info",
             "Blocked-out periods could not be loaded for this date.",
           );
         }
@@ -1000,12 +956,15 @@ export default function Appointments() {
         setAreas([]);
         setAppointments([]);
         setBlocks([]);
-        setError(readErrorMessage(err, "Could not load appointment calendar."));
+        showToast(
+          "error",
+          readErrorMessage(err, "Could not load appointment calendar."),
+        );
       } finally {
         setLoading(false);
       }
     },
-    [loadAreasForSite, profile?.site_id],
+    [loadAreasForSite, profile?.site_id, showToast],
   );
 
   const loadActivity = React.useCallback(async (appointmentId) => {
@@ -1110,40 +1069,10 @@ export default function Appointments() {
   }, [profile?.site_id, selectedSiteIsBookable, showSiteSelector, sites]);
 
   React.useEffect(() => {
-    if (!canManageReminderBatch) return;
-
-    if (isAdmin) {
-      if (isBookableAppointmentSite(selectedSiteId)) {
-        setReminderBatchSiteId((prev) => prev || selectedSiteId);
-        return;
-      }
-
-      if (reminderBatchSiteOptions.length > 0) {
-        setReminderBatchSiteId(
-          (prev) => prev || reminderBatchSiteOptions[0].id,
-        );
-      }
-
-      return;
-    }
-
-    if (profile?.site_id && isBookableAppointmentSite(profile.site_id)) {
-      setReminderBatchSiteId(profile.site_id);
-    }
-  }, [
-    canManageReminderBatch,
-    isAdmin,
-    profile?.site_id,
-    reminderBatchSiteOptions,
-    selectedSiteId,
-  ]);
-
-  React.useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
       setLoading(true);
-      setError("");
 
       try {
         const {
@@ -1203,7 +1132,10 @@ export default function Appointments() {
       } catch (err) {
         console.error("appointments: bootstrap failed", err);
         if (!cancelled) {
-          setError(readErrorMessage(err, "Could not load appointment access."));
+          showToast(
+            "error",
+            readErrorMessage(err, "Could not load appointment access."),
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -1215,12 +1147,45 @@ export default function Appointments() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [showToast]);
 
   React.useEffect(() => {
     if (!selectedSiteId || !profile?.site_id) return;
     loadCalendar(selectedSiteId, selectedDate);
   }, [loadCalendar, profile?.site_id, selectedDate, selectedSiteId]);
+
+  const visibleSiteName = React.useMemo(
+    () => prettySiteName(selectedSiteId || profile?.site_id),
+    [profile?.site_id, selectedSiteId],
+  );
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (!showSiteSelector && !selectedSiteIsBookable) {
+      showToast(
+        "info",
+        `Appointments are only available for Duke Street and St Enoch. Your current site is ${visibleSiteName}.`,
+        8000,
+      );
+    }
+  }, [
+    loading,
+    selectedSiteIsBookable,
+    showSiteSelector,
+    showToast,
+    visibleSiteName,
+  ]);
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (showSiteSelector && bookableSites.length === 0) {
+      showToast(
+        "info",
+        "No bookable appointment sites are available yet. Seed Duke Street and St Enoch appointment areas first.",
+        8000,
+      );
+    }
+  }, [bookableSites.length, loading, showSiteSelector, showToast]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1316,11 +1281,6 @@ export default function Appointments() {
     selectedSiteId,
   ]);
 
-  const visibleSiteName = React.useMemo(
-    () => prettySiteName(selectedSiteId || profile?.site_id),
-    [profile?.site_id, selectedSiteId],
-  );
-
   const timelineStartMinutes = CALENDAR_START_MINUTES;
   const timelineEndMinutes = CALENDAR_END_MINUTES;
   const timelineHeight = React.useMemo(() => {
@@ -1378,26 +1338,15 @@ export default function Appointments() {
 
   const calculatedEndTimeLabel =
     form.startTime && selectedType
-      ? formatTimeRange(
-          toDateTimeIso(form.date, form.startTime),
-          new Date(
-            new Date(toDateTimeIso(form.date, form.startTime)).getTime() +
-              selectedType.duration_minutes * 60000,
-          ).toISOString(),
-        ).split(" - ")[1]
+      ? addMinutesToTimeValue(form.startTime, selectedType.duration_minutes)
       : "";
 
   const detailEndTimeLabel =
     detailForm.startTime && detailSelectedType
-      ? formatTimeRange(
-          toDateTimeIso(detailForm.date, detailForm.startTime),
-          new Date(
-            new Date(
-              toDateTimeIso(detailForm.date, detailForm.startTime),
-            ).getTime() +
-              detailSelectedType.duration_minutes * 60000,
-          ).toISOString(),
-        ).split(" - ")[1]
+      ? addMinutesToTimeValue(
+          detailForm.startTime,
+          detailSelectedType.duration_minutes,
+        )
       : "";
 
   const detailSiteId = detailAppointment
@@ -1486,7 +1435,6 @@ export default function Appointments() {
   function openCreateModal() {
     setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
     setFormError("");
-    setFormNotice("");
     setCreateSendConfirmationTouched(false);
     setSavePhase("");
     setModalAreas(areas);
@@ -1520,8 +1468,6 @@ export default function Appointments() {
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
     setDetailError("");
-    setSendConfirmationMessage("");
-    setSendReminderMessage("");
     setActivitySectionOpen(true);
     setEmailSectionOpen(true);
     setDetailEditing(false);
@@ -1551,9 +1497,7 @@ export default function Appointments() {
     setEmailLogRows([]);
     setEmailLogError("");
     setSendingConfirmation(false);
-    setSendConfirmationMessage("");
     setSendingReminder(false);
-    setSendReminderMessage("");
     setActivitySectionOpen(true);
     setEmailSectionOpen(true);
   }
@@ -1569,6 +1513,31 @@ export default function Appointments() {
   }
 
   function updateForm(key, value) {
+    if (key === "appointmentTypeId" || key === "startTime") {
+      setForm((prev) => {
+        const next = { ...prev, [key]: value };
+        const nextTypeId =
+          key === "appointmentTypeId" ? value : prev.appointmentTypeId;
+        const nextStartTime = key === "startTime" ? value : prev.startTime;
+        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const nextEndTime =
+          nextType && nextStartTime
+            ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
+            : "";
+
+        return {
+          ...next,
+          endTime: nextEndTime,
+        };
+      });
+      return;
+    }
+
+    if (key === "endTime") {
+      setForm((prev) => ({ ...prev, endTime: value }));
+      return;
+    }
+
     if (key === "customerEmail") {
       setForm((prev) => {
         const nextEmail = value;
@@ -1592,6 +1561,26 @@ export default function Appointments() {
   }
 
   function updateDetailForm(key, value) {
+    if (key === "appointmentTypeId" || key === "startTime") {
+      setDetailForm((prev) => {
+        const next = { ...prev, [key]: value };
+        const nextTypeId =
+          key === "appointmentTypeId" ? value : prev.appointmentTypeId;
+        const nextStartTime = key === "startTime" ? value : prev.startTime;
+        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const nextEndTime =
+          nextType && nextStartTime
+            ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
+            : "";
+
+        return {
+          ...next,
+          endTime: nextEndTime,
+        };
+      });
+      return;
+    }
+
     setDetailForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -1601,6 +1590,48 @@ export default function Appointments() {
 
   function updateDetailBlockForm(key, value) {
     setDetailBlockForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function validateAppointmentTimes({
+    date,
+    startTime,
+    endTime,
+    setErrorMessage,
+  }) {
+    if (!startTime) {
+      setErrorMessage("Start time is required.");
+      return null;
+    }
+
+    if (!endTime) {
+      setErrorMessage("End time is required.");
+      return null;
+    }
+
+    if (!timeOptions.includes(startTime) || !timeOptions.includes(endTime)) {
+      setErrorMessage("Choose a valid start and end time from the dropdowns.");
+      return null;
+    }
+
+    const startAt = toDateTimeIso(date, startTime);
+    const endAt = toDateTimeIso(date, endTime);
+
+    if (!isWithinSelectedDay(date, startAt)) {
+      setErrorMessage("Start time must stay within the selected calendar day.");
+      return null;
+    }
+
+    if (!isWithinSelectedDay(date, endAt)) {
+      setErrorMessage("End time must stay within the selected calendar day.");
+      return null;
+    }
+
+    if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+      setErrorMessage("End time must be after the start time.");
+      return null;
+    }
+
+    return { startAt, endAt };
   }
 
   function findLocalConflict(
@@ -1677,7 +1708,6 @@ export default function Appointments() {
     e.preventDefault();
     if (saving) return;
     setFormError("");
-    setFormNotice("");
 
     if (!form.customerName.trim()) {
       setFormError("Customer name is required.");
@@ -1699,6 +1729,10 @@ export default function Appointments() {
       setFormError("Start time is required.");
       return;
     }
+    if (!form.endTime) {
+      setFormError("End time is required.");
+      return;
+    }
     if (!isBookableAppointmentSite(form.siteId)) {
       setFormError(
         "Appointments can only be created for Duke Street or St Enoch.",
@@ -1714,15 +1748,16 @@ export default function Appointments() {
       return;
     }
 
-    const startAt = toDateTimeIso(form.date, form.startTime);
-    if (!isWithinSelectedDay(form.date, startAt)) {
-      setFormError("Start time must stay within the selected calendar day.");
+    const appointmentTimes = validateAppointmentTimes({
+      date: form.date,
+      startTime: form.startTime,
+      endTime: form.endTime,
+      setErrorMessage: setFormError,
+    });
+    if (!appointmentTimes) {
       return;
     }
-
-    const endAt = new Date(
-      new Date(startAt).getTime() + typeRow.duration_minutes * 60000,
-    ).toISOString();
+    const { startAt, endAt } = appointmentTimes;
 
     const localConflict = findLocalConflict(form.areaId, startAt, endAt);
     if (localConflict) {
@@ -1741,6 +1776,7 @@ export default function Appointments() {
           p_area_id: form.areaId,
           p_appointment_type_id: form.appointmentTypeId,
           p_start_at: startAt,
+          p_end_at: endAt,
           p_customer_name: form.customerName.trim(),
           p_customer_email: form.customerEmail.trim(),
           p_customer_phone: form.customerPhone.trim() || null,
@@ -1772,18 +1808,16 @@ export default function Appointments() {
             );
           }
 
-          setFormNotice("Appointment saved and confirmation sent.");
-          setFormNoticeTone("success");
+          showToast("success", "Appointment saved and confirmation sent.");
         } catch (sendErr) {
           console.error("appointments: auto confirmation failed", sendErr);
-          setFormNotice(
+          showToast(
+            "info",
             "Appointment saved, but confirmation email could not be sent.",
           );
-          setFormNoticeTone("warning");
         }
       } else {
-        setFormNotice("Appointment saved.");
-        setFormNoticeTone("success");
+        showToast("success", "Appointment saved.");
       }
 
       setSelectedSiteId(form.siteId);
@@ -1792,7 +1826,9 @@ export default function Appointments() {
       await loadCalendar(form.siteId, form.date);
     } catch (err) {
       console.error("appointments: create failed", err);
-      setFormError(readErrorMessage(err, "Could not create the appointment."));
+      const message = readErrorMessage(err, "Could not create the appointment.");
+      setFormError(message);
+      showToast("error", message);
     } finally {
       setSavePhase("");
       setSaving(false);
@@ -1881,9 +1917,12 @@ export default function Appointments() {
       setSelectedDate(blockForm.date);
       closeBlockModal();
       await loadCalendar(blockForm.siteId, blockForm.date);
+      showToast("success", "Block saved.");
     } catch (err) {
       console.error("appointments: create block failed", err);
-      setBlockFormError(readErrorMessage(err, "Could not create the block."));
+      const message = readErrorMessage(err, "Could not create the block.");
+      setBlockFormError(message);
+      showToast("error", message);
     } finally {
       setBlockSaving(false);
     }
@@ -1917,6 +1956,10 @@ export default function Appointments() {
       setDetailError("Start time is required.");
       return;
     }
+    if (!detailForm.endTime) {
+      setDetailError("End time is required.");
+      return;
+    }
 
     const typeRow = appointmentTypes.find(
       (item) => item.id === detailForm.appointmentTypeId,
@@ -1926,15 +1969,16 @@ export default function Appointments() {
       return;
     }
 
-    const startAt = toDateTimeIso(detailForm.date, detailForm.startTime);
-    if (!isWithinSelectedDay(detailForm.date, startAt)) {
-      setDetailError("Start time must stay within the selected calendar day.");
+    const appointmentTimes = validateAppointmentTimes({
+      date: detailForm.date,
+      startTime: detailForm.startTime,
+      endTime: detailForm.endTime,
+      setErrorMessage: setDetailError,
+    });
+    if (!appointmentTimes) {
       return;
     }
-
-    const endAt = new Date(
-      new Date(startAt).getTime() + typeRow.duration_minutes * 60000,
-    ).toISOString();
+    const { startAt, endAt } = appointmentTimes;
 
     const localConflict = findLocalConflict(
       detailForm.areaId,
@@ -1957,6 +2001,7 @@ export default function Appointments() {
           p_area_id: detailForm.areaId,
           p_appointment_type_id: detailForm.appointmentTypeId,
           p_start_at: startAt,
+          p_end_at: endAt,
           p_customer_name: detailForm.customerName.trim(),
           p_customer_email: detailForm.customerEmail.trim(),
           p_customer_phone: detailForm.customerPhone.trim() || null,
@@ -1974,11 +2019,12 @@ export default function Appointments() {
       setDetailEditing(false);
       closeDetailModal();
       await loadCalendar(selectedSiteId, nextDate);
+      showToast("success", "Appointment updated.");
     } catch (err) {
       console.error("appointments: update failed", err);
-      setDetailError(
-        readErrorMessage(err, "Could not update the appointment."),
-      );
+      const message = readErrorMessage(err, "Could not update the appointment.");
+      setDetailError(message);
+      showToast("error", message);
     } finally {
       setDetailSaving(false);
     }
@@ -2003,11 +2049,12 @@ export default function Appointments() {
 
       closeDetailModal();
       await loadCalendar(selectedSiteId, selectedDate);
+      showToast("success", "Appointment cancelled.");
     } catch (err) {
       console.error("appointments: cancel failed", err);
-      setDetailError(
-        readErrorMessage(err, "Could not cancel the appointment."),
-      );
+      const message = readErrorMessage(err, "Could not cancel the appointment.");
+      setDetailError(message);
+      showToast("error", message);
     } finally {
       setDetailSaving(false);
     }
@@ -2018,11 +2065,9 @@ export default function Appointments() {
 
     setSendingConfirmation(true);
     setDetailError("");
-    setSendConfirmationMessage("");
-    setSendReminderMessage("");
 
     try {
-      const { data, error } = await invokeAuthed(
+      const { error } = await invokeAuthed(
         "send_appointment_confirmation",
         {
           appointment_id: detailAppointment.id,
@@ -2035,16 +2080,19 @@ export default function Appointments() {
         );
       }
 
-      setSendConfirmationMessage("Confirmation email sent.");
+      showToast("success", "Confirmation email sent.");
       await Promise.all([
         loadActivity(detailAppointment.id),
         loadEmailLog(detailAppointment.id),
       ]);
     } catch (err) {
       console.error("appointments: send confirmation failed", err);
-      setDetailError(
-        readErrorMessage(err, "Could not send the confirmation email."),
+      const message = readErrorMessage(
+        err,
+        "Could not send the confirmation email.",
       );
+      setDetailError(message);
+      showToast("error", message);
     } finally {
       setSendingConfirmation(false);
     }
@@ -2055,8 +2103,6 @@ export default function Appointments() {
 
     setSendingReminder(true);
     setDetailError("");
-    setSendReminderMessage("");
-    setSendConfirmationMessage("");
 
     try {
       const { data, error } = await invokeAuthed("send_appointment_reminder", {
@@ -2069,141 +2115,20 @@ export default function Appointments() {
         );
       }
 
-      setSendReminderMessage(data?.message || "Reminder email sent.");
+      showToast("success", data?.message || "Reminder email sent.");
       await Promise.all([
         loadActivity(detailAppointment.id),
         loadEmailLog(detailAppointment.id),
       ]);
     } catch (err) {
       console.error("appointments: send reminder failed", err);
-      setDetailError(
-        readErrorMessage(err, "Could not send the reminder email."),
-      );
+      const message = readErrorMessage(err, "Could not send the reminder email.");
+      setDetailError(message);
+      showToast("error", message);
     } finally {
       setSendingReminder(false);
     }
   }
-
-  async function loadReminderBatchPreview() {
-    if (!canManageReminderBatch) return;
-    if (
-      !effectiveReminderBatchSiteId ||
-      !isBookableAppointmentSite(effectiveReminderBatchSiteId)
-    ) {
-      setReminderBatchError(
-        "Select a valid appointment site before previewing reminders.",
-      );
-      return;
-    }
-
-    setReminderBatchLoading(true);
-    setReminderBatchError("");
-    setReminderBatchMessage("");
-
-    try {
-      const { data, error } = await invokeAuthed(
-        "send_appointment_reminder_batch",
-        {
-          date: reminderBatchDate,
-          site_id: effectiveReminderBatchSiteId,
-          preview_only: true,
-        },
-      );
-
-      if (error) {
-        throw new Error(error.message || "Could not load reminder preview.");
-      }
-
-      setReminderBatchRows(Array.isArray(data?.results) ? data.results : []);
-      setReminderBatchSummary(data || null);
-      await loadReminderRuns();
-    } catch (err) {
-      console.error("appointments: reminder batch preview failed", err);
-      setReminderBatchRows([]);
-      setReminderBatchSummary(null);
-      setReminderBatchError(
-        readErrorMessage(err, "Could not load reminder preview."),
-      );
-    } finally {
-      setReminderBatchLoading(false);
-    }
-  }
-
-  async function sendReminderBatch() {
-    if (!canManageReminderBatch) return;
-    if (
-      !effectiveReminderBatchSiteId ||
-      !isBookableAppointmentSite(effectiveReminderBatchSiteId)
-    ) {
-      setReminderBatchError(
-        "Select a valid appointment site before sending reminders.",
-      );
-      return;
-    }
-
-    setReminderBatchSending(true);
-    setReminderBatchError("");
-    setReminderBatchMessage("");
-
-    try {
-      const { data, error } = await invokeAuthed(
-        "send_appointment_reminder_batch",
-        {
-          date: reminderBatchDate,
-          site_id: effectiveReminderBatchSiteId,
-          preview_only: false,
-        },
-      );
-
-      if (error) {
-        throw new Error(error.message || "Could not send reminder batch.");
-      }
-
-      setReminderBatchRows(Array.isArray(data?.results) ? data.results : []);
-      setReminderBatchSummary(data || null);
-      setReminderBatchMessage(
-        `Sent ${Number(data?.sent_count || 0)} reminder${Number(data?.sent_count || 0) === 1 ? "" : "s"}.`,
-      );
-      await loadReminderBatchPreview();
-      await loadReminderRuns();
-    } catch (err) {
-      console.error("appointments: reminder batch send failed", err);
-      setReminderBatchError(readErrorMessage(err, "Could not send reminders."));
-    } finally {
-      setReminderBatchSending(false);
-    }
-  }
-
-  const loadReminderRuns = React.useCallback(async () => {
-    if (!canManageReminderBatch || !reminderBatchBranch) {
-      setReminderRunRows([]);
-      return;
-    }
-
-    setReminderRunLoading(true);
-
-    try {
-      const { data, error: rpcError } = await supabase.rpc(
-        "get_appointment_reminder_runs_staff",
-        {
-          p_branch: reminderBatchBranch,
-          p_limit: 5,
-        },
-      );
-
-      if (rpcError) throw rpcError;
-      setReminderRunRows(data || []);
-    } catch (err) {
-      console.error("appointments: reminder run load failed", err);
-      setReminderRunRows([]);
-    } finally {
-      setReminderRunLoading(false);
-    }
-  }, [canManageReminderBatch, reminderBatchBranch]);
-
-  React.useEffect(() => {
-    loadReminderRuns();
-  }, [loadReminderRuns]);
 
   React.useEffect(() => {
     function handleResize() {
@@ -2294,9 +2219,12 @@ export default function Appointments() {
       setSelectedDate(detailBlockForm.date);
       closeBlockDetailModal();
       await loadCalendar(detailBlockSiteId, detailBlockForm.date);
+      showToast("success", "Block updated.");
     } catch (err) {
       console.error("appointments: update block failed", err);
-      setBlockDetailError(readErrorMessage(err, "Could not update the block."));
+      const message = readErrorMessage(err, "Could not update the block.");
+      setBlockDetailError(message);
+      showToast("error", message);
     } finally {
       setBlockDetailSaving(false);
     }
@@ -2321,9 +2249,12 @@ export default function Appointments() {
 
       closeBlockDetailModal();
       await loadCalendar(detailBlockSiteId, selectedDate);
+      showToast("success", "Block removed.");
     } catch (err) {
       console.error("appointments: cancel block failed", err);
-      setBlockDetailError(readErrorMessage(err, "Could not remove the block."));
+      const message = readErrorMessage(err, "Could not remove the block.");
+      setBlockDetailError(message);
+      showToast("error", message);
     } finally {
       setBlockDetailSaving(false);
     }
@@ -2343,41 +2274,18 @@ export default function Appointments() {
 
   const calendarPanel = (
     <div
+      className="appointment-calendar-card"
       style={{
-        border: `1px solid ${ui.colors.border}`,
-        borderRadius: 12,
-        overflow: "hidden",
-        background: ui.colors.cardBg,
         height: isDesktopToolsLayout
           ? `max(620px, ${CALENDAR_VIEWPORT_HEIGHT})`
           : "auto",
         minHeight: isDesktopToolsLayout ? 620 : undefined,
-        display: "flex",
-        flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          padding: 14,
-          borderBottom: `1px solid ${ui.colors.border}`,
-          background: "rgba(2, 6, 23, 0.03)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-            minWidth: 0,
-          }}
-        >
+      <div className="appointment-calendar-header">
+        <div className="appointment-calendar-header-group">
           <button
+            className="appointment-date-heading"
             type="button"
             onClick={() => {
               if (calendarDateInputRef.current?.showPicker) {
@@ -2385,17 +2293,6 @@ export default function Appointments() {
                 return;
               }
               calendarDateInputRef.current?.click();
-            }}
-            style={{
-              padding: 0,
-              border: "none",
-              background: "transparent",
-              color: ui.colors.text,
-              cursor: "pointer",
-              fontSize: 24,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              textAlign: "left",
             }}
             aria-label={`Selected date ${formatDateHeading(selectedDate)}. Change date.`}
           >
@@ -2416,39 +2313,33 @@ export default function Appointments() {
             }}
             tabIndex={-1}
           />
-          {quickJumpButtons.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={item.onClick}
-              style={{
-                padding: item.label === "Today" ? "7px 12px" : "7px 10px",
-                minWidth: item.label === "Today" ? undefined : 36,
-                fontSize: 12,
-                borderRadius: ui.radius.md,
-                border: `1px solid ${ui.colors.border}`,
-                background: ui.colors.cardBg,
-                color: ui.colors.text,
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          <div className="appointment-quick-jumps">
+            {quickJumpButtons.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                style={{
+                  padding: item.label === "Today" ? "7px 12px" : "7px 10px",
+                  minWidth: item.label === "Today" ? undefined : 36,
+                  fontSize: 12,
+                  borderRadius: ui.radius.md,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: ui.colors.cardBg,
+                  color: ui.colors.text,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ minWidth: 180, marginLeft: "auto" }}>
+        <div className="appointment-site-picker">
           {showSiteSelector ? (
-            <label
-              style={{
-                display: "grid",
-                gap: 6,
-                fontSize: 12,
-                fontWeight: 800,
-                color: ui.colors.muted,
-              }}
-            >
+            <label className="appointment-site-picker-label">
               Site
               <select
                 value={selectedSiteId}
@@ -2467,9 +2358,9 @@ export default function Appointments() {
               </select>
             </label>
           ) : (
-            <div style={{ fontSize: 12, color: ui.colors.muted }}>
+            <div className="appointment-site-picker-readonly">
               <div style={{ fontWeight: 800 }}>Site</div>
-              <div style={{ marginTop: 6, fontSize: 14, color: ui.colors.text }}>
+              <div className="appointment-site-picker-readonly-value">
                 {visibleSiteName}
               </div>
             </div>
@@ -2478,80 +2369,47 @@ export default function Appointments() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 16, color: ui.colors.muted, flex: 1 }}>
+        <div className="appointment-calendar-message">
           Loading this day&apos;s appointments and blocks...
         </div>
       ) : areas.length === 0 ? (
-        <div style={{ padding: 16, color: ui.colors.muted, flex: 1 }}>
+        <div className="appointment-calendar-message">
           Appointment areas/resources need to be seeded for this site before the
           calendar can display columns.
         </div>
       ) : (
-        <div
-          style={{
-            overflowX: "auto",
-            overflowY: "auto",
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
+        <div className="appointment-calendar-scroll">
           {!hasAnyCalendarItems ? (
-            <div
-              style={{
-                padding: 14,
-                borderBottom: `1px solid ${ui.colors.border}`,
-                background: "rgba(2, 6, 23, 0.02)",
-                color: ui.colors.muted,
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
+            <div className="appointment-calendar-empty-day">
               No appointments or blocks are booked for this day yet.
             </div>
           ) : null}
           <div
+            className="appointment-calendar-grid"
             style={{
-              display: "grid",
               gridTemplateColumns: `74px repeat(${areas.length}, minmax(190px, 1fr))`,
               minWidth: 74 + areas.length * 190,
             }}
           >
-            <div
-              style={{
-                padding: 10,
-                borderRight: `1px solid ${ui.colors.border}`,
-                borderBottom: `1px solid ${ui.colors.border}`,
-                background: "rgba(2, 6, 23, 0.03)",
-                fontWeight: 800,
-              }}
-            >
+            <div className="appointment-grid-cell-header appointment-time-axis-header">
               Time
             </div>
 
             {areas.map((area) => (
-              <div
-                key={area.id}
-                style={{
-                  padding: 10,
-                  borderRight: `1px solid ${ui.colors.border}`,
-                  borderBottom: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.03)",
-                }}
-              >
-                <div style={{ fontWeight: 900 }}>{canonicalAreaLabel(area)}</div>
-                <div style={{ fontSize: 11, color: ui.colors.muted }}>
+              <div key={area.id} className="appointment-grid-cell-header">
+                <div className="appointment-area-header-title">
+                  {canonicalAreaLabel(area)}
+                </div>
+                <div className="appointment-area-header-branch">
                   {area.branch || ""}
                 </div>
               </div>
             ))}
 
             <div
+              className="appointment-time-axis"
               style={{
-                position: "relative",
                 height: timelineHeight,
-                borderRight: `1px solid ${ui.colors.border}`,
-                background:
-                  "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 100%)",
               }}
             >
               {timeTicks.map((minutes, index) => {
@@ -2562,32 +2420,19 @@ export default function Appointments() {
                 const isLast = index === timeTicks.length - 1;
                 return (
                   <div
+                    className="appointment-time-line"
                     key={minutes}
                     style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
                       top,
                       height: 0,
                       borderTop: isLast
                         ? "1px solid rgba(2, 6, 23, 0.08)"
                         : isHour
                           ? "1px solid rgba(2, 6, 23, 0.08)"
-                          : "1px dashed rgba(2, 6, 23, 0.08)",
+                        : "1px dashed rgba(2, 6, 23, 0.08)",
                     }}
                   >
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: -8,
-                        left: 6,
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: ui.colors.muted,
-                        background: "rgba(255,255,255,0.92)",
-                        padding: "0 4px",
-                      }}
-                    >
+                    <span className="appointment-time-label">
                       {timeLabelFromMinutes(minutes)}
                     </span>
                   </div>
@@ -2606,11 +2451,9 @@ export default function Appointments() {
               return (
                 <div
                   key={area.id}
+                  className="appointment-area-column"
                   style={{
-                    position: "relative",
                     height: timelineHeight,
-                    borderRight: `1px solid ${ui.colors.border}`,
-                    background: "#fff",
                   }}
                 >
                   {timeTicks.map((minutes, index) => {
@@ -2621,11 +2464,9 @@ export default function Appointments() {
                     const isLast = index === timeTicks.length - 1;
                     return (
                       <div
+                        className="appointment-time-line"
                         key={minutes}
                         style={{
-                          position: "absolute",
-                          left: 0,
-                          right: 0,
                           top,
                           borderTop: isLast
                             ? "1px solid rgba(2, 6, 23, 0.08)"
@@ -2662,20 +2503,7 @@ export default function Appointments() {
                   ))}
 
                   {!hasItems ? (
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: 16,
-                        textAlign: "center",
-                        color: ui.colors.muted,
-                        fontSize: 13,
-                        fontWeight: 700,
-                      }}
-                    >
+                    <div className="appointment-area-empty">
                       Clear for this area
                     </div>
                   ) : null}
@@ -2690,38 +2518,28 @@ export default function Appointments() {
 
   return (
     <div
-      style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}
+      className="appointments-page"
+      style={{
+        width: "100%",
+        color: ui.colors.text,
+        fontFamily: ui.font.ui,
+        "--appointments-text": ui.colors.text,
+        "--appointments-muted": ui.colors.muted,
+        "--appointments-border": ui.colors.border,
+        "--appointments-card-bg": ui.colors.cardBg,
+      }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="appointments-page-header">
         <div>
-          <h2 style={{ margin: 0 }}>Appointments</h2>
+          <h2 className="appointments-page-heading">Appointments</h2>
           <div style={ui.text.subtitle}>
             Day view with safe staff-created appointments through the existing
             appointment schema.
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{ fontSize: 12, fontWeight: 800, color: ui.colors.muted }}
-          >
-            {pageTitle}
-          </div>
+        <div className="appointments-page-actions">
+          <div className="appointments-page-title">{pageTitle}</div>
 
           <button
             type="button"
@@ -2763,99 +2581,17 @@ export default function Appointments() {
         </div>
       </div>
 
-      {!showSiteSelector && !selectedSiteIsBookable ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(245,158,11,0.12)",
-            border: "1px solid rgba(245,158,11,0.35)",
-          }}
-        >
-          Appointments are only available for Duke Street and St Enoch. Your
-          current site is {visibleSiteName}.
-        </div>
-      ) : null}
-
-      {showSiteSelector && bookableSites.length === 0 ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(245,158,11,0.12)",
-            border: "1px solid rgba(245,158,11,0.35)",
-          }}
-        >
-          No bookable appointment sites are available yet. Seed Duke Street and
-          St Enoch appointment areas first.
-        </div>
-      ) : null}
-
-      {formNotice ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background:
-              formNoticeTone === "warning"
-                ? "rgba(245,158,11,0.12)"
-                : "rgba(34,197,94,0.10)",
-            border:
-              formNoticeTone === "warning"
-                ? "1px solid rgba(245,158,11,0.35)"
-                : "1px solid rgba(34,197,94,0.35)",
-          }}
-        >
-          {formNotice}
-        </div>
-      ) : null}
-
-      {error ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.35)",
-          }}
-        >
-          {error}
-        </div>
-      ) : null}
-
-      {calendarWarning ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(245,158,11,0.12)",
-            border: "1px solid rgba(245,158,11,0.35)",
-          }}
-        >
-          {calendarWarning}
-        </div>
-      ) : null}
-
-      {blockWarning ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(59,130,246,0.10)",
-            border: "1px solid rgba(59,130,246,0.25)",
-          }}
-        >
-          {blockWarning}
-        </div>
-      ) : null}
-
       <div style={{ marginTop: 16 }}>{calendarPanel}</div>
+
+      {toast ? (
+        <div
+          className={`appointment-toast appointment-toast--${toast.type}`}
+          role="status"
+          aria-live={toast.type === "error" ? "assertive" : "polite"}
+        >
+          {toast.message}
+        </div>
+      ) : null}
 
 
       {modalOpen ? (
@@ -2979,17 +2715,22 @@ export default function Appointments() {
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
                 End time
-                <input
-                  value={
-                    calculatedEndTimeLabel || "Calculated from appointment type"
-                  }
-                  readOnly
-                  style={{
-                    ...baseInputStyle,
-                    marginTop: 6,
-                    background: "rgba(2, 6, 23, 0.03)",
-                  }}
-                />
+                <select
+                  value={form.endTime}
+                  onChange={(e) => updateForm("endTime", e.target.value)}
+                  style={{ ...baseInputStyle, marginTop: 6 }}
+                >
+                  <option value="">
+                    {calculatedEndTimeLabel
+                      ? `Suggested: ${calculatedEndTimeLabel}`
+                      : "Select an end time..."}
+                  </option>
+                  {timeOptions.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label
@@ -3458,17 +3199,22 @@ export default function Appointments() {
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   End time
-                  <input
-                    value={
-                      detailEndTimeLabel || "Calculated from appointment type"
-                    }
-                    readOnly
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      background: "rgba(2, 6, 23, 0.03)",
-                    }}
-                  />
+                  <select
+                    value={detailForm.endTime}
+                    onChange={(e) => updateDetailForm("endTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">
+                      {detailEndTimeLabel
+                        ? `Suggested: ${detailEndTimeLabel}`
+                        : "Select an end time..."}
+                    </option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <label
@@ -3554,39 +3300,7 @@ export default function Appointments() {
                 </div>
               ) : null}
 
-              {sendConfirmationMessage ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(34,197,94,0.10)",
-                    border: "1px solid rgba(34,197,94,0.35)",
-                  }}
-                >
-                  {sendConfirmationMessage}
-                </div>
-              ) : null}
-
-              <div
-                style={{
-                  position: "sticky",
-                  bottom: 0,
-                  zIndex: 2,
-                  marginTop: 16,
-                  marginLeft: -16,
-                  marginRight: -16,
-                  marginBottom: -12,
-                  padding: 12,
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  background: ui.colors.cardBg,
-                  borderTop: `1px solid ${ui.colors.border}`,
-                  boxShadow: "0 -8px 18px rgba(15,23,42,0.06)",
-                }}
-              >
+              <div className="appointment-modal-footer">
                 <button
                   type="button"
                   onClick={() => {
@@ -3909,34 +3623,6 @@ export default function Appointments() {
                   }}
                 >
                   Customer email required before sending reminder.
-                </div>
-              ) : null}
-
-              {sendConfirmationMessage ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(34,197,94,0.10)",
-                    border: "1px solid rgba(34,197,94,0.35)",
-                  }}
-                >
-                  {sendConfirmationMessage}
-                </div>
-              ) : null}
-
-              {sendReminderMessage ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(34,197,94,0.10)",
-                    border: "1px solid rgba(34,197,94,0.35)",
-                  }}
-                >
-                  {sendReminderMessage}
                 </div>
               ) : null}
 
