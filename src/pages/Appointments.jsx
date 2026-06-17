@@ -513,9 +513,7 @@ function TimelineItem({
             {item.customer_name || "Unnamed customer"}
           </div>
 
-          <div className="appointment-entry-type">
-            {appointmentType}
-          </div>
+          <div className="appointment-entry-type">{appointmentType}</div>
         </div>
       )}
     </button>
@@ -792,8 +790,7 @@ export default function Appointments() {
 
     setToast({ type, message });
 
-    const dismissAfter =
-      timeoutMs ?? (type === "error" ? 9000 : 5000);
+    const dismissAfter = timeoutMs ?? (type === "error" ? 9000 : 5000);
 
     if (dismissAfter > 0) {
       toastTimerRef.current = window.setTimeout(() => {
@@ -1519,7 +1516,9 @@ export default function Appointments() {
         const nextTypeId =
           key === "appointmentTypeId" ? value : prev.appointmentTypeId;
         const nextStartTime = key === "startTime" ? value : prev.startTime;
-        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const nextType = appointmentTypes.find(
+          (item) => item.id === nextTypeId,
+        );
         const nextEndTime =
           nextType && nextStartTime
             ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
@@ -1567,7 +1566,9 @@ export default function Appointments() {
         const nextTypeId =
           key === "appointmentTypeId" ? value : prev.appointmentTypeId;
         const nextStartTime = key === "startTime" ? value : prev.startTime;
-        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const nextType = appointmentTypes.find(
+          (item) => item.id === nextTypeId,
+        );
         const nextEndTime =
           nextType && nextStartTime
             ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
@@ -1826,7 +1827,10 @@ export default function Appointments() {
       await loadCalendar(form.siteId, form.date);
     } catch (err) {
       console.error("appointments: create failed", err);
-      const message = readErrorMessage(err, "Could not create the appointment.");
+      const message = readErrorMessage(
+        err,
+        "Could not create the appointment.",
+      );
       setFormError(message);
       showToast("error", message);
     } finally {
@@ -2022,7 +2026,10 @@ export default function Appointments() {
       showToast("success", "Appointment updated.");
     } catch (err) {
       console.error("appointments: update failed", err);
-      const message = readErrorMessage(err, "Could not update the appointment.");
+      const message = readErrorMessage(
+        err,
+        "Could not update the appointment.",
+      );
       setDetailError(message);
       showToast("error", message);
     } finally {
@@ -2052,7 +2059,10 @@ export default function Appointments() {
       showToast("success", "Appointment cancelled.");
     } catch (err) {
       console.error("appointments: cancel failed", err);
-      const message = readErrorMessage(err, "Could not cancel the appointment.");
+      const message = readErrorMessage(
+        err,
+        "Could not cancel the appointment.",
+      );
       setDetailError(message);
       showToast("error", message);
     } finally {
@@ -2067,12 +2077,9 @@ export default function Appointments() {
     setDetailError("");
 
     try {
-      const { error } = await invokeAuthed(
-        "send_appointment_confirmation",
-        {
-          appointment_id: detailAppointment.id,
-        },
-      );
+      const { error } = await invokeAuthed("send_appointment_confirmation", {
+        appointment_id: detailAppointment.id,
+      });
 
       if (error) {
         throw new Error(
@@ -2122,7 +2129,10 @@ export default function Appointments() {
       ]);
     } catch (err) {
       console.error("appointments: send reminder failed", err);
-      const message = readErrorMessage(err, "Could not send the reminder email.");
+      const message = readErrorMessage(
+        err,
+        "Could not send the reminder email.",
+      );
       setDetailError(message);
       showToast("error", message);
     } finally {
@@ -2431,7 +2441,7 @@ export default function Appointments() {
                         ? "1px solid rgba(2, 6, 23, 0.08)"
                         : isHour
                           ? "1px solid rgba(2, 6, 23, 0.08)"
-                        : "1px dashed rgba(2, 6, 23, 0.08)",
+                          : "1px dashed rgba(2, 6, 23, 0.08)",
                     }}
                   >
                     <span className="appointment-time-label">
@@ -2448,7 +2458,8 @@ export default function Appointments() {
                 ...(blocksByArea[area.id] || []),
                 ...(blocksByArea.__branch__ || []),
               ];
-              const hasItems = areaAppointments.length > 0 || areaBlocks.length > 0;
+              const hasItems =
+                areaAppointments.length > 0 || areaBlocks.length > 0;
 
               return (
                 <div
@@ -2460,7 +2471,8 @@ export default function Appointments() {
                 >
                   {timeTicks.map((minutes, index) => {
                     const top =
-                      ((minutes - timelineStartMinutes) / CALENDAR_TOTAL_MINUTES) *
+                      ((minutes - timelineStartMinutes) /
+                        CALENDAR_TOTAL_MINUTES) *
                       timelineHeight;
                     const isHour = minutes % 60 === 0;
                     const isLast = index === timeTicks.length - 1;
@@ -2534,10 +2546,6 @@ export default function Appointments() {
       <div className="appointments-page-header">
         <div>
           <h2 className="appointments-page-heading">Appointments</h2>
-          <div style={ui.text.subtitle}>
-            Day view with safe staff-created appointments through the existing
-            appointment schema.
-          </div>
         </div>
 
         <div className="appointments-page-actions">
@@ -2595,7 +2603,6 @@ export default function Appointments() {
         </div>
       ) : null}
 
-
       {modalOpen ? (
         <ModalShell
           title="New appointment"
@@ -2615,7 +2622,9 @@ export default function Appointments() {
                 <div style={{ fontSize: 13, fontWeight: 900 }}>
                   Appointment details
                 </div>
-                <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                <div
+                  style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
+                >
                   Choose the site, slot, resource, and appointment type first.
                 </div>
               </div>
@@ -2910,8 +2919,11 @@ export default function Appointments() {
                 <div style={{ fontSize: 13, fontWeight: 900 }}>
                   Block details
                 </div>
-                <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
-                  Choose whether this blocks one area or the whole site before setting the time range.
+                <div
+                  style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
+                >
+                  Choose whether this blocks one area or the whole site before
+                  setting the time range.
                 </div>
               </div>
 
@@ -2972,7 +2984,9 @@ export default function Appointments() {
                     </option>
                   ))}
                 </select>
-                <div style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}>
+                <div
+                  style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
+                >
                   {blockForm.areaId
                     ? "This block applies only to the selected area/resource."
                     : "This block applies to the whole site across every area."}
@@ -3118,7 +3132,13 @@ export default function Appointments() {
                   <div style={{ fontSize: 13, fontWeight: 900 }}>
                     Appointment details
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
+                  >
                     Update the date, time, area, and appointment type here.
                   </div>
                 </div>
@@ -3203,7 +3223,9 @@ export default function Appointments() {
                   End time
                   <select
                     value={detailForm.endTime}
-                    onChange={(e) => updateDetailForm("endTime", e.target.value)}
+                    onChange={(e) =>
+                      updateDetailForm("endTime", e.target.value)
+                    }
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   >
                     <option value="">
@@ -3226,7 +3248,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
-                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  <div
+                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
+                  >
                     Customer details
                   </div>
                   Customer name
@@ -3269,7 +3293,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
-                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  <div
+                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
+                  >
                     Internal notes
                   </div>
                   Internal notes
@@ -3354,10 +3380,22 @@ export default function Appointments() {
                       gap: 12,
                     }}
                   >
-                    <FieldValue label="Customer name" value={detailAppointment.customer_name} />
-                    <FieldValue label="Customer email" value={detailAppointment.customer_email} />
-                    <FieldValue label="Customer phone" value={detailAppointment.customer_phone} />
-                    <FieldValue label="Booked by" value={bookedByLabel(detailAppointment)} />
+                    <FieldValue
+                      label="Customer name"
+                      value={detailAppointment.customer_name}
+                    />
+                    <FieldValue
+                      label="Customer email"
+                      value={detailAppointment.customer_email}
+                    />
+                    <FieldValue
+                      label="Customer phone"
+                      value={detailAppointment.customer_phone}
+                    />
+                    <FieldValue
+                      label="Booked by"
+                      value={bookedByLabel(detailAppointment)}
+                    />
                   </div>
                 </SectionCard>
 
@@ -3373,11 +3411,26 @@ export default function Appointments() {
                       label="Appointment type"
                       value={appointmentTypeLabel(detailAppointment, typesById)}
                     />
-                    <FieldValue label="Site" value={prettySiteName(detailSiteId)} />
-                    <FieldValue label="Date" value={formatDateLabel(detailAppointment.start_at)} />
-                    <FieldValue label="Area / resource" value={canonicalAreaLabel(detailArea)} />
-                    <FieldValue label="Start time" value={formatTimeLabel(detailAppointment.start_at)} />
-                    <FieldValue label="End time" value={formatTimeLabel(detailAppointment.end_at)} />
+                    <FieldValue
+                      label="Site"
+                      value={prettySiteName(detailSiteId)}
+                    />
+                    <FieldValue
+                      label="Date"
+                      value={formatDateLabel(detailAppointment.start_at)}
+                    />
+                    <FieldValue
+                      label="Area / resource"
+                      value={canonicalAreaLabel(detailArea)}
+                    />
+                    <FieldValue
+                      label="Start time"
+                      value={formatTimeLabel(detailAppointment.start_at)}
+                    />
+                    <FieldValue
+                      label="End time"
+                      value={formatTimeLabel(detailAppointment.end_at)}
+                    />
                   </div>
                 </SectionCard>
 
@@ -3419,7 +3472,10 @@ export default function Appointments() {
                             : "No email address on appointment"
                       }
                     />
-                    <FieldValue label="Created at" value={formatDateTimeLabel(detailAppointment.created_at)} />
+                    <FieldValue
+                      label="Created at"
+                      value={formatDateTimeLabel(detailAppointment.created_at)}
+                    />
                     <FieldValue
                       label="Last updated"
                       value={
@@ -3430,7 +3486,9 @@ export default function Appointments() {
                     />
                     <FieldValue
                       label="Last updated by"
-                      value={detailLastChange?.changed_by_name || "Not available"}
+                      value={
+                        detailLastChange?.changed_by_name || "Not available"
+                      }
                     />
                     <FieldValue
                       label="Email status"
@@ -3594,7 +3652,9 @@ export default function Appointments() {
                             }}
                           >
                             {formatDateTimeLabel(row.created_at)}
-                            {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                            {row.changed_by_name
+                              ? ` by ${row.changed_by_name}`
+                              : ""}
                           </div>
                           <div
                             style={{
@@ -3808,8 +3868,15 @@ export default function Appointments() {
                   <div style={{ fontSize: 13, fontWeight: 900 }}>
                     Block details
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
-                    Adjust the date, scope, and reason for this blocked-out time.
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
+                  >
+                    Adjust the date, scope, and reason for this blocked-out
+                    time.
                   </div>
                 </div>
 
@@ -3860,7 +3927,13 @@ export default function Appointments() {
                       </option>
                     ))}
                   </select>
-                  <div style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
+                  >
                     {detailBlockForm.areaId
                       ? "This block affects only the selected area/resource."
                       : "This block affects the whole site."}
@@ -3910,7 +3983,9 @@ export default function Appointments() {
                     gridColumn: "1 / -1",
                   }}
                 >
-                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  <div
+                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
+                  >
                     Reason
                   </div>
                   Reason
