@@ -2283,7 +2283,32 @@ export default function Appointments() {
       }}
     >
       <div className="appointment-calendar-header">
-        <div className="appointment-calendar-header-group">
+        <div className="appointment-calendar-header-left">
+          <div className="appointment-quick-jumps">
+            {quickJumpButtons.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                style={{
+                  padding: item.label === "Today" ? "7px 12px" : "7px 10px",
+                  minWidth: item.label === "Today" ? undefined : 36,
+                  fontSize: 12,
+                  borderRadius: ui.radius.md,
+                  border: `1px solid ${ui.colors.border}`,
+                  background: ui.colors.cardBg,
+                  color: ui.colors.text,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="appointment-calendar-header-center">
           <button
             className="appointment-date-heading"
             type="button"
@@ -2313,40 +2338,18 @@ export default function Appointments() {
             }}
             tabIndex={-1}
           />
-          <div className="appointment-quick-jumps">
-            {quickJumpButtons.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.onClick}
-                style={{
-                  padding: item.label === "Today" ? "7px 12px" : "7px 10px",
-                  minWidth: item.label === "Today" ? undefined : 36,
-                  fontSize: 12,
-                  borderRadius: ui.radius.md,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: ui.colors.cardBg,
-                  color: ui.colors.text,
-                  cursor: "pointer",
-                  fontWeight: 800,
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        <div className="appointment-site-picker">
+        <div className="appointment-calendar-header-right">
           {showSiteSelector ? (
-            <label className="appointment-site-picker-label">
-              Site
+            <div className="appointment-site-picker-wrap">
               <select
+                className="appointment-site-picker"
                 value={selectedSiteId}
                 onChange={(e) => setSelectedSiteId(e.target.value)}
                 style={{
                   ...baseInputStyle,
-                  padding: "9px 12px",
+                  padding: "9px 40px 9px 12px",
                   marginTop: 0,
                 }}
               >
@@ -2356,10 +2359,9 @@ export default function Appointments() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : (
-            <div className="appointment-site-picker-readonly">
-              <div style={{ fontWeight: 800 }}>Site</div>
+            <div className="appointment-site-picker appointment-site-picker-readonly">
               <div className="appointment-site-picker-readonly-value">
                 {visibleSiteName}
               </div>

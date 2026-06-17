@@ -57,18 +57,27 @@
   padding: 14px;
   border-bottom: 1px solid var(--appointments-border);
   background: var(--appointments-header-bg);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.appointment-calendar-header-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+.appointment-calendar-header-left {
+  justify-self: start;
+  min-width: 0;
+}
+
+.appointment-calendar-header-center {
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.appointment-calendar-header-right {
+  justify-self: end;
   min-width: 0;
 }
 
@@ -81,7 +90,8 @@
   font-size: 24px;
   font-weight: 900;
   line-height: 1.1;
-  text-align: left;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .appointment-quick-jumps {
@@ -89,19 +99,32 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.appointment-site-picker-wrap {
+  position: relative;
+  min-width: 180px;
+}
+
+.appointment-site-picker-wrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(15, 23, 42, 0.55);
+  border-bottom: 2px solid rgba(15, 23, 42, 0.55);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
 }
 
 .appointment-site-picker {
   min-width: 180px;
-  margin-left: auto;
-}
-
-.appointment-site-picker-label {
-  display: grid;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--appointments-muted);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
 .appointment-site-picker-readonly {
@@ -110,9 +133,43 @@
 }
 
 .appointment-site-picker-readonly-value {
-  margin-top: 6px;
   font-size: 14px;
   color: var(--appointments-text);
+  font-weight: 800;
+}
+
+@media (max-width: 860px) {
+  .appointment-calendar-header {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .appointment-calendar-header-left,
+  .appointment-calendar-header-center,
+  .appointment-calendar-header-right {
+    justify-self: stretch;
+  }
+
+  .appointment-date-heading {
+    white-space: normal;
+  }
+
+  .appointment-calendar-header-center {
+    align-items: stretch;
+  }
+
+  .appointment-quick-jumps {
+    justify-content: center;
+  }
+
+  .appointment-calendar-header-right {
+    justify-self: stretch;
+  }
+
+  .appointment-site-picker-wrap,
+  .appointment-site-picker {
+    width: 100%;
+  }
 }
 
 .appointment-calendar-scroll {
