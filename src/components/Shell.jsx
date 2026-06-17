@@ -33,6 +33,7 @@ export default function Shell() {
     const loc = useLocation();
     const nav = useNavigate();
     const [displayName, setDisplayName] = React.useState("");
+    const isWideAppointmentsRoute = loc.pathname === "/appointments";
 
     // Kill switch state
     const [siteId, setSiteId] = React.useState(null);
@@ -646,7 +647,13 @@ export default function Shell() {
                         boxSizing: "border-box",
                     }}
                 >
-                    <div style={{ maxWidth: 1100, margin: "0 auto", width: "100%" }}>
+                    <div
+                        style={{
+                            maxWidth: isWideAppointmentsRoute ? "none" : 1100,
+                            margin: isWideAppointmentsRoute ? 0 : "0 auto",
+                            width: "100%",
+                        }}
+                    >
                         <div
                             style={{
                                 background: ui.colors.cardBg,

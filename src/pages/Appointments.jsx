@@ -69,15 +69,6 @@ function formatTimeRange(startAt, endAt) {
   })}`;
 }
 
-function formatTimeLabel(iso) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatDateLabel(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown date";
@@ -86,6 +77,16 @@ function formatDateLabel(iso) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  });
+}
+
+function formatCompactDateLabel(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--/--/--";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
   });
 }
 
@@ -245,34 +246,80 @@ function appointmentTypeLabel(item, typesById) {
   );
 }
 
-function appointmentTypeAccent(label) {
-  const value = String(label || "").toLowerCase();
-  if (value.includes("measurement")) {
-    return {
-      background: "rgba(16,185,129,0.14)",
-      border: "rgba(16,185,129,0.32)",
-      pill: "rgba(16,185,129,0.18)",
-    };
-  }
-  if (value.includes("hire")) {
-    return {
-      background: "rgba(59,130,246,0.14)",
-      border: "rgba(59,130,246,0.30)",
-      pill: "rgba(59,130,246,0.18)",
-    };
-  }
-  if (value.includes("fitting")) {
-    return {
-      background: "rgba(245,158,11,0.14)",
-      border: "rgba(245,158,11,0.32)",
-      pill: "rgba(245,158,11,0.18)",
-    };
-  }
-  return {
+const APPOINTMENT_TYPE_STYLES = {
+  "Hire Measurement": {
+    icon: "HM",
+    label: "Hire Measurement",
+    background: "rgba(16,185,129,0.14)",
+    border: "rgba(16,185,129,0.32)",
+    pill: "rgba(16,185,129,0.18)",
+    accent: "#047857",
+  },
+  "Style & Fit": {
+    icon: "SF",
+    label: "Style & Fit",
+    background: "rgba(59,130,246,0.14)",
+    border: "rgba(59,130,246,0.30)",
+    pill: "rgba(59,130,246,0.18)",
+    accent: "#1d4ed8",
+  },
+  "Full Try On": {
+    icon: "FT",
+    label: "Full Try On",
+    background: "rgba(245,158,11,0.14)",
+    border: "rgba(245,158,11,0.32)",
+    pill: "rgba(245,158,11,0.18)",
+    accent: "#b45309",
+  },
+  Remeasure: {
+    icon: "RM",
+    label: "Remeasure",
+    background: "rgba(168,85,247,0.14)",
+    border: "rgba(168,85,247,0.30)",
+    pill: "rgba(168,85,247,0.18)",
+    accent: "#7e22ce",
+  },
+  "Hire Collection": {
+    icon: "HC",
+    label: "Hire Collection",
+    background: "rgba(20,184,166,0.14)",
+    border: "rgba(20,184,166,0.30)",
+    pill: "rgba(20,184,166,0.18)",
+    accent: "#0f766e",
+  },
+  default: {
+    icon: "AP",
+    label: "Appointment",
     background: "rgba(99,102,241,0.12)",
     border: "rgba(99,102,241,0.24)",
     pill: "rgba(99,102,241,0.16)",
-  };
+    accent: "#4338ca",
+  },
+};
+
+function appointmentTypeAccent(label) {
+  const value = String(label || "").trim();
+  if (APPOINTMENT_TYPE_STYLES[value]) {
+    return APPOINTMENT_TYPE_STYLES[value];
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized.includes("measurement")) {
+    return APPOINTMENT_TYPE_STYLES["Hire Measurement"];
+  }
+  if (normalized.includes("style") || normalized.includes("fit")) {
+    return APPOINTMENT_TYPE_STYLES["Style & Fit"];
+  }
+  if (normalized.includes("try")) {
+    return APPOINTMENT_TYPE_STYLES["Full Try On"];
+  }
+  if (normalized.includes("remeasure")) {
+    return APPOINTMENT_TYPE_STYLES.Remeasure;
+  }
+  if (normalized.includes("collection")) {
+    return APPOINTMENT_TYPE_STYLES["Hire Collection"];
+  }
+  return APPOINTMENT_TYPE_STYLES.default;
 }
 
 function toDateTimeIso(dateString, timeString) {
@@ -409,6 +456,11 @@ function describeActivity(row) {
   return `Changed ${changedLabels.join(", ")}.`;
 }
 
+function shouldShowActivityDescription(row) {
+  if (!row) return false;
+  return row.action !== "created" && row.action !== "cancelled";
+}
+
 function activityActionLabel(action) {
   if (!action) return "Activity";
   return String(action).replaceAll("_", " ");
@@ -486,7 +538,7 @@ function TimelineItem({
         "--appointment-entry-shadow": isBlock
           ? "inset 0 0 0 1px rgba(255,255,255,0.25)"
           : "0 6px 14px rgba(15,23,42,0.08)",
-        "--appointment-entry-pill-bg": appointmentAccent.pill,
+        "--appointment-entry-type-color": appointmentAccent.accent,
       }}
       title={
         isBlock
@@ -513,7 +565,9 @@ function TimelineItem({
             {item.customer_name || "Unnamed customer"}
           </div>
 
-          <div className="appointment-entry-type">{appointmentType}</div>
+          <div className="appointment-entry-type" title={appointmentType}>
+            {appointmentType}
+          </div>
         </div>
       )}
     </button>
@@ -621,59 +675,13 @@ function SectionCard({ title, subtitle, children, tone = "default" }) {
         border: `1px solid ${ui.colors.border}`,
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 900 }}>{title}</div>
+      {title ? <div style={{ fontSize: 13, fontWeight: 900 }}>{title}</div> : null}
       {subtitle ? (
         <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
           {subtitle}
         </div>
       ) : null}
-      <div style={{ marginTop: 12 }}>{children}</div>
-    </div>
-  );
-}
-
-function CollapsibleCard({ title, subtitle, open, onToggle, children }) {
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        borderRadius: 12,
-        border: `1px solid ${ui.colors.border}`,
-        background: "rgba(59,130,246,0.05)",
-      }}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          width: "100%",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          border: "none",
-          background: "transparent",
-          padding: 0,
-          cursor: "pointer",
-          color: ui.colors.text,
-          textAlign: "left",
-          fontFamily: ui.font.ui,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 900 }}>{title}</div>
-          {subtitle ? (
-            <div style={{ marginTop: 4, fontSize: 13, color: ui.colors.muted }}>
-              {subtitle}
-            </div>
-          ) : null}
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 900, color: ui.colors.muted }}>
-          {open ? "Hide" : "Show"}
-        </div>
-      </button>
-      {open ? <div style={{ marginTop: 12 }}>{children}</div> : null}
+      <div style={{ marginTop: title || subtitle ? 12 : 0 }}>{children}</div>
     </div>
   );
 }
@@ -720,8 +728,6 @@ export default function Appointments() {
   const [emailLogError, setEmailLogError] = React.useState("");
   const [sendingConfirmation, setSendingConfirmation] = React.useState(false);
   const [sendingReminder, setSendingReminder] = React.useState(false);
-  const [activitySectionOpen, setActivitySectionOpen] = React.useState(true);
-  const [emailSectionOpen, setEmailSectionOpen] = React.useState(true);
   const [isDesktopToolsLayout, setIsDesktopToolsLayout] = React.useState(
     typeof window === "undefined" ? true : window.innerWidth >= 1080,
   );
@@ -1321,7 +1327,6 @@ export default function Appointments() {
   }, [blocks, areas]);
   const hasAnyCalendarItems = appointments.length > 0 || blocks.length > 0;
 
-  const pageTitle = `Appointments${visibleSiteName ? ` - ${visibleSiteName}` : ""}`;
   const selectorSites = showSiteSelector ? bookableSites : sites;
   const timeOptions = React.useMemo(
     () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
@@ -1355,30 +1360,6 @@ export default function Appointments() {
     [areas, detailAppointment],
   );
 
-  const detailLastChange = React.useMemo(
-    () =>
-      activityRows.find(
-        (row) => row.action === "updated" || row.action === "cancelled",
-      ) || null,
-    [activityRows],
-  );
-
-  const latestConfirmationEmail = React.useMemo(
-    () =>
-      emailLogRows.find(
-        (row) => row.email_type === "confirmation" && row.status === "sent",
-      ) || null,
-    [emailLogRows],
-  );
-
-  const latestReminderEmail = React.useMemo(
-    () =>
-      emailLogRows.find(
-        (row) => row.email_type === "reminder" && row.status === "sent",
-      ) || null,
-    [emailLogRows],
-  );
-
   const visibleActivityRows = React.useMemo(
     () =>
       activityRows.filter(
@@ -1387,6 +1368,10 @@ export default function Appointments() {
       ),
     [activityRows],
   );
+  const detailAppointmentType = detailAppointment
+    ? appointmentTypeLabel(detailAppointment, typesById)
+    : "Appointment";
+  const detailTypeAccent = appointmentTypeAccent(detailAppointmentType);
 
   const detailBlockSiteId = detailBlock
     ? appointmentBranchToSiteId(detailBlock.branch) || selectedSiteId
@@ -1465,8 +1450,6 @@ export default function Appointments() {
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
     setDetailError("");
-    setActivitySectionOpen(true);
-    setEmailSectionOpen(true);
     setDetailEditing(false);
     setDetailOpen(true);
     loadActivity(item.id);
@@ -1495,8 +1478,6 @@ export default function Appointments() {
     setEmailLogError("");
     setSendingConfirmation(false);
     setSendingReminder(false);
-    setActivitySectionOpen(true);
-    setEmailSectionOpen(true);
   }
 
   function closeBlockDetailModal() {
@@ -2412,9 +2393,6 @@ export default function Appointments() {
                 <div className="appointment-area-header-title">
                   {canonicalAreaLabel(area)}
                 </div>
-                <div className="appointment-area-header-branch">
-                  {area.branch || ""}
-                </div>
               </div>
             ))}
 
@@ -2530,6 +2508,670 @@ export default function Appointments() {
     </div>
   );
 
+  const desktopWorkspaceHeight = isDesktopToolsLayout
+    ? `max(620px, ${CALENDAR_VIEWPORT_HEIGHT})`
+    : undefined;
+
+  const appointmentDetailDrawer =
+    detailOpen && detailAppointment ? (
+      <>
+        {!isDesktopToolsLayout ? (
+          <button
+            type="button"
+            className="appointment-drawer-backdrop"
+            onClick={closeDetailModal}
+            aria-label="Close appointment details"
+          />
+        ) : null}
+
+        <aside
+          className={`appointment-drawer ${
+            isDesktopToolsLayout
+              ? "appointment-drawer--desktop"
+              : "appointment-drawer--mobile"
+          }`}
+          aria-label="Appointment details"
+        >
+          <div className="appointment-drawer-panel">
+            <div className="appointment-drawer-header">
+              <div className="appointment-drawer-summary">
+                <div className="appointment-drawer-summary-item appointment-drawer-summary-item--strong">
+                  {detailAppointment.customer_name || "Unnamed customer"}
+                </div>
+                <div
+                  className="appointment-drawer-summary-item appointment-drawer-summary-item--type"
+                  style={{ color: detailTypeAccent.accent }}
+                >
+                  {detailAppointmentType}
+                </div>
+                <div className="appointment-drawer-summary-item appointment-drawer-summary-item--emphasis">
+                  {formatTimeRange(
+                    detailAppointment.start_at,
+                    detailAppointment.end_at,
+                  )}
+                </div>
+                <div className="appointment-drawer-summary-item appointment-drawer-summary-item--emphasis">
+                  {formatCompactDateLabel(detailAppointment.start_at)}
+                </div>
+                <div className="appointment-drawer-summary-item">
+                  Booked by {bookedByLabel(detailAppointment) || "Unknown"}
+                </div>
+                <div className="appointment-drawer-summary-item">
+                  {prettySiteName(detailSiteId)}, {canonicalAreaLabel(detailArea)}
+                </div>
+              </div>
+            </div>
+
+            <div className="appointment-drawer-scroll">
+              {detailEditing ? (
+                <form
+                  className="appointment-drawer-body"
+                  onSubmit={submitDetailUpdate}
+                  style={{ padding: 20, paddingBottom: 16 }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <div style={{ fontSize: 13, fontWeight: 900 }}>
+                        Appointment details
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: ui.colors.muted,
+                        }}
+                      >
+                        Update the date, time, area, and appointment type here.
+                      </div>
+                    </div>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Site
+                      <input
+                        value={prettySiteName(detailSiteId)}
+                        readOnly
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          background: "rgba(2, 6, 23, 0.03)",
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Date
+                      <input
+                        type="date"
+                        value={detailForm.date}
+                        onChange={(e) =>
+                          updateDetailForm("date", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Appointment area
+                      <select
+                        value={detailForm.areaId}
+                        onChange={(e) =>
+                          updateDetailForm("areaId", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                        disabled={areas.length === 0}
+                      >
+                        <option value="">Select an area...</option>
+                        {areas.map((area) => (
+                          <option key={area.id} value={area.id}>
+                            {canonicalAreaLabel(area)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Appointment type
+                      <select
+                        value={detailForm.appointmentTypeId}
+                        onChange={(e) =>
+                          updateDetailForm("appointmentTypeId", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select a type...</option>
+                        {appointmentTypes.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} ({item.duration_minutes} mins)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Start time
+                      <select
+                        value={detailForm.startTime}
+                        onChange={(e) =>
+                          updateDetailForm("startTime", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select a time...</option>
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>
+                            {time}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      End time
+                      <select
+                        value={detailForm.endTime}
+                        onChange={(e) =>
+                          updateDetailForm("endTime", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">
+                          {detailEndTimeLabel
+                            ? `Suggested: ${detailEndTimeLabel}`
+                            : "Select an end time..."}
+                        </option>
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>
+                            {time}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      <div
+                        style={{
+                          marginBottom: 6,
+                          fontSize: 13,
+                          fontWeight: 900,
+                        }}
+                      >
+                        Customer details
+                      </div>
+                      Customer name
+                      <input
+                        value={detailForm.customerName}
+                        onChange={(e) =>
+                          updateDetailForm("customerName", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Customer email
+                      <input
+                        type="email"
+                        value={detailForm.customerEmail}
+                        onChange={(e) =>
+                          updateDetailForm("customerEmail", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Customer phone
+                      <input
+                        value={detailForm.customerPhone}
+                        onChange={(e) =>
+                          updateDetailForm("customerPhone", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      <div
+                        style={{
+                          marginBottom: 6,
+                          fontSize: 13,
+                          fontWeight: 900,
+                        }}
+                      >
+                        Internal notes
+                      </div>
+                      Internal notes
+                      <textarea
+                        rows={4}
+                        value={detailForm.internalNotes}
+                        onChange={(e) =>
+                          updateDetailForm("internalNotes", e.target.value)
+                        }
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {detailError ? (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "rgba(239,68,68,0.08)",
+                        border: "1px solid rgba(239,68,68,0.35)",
+                      }}
+                    >
+                      {detailError}
+                    </div>
+                  ) : null}
+
+                  <div className="appointment-drawer-footer">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetailEditing(false);
+                        setDetailForm(
+                          buildDetailForm(detailAppointment, detailSiteId),
+                        );
+                        setDetailError("");
+                      }}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: ui.colors.cardBg,
+                        color: ui.colors.text,
+                        cursor: "pointer",
+                        fontWeight: 800,
+                      }}
+                    >
+                      Cancel edit
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={detailSaving}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: ui.radius.md,
+                        border: `1px solid rgba(168,85,247,0.35)`,
+                        background: ui.colors.brandSoft,
+                        color: ui.colors.text,
+                        cursor: detailSaving ? "not-allowed" : "pointer",
+                        fontWeight: 900,
+                        opacity: detailSaving ? 0.6 : 1,
+                      }}
+                    >
+                      {detailSaving ? "Saving..." : "Save changes"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div
+                  className="appointment-drawer-body"
+                  style={{ padding: 20, paddingBottom: 16 }}
+                >
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <SectionCard>
+                      <div className="appointment-drawer-detail-list">
+                        <div className="appointment-drawer-detail-line">
+                          <span className="appointment-drawer-detail-label">
+                            Name
+                          </span>
+                          <span className="appointment-drawer-detail-value">
+                            {detailAppointment.customer_name || "Not provided"}
+                          </span>
+                        </div>
+                        <div className="appointment-drawer-detail-line">
+                          <span className="appointment-drawer-detail-label">
+                            Email
+                          </span>
+                          <span className="appointment-drawer-detail-value">
+                            {detailAppointment.customer_email ? (
+                              <a
+                                href={`mailto:${detailAppointment.customer_email}`}
+                                className="appointment-drawer-detail-link"
+                              >
+                                {detailAppointment.customer_email}
+                              </a>
+                            ) : (
+                              "Not provided"
+                            )}
+                          </span>
+                        </div>
+                        <div className="appointment-drawer-detail-line">
+                          <span className="appointment-drawer-detail-label">
+                            Phone
+                          </span>
+                          <span className="appointment-drawer-detail-value">
+                            {detailAppointment.customer_phone || "Not provided"}
+                          </span>
+                        </div>
+                      </div>
+                    </SectionCard>
+
+                    <SectionCard title="Internal notes" tone="softSlate">
+                      <div
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {detailAppointment.internal_notes ||
+                          "No internal notes"}
+                      </div>
+                    </SectionCard>
+
+                    <SectionCard>
+                      <div className="appointment-drawer-section-header">
+                        <div className="appointment-drawer-section-title">
+                          Email
+                        </div>
+                        <div className="appointment-drawer-section-actions">
+                          {canManageSelectedAppointment &&
+                          detailAppointment.status !== "cancelled" ? (
+                            <button
+                              className="appointment-drawer-action-button appointment-drawer-action-button--reminder"
+                              type="button"
+                              onClick={sendReminderEmail}
+                              disabled={!canSendReminder || sendingReminder}
+                              title={
+                                detailAppointment.customer_email
+                                  ? undefined
+                                  : "Customer email required before sending reminder."
+                              }
+                            >
+                              {sendingReminder ? "Sending..." : "Reminder"}
+                            </button>
+                          ) : null}
+
+                          {canManageSelectedAppointment ? (
+                            <button
+                              className="appointment-drawer-action-button appointment-drawer-action-button--confirmation"
+                              type="button"
+                              onClick={sendConfirmationEmail}
+                              disabled={
+                                !canSendConfirmation || sendingConfirmation
+                              }
+                              title={
+                                detailAppointment.customer_email
+                                  ? undefined
+                                  : "Customer email is required before sending confirmation."
+                              }
+                            >
+                              {sendingConfirmation
+                                ? "Sending..."
+                                : "Confirmation"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {emailLogLoading ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          Loading email history...
+                        </div>
+                      ) : emailLogError ? (
+                        <div
+                          style={{
+                            marginTop: 10,
+                            padding: 10,
+                            borderRadius: 10,
+                            background: "rgba(245,158,11,0.12)",
+                            border: "1px solid rgba(245,158,11,0.35)",
+                          }}
+                        >
+                          {emailLogError}
+                        </div>
+                      ) : emailLogRows.length === 0 ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          No email history yet.
+                        </div>
+                      ) : (
+                        <div
+                          style={{ marginTop: 10, display: "grid", gap: 10 }}
+                        >
+                          {emailLogRows.map((row) => (
+                            <div
+                              key={row.id}
+                              style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                background: ui.colors.cardBg,
+                                border: `1px solid ${ui.colors.border}`,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 800,
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {row.email_type} - {row.status}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 13,
+                                  color: ui.colors.muted,
+                                }}
+                              >
+                                {formatDateTimeLabel(row.sent_at)}
+                                {row.sent_by_name
+                                  ? ` by ${row.sent_by_name}`
+                                  : ""}
+                              </div>
+                              {row.error_message ? (
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: 13,
+                                    color: ui.colors.muted,
+                                  }}
+                                >
+                                  {row.error_message}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+
+                    <SectionCard title="Activity">
+                      {activityLoading ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          Loading activity...
+                        </div>
+                      ) : activityError ? (
+                        <div
+                          style={{
+                            marginTop: 10,
+                            padding: 10,
+                            borderRadius: 10,
+                            background: "rgba(245,158,11,0.12)",
+                            border: "1px solid rgba(245,158,11,0.35)",
+                          }}
+                        >
+                          {activityError}
+                        </div>
+                      ) : visibleActivityRows.length === 0 ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          No appointment activity has been recorded yet.
+                        </div>
+                      ) : (
+                        <div
+                          style={{ marginTop: 10, display: "grid", gap: 10 }}
+                        >
+                          {visibleActivityRows.map((row) => (
+                            <div
+                              key={row.id}
+                              style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                background: ui.colors.cardBg,
+                                border: `1px solid ${ui.colors.border}`,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 800,
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {row.action}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 13,
+                                  color: ui.colors.muted,
+                                }}
+                              >
+                                {formatDateTimeLabel(row.created_at)}
+                                {row.changed_by_name
+                                  ? ` by ${row.changed_by_name}`
+                                  : ""}
+                              </div>
+                              {shouldShowActivityDescription(row) ? (
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: 13,
+                                    color: ui.colors.text,
+                                  }}
+                                >
+                                  {describeActivity(row)}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+                  </div>
+
+                  {detailAppointment.status !== "cancelled" &&
+                  !String(detailAppointment.customer_email || "").trim() ? (
+                    <div className="appointment-drawer-warning">
+                      Customer email required before sending reminder.
+                    </div>
+                  ) : null}
+
+                  {detailError ? (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "rgba(239,68,68,0.08)",
+                        border: "1px solid rgba(239,68,68,0.35)",
+                      }}
+                    >
+                      {detailError}
+                    </div>
+                  ) : null}
+
+                  <div className="appointment-drawer-footer">
+                    {canManageSelectedAppointment ? (
+                      <button
+                        className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                        type="button"
+                        onClick={() => {
+                          setDetailEditing(true);
+                          setDetailForm(
+                            buildDetailForm(detailAppointment, detailSiteId),
+                          );
+                          setDetailError("");
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+
+                    {canManageSelectedAppointment ? (
+                      <button
+                        className="appointment-drawer-action-button appointment-drawer-action-button--cancel"
+                        type="button"
+                        onClick={cancelAppointment}
+                        disabled={detailSaving}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
+
+                    <button
+                      className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                      type="button"
+                      onClick={closeDetailModal}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      </>
+    ) : null;
+
+  const desktopDetailPanel = isDesktopToolsLayout ? (
+    detailOpen && detailAppointment ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {appointmentDetailDrawer}
+      </div>
+    ) : (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        <aside
+          className="appointment-drawer appointment-drawer--desktop appointment-drawer--placeholder"
+          aria-label="Appointment details"
+        >
+          <div className="appointment-drawer-panel">
+            <div className="appointment-drawer-empty">
+              <div className="appointment-drawer-empty-title">
+                Select an appointment
+              </div>
+              <div className="appointment-drawer-empty-text">
+                Appointment details will appear here while the calendar keeps
+                its width and position.
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    )
+  ) : null;
+
   return (
     <div
       className="appointments-page"
@@ -2544,13 +3186,11 @@ export default function Appointments() {
       }}
     >
       <div className="appointments-page-header">
-        <div>
+        <div className="appointments-page-heading-group">
           <h2 className="appointments-page-heading">Appointments</h2>
         </div>
 
         <div className="appointments-page-actions">
-          <div className="appointments-page-title">{pageTitle}</div>
-
           <button
             type="button"
             disabled={!canOpenCreate}
@@ -2591,7 +3231,12 @@ export default function Appointments() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16 }}>{calendarPanel}</div>
+      <div className="appointments-layout" style={{ marginTop: 16 }}>
+        <div className="appointments-layout-main">{calendarPanel}</div>
+        {desktopDetailPanel}
+      </div>
+
+      {!isDesktopToolsLayout ? appointmentDetailDrawer : null}
 
       {toast ? (
         <div
@@ -3102,745 +3747,6 @@ export default function Appointments() {
               </button>
             </div>
           </form>
-        </ModalShell>
-      ) : null}
-
-      {detailOpen && detailAppointment ? (
-        <ModalShell
-          title={detailEditing ? "Edit appointment" : "Appointment details"}
-          subtitle={
-            detailEditing
-              ? "Update this appointment through the controlled staff RPC."
-              : "View customer details, accountability, and activity."
-          }
-          onClose={closeDetailModal}
-          maxWidth={760}
-        >
-          {detailEditing ? (
-            <form
-              onSubmit={submitDetailUpdate}
-              style={{ padding: 16, paddingBottom: 16 }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontSize: 13, fontWeight: 900 }}>
-                    Appointment details
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: ui.colors.muted,
-                    }}
-                  >
-                    Update the date, time, area, and appointment type here.
-                  </div>
-                </div>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <input
-                    value={prettySiteName(detailSiteId)}
-                    readOnly
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      background: "rgba(2, 6, 23, 0.03)",
-                    }}
-                  />
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Date
-                  <input
-                    type="date"
-                    value={detailForm.date}
-                    onChange={(e) => updateDetailForm("date", e.target.value)}
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Appointment area
-                  <select
-                    value={detailForm.areaId}
-                    onChange={(e) => updateDetailForm("areaId", e.target.value)}
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                    disabled={areas.length === 0}
-                  >
-                    <option value="">Select an area...</option>
-                    {areas.map((area) => (
-                      <option key={area.id} value={area.id}>
-                        {canonicalAreaLabel(area)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Appointment type
-                  <select
-                    value={detailForm.appointmentTypeId}
-                    onChange={(e) =>
-                      updateDetailForm("appointmentTypeId", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Select a type...</option>
-                    {appointmentTypes.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({item.duration_minutes} mins)
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Start time
-                  <select
-                    value={detailForm.startTime}
-                    onChange={(e) =>
-                      updateDetailForm("startTime", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Select a time...</option>
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  End time
-                  <select
-                    value={detailForm.endTime}
-                    onChange={(e) =>
-                      updateDetailForm("endTime", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">
-                      {detailEndTimeLabel
-                        ? `Suggested: ${detailEndTimeLabel}`
-                        : "Select an end time..."}
-                    </option>
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    gridColumn: "1 / -1",
-                  }}
-                >
-                  <div
-                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
-                  >
-                    Customer details
-                  </div>
-                  Customer name
-                  <input
-                    value={detailForm.customerName}
-                    onChange={(e) =>
-                      updateDetailForm("customerName", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Customer email
-                  <input
-                    type="email"
-                    value={detailForm.customerEmail}
-                    onChange={(e) =>
-                      updateDetailForm("customerEmail", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Customer phone
-                  <input
-                    value={detailForm.customerPhone}
-                    onChange={(e) =>
-                      updateDetailForm("customerPhone", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    gridColumn: "1 / -1",
-                  }}
-                >
-                  <div
-                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
-                  >
-                    Internal notes
-                  </div>
-                  Internal notes
-                  <textarea
-                    rows={4}
-                    value={detailForm.internalNotes}
-                    onChange={(e) =>
-                      updateDetailForm("internalNotes", e.target.value)
-                    }
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      resize: "vertical",
-                    }}
-                  />
-                </label>
-              </div>
-
-              {detailError ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                  }}
-                >
-                  {detailError}
-                </div>
-              ) : null}
-
-              <div className="appointment-modal-footer">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDetailEditing(false);
-                    setDetailForm(
-                      buildDetailForm(detailAppointment, detailSiteId),
-                    );
-                    setDetailError("");
-                  }}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: `1px solid ${ui.colors.border}`,
-                    background: ui.colors.cardBg,
-                    color: ui.colors.text,
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  Cancel edit
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={detailSaving}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: `1px solid rgba(168,85,247,0.35)`,
-                    background: ui.colors.brandSoft,
-                    color: ui.colors.text,
-                    cursor: detailSaving ? "not-allowed" : "pointer",
-                    fontWeight: 900,
-                    opacity: detailSaving ? 0.6 : 1,
-                  }}
-                >
-                  {detailSaving ? "Saving..." : "Save changes"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div style={{ padding: 16, paddingBottom: 16 }}>
-              <div style={{ display: "grid", gap: 16 }}>
-                <SectionCard title="Customer details">
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
-                  >
-                    <FieldValue
-                      label="Customer name"
-                      value={detailAppointment.customer_name}
-                    />
-                    <FieldValue
-                      label="Customer email"
-                      value={detailAppointment.customer_email}
-                    />
-                    <FieldValue
-                      label="Customer phone"
-                      value={detailAppointment.customer_phone}
-                    />
-                    <FieldValue
-                      label="Booked by"
-                      value={bookedByLabel(detailAppointment)}
-                    />
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Appointment details">
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
-                  >
-                    <FieldValue
-                      label="Appointment type"
-                      value={appointmentTypeLabel(detailAppointment, typesById)}
-                    />
-                    <FieldValue
-                      label="Site"
-                      value={prettySiteName(detailSiteId)}
-                    />
-                    <FieldValue
-                      label="Date"
-                      value={formatDateLabel(detailAppointment.start_at)}
-                    />
-                    <FieldValue
-                      label="Area / resource"
-                      value={canonicalAreaLabel(detailArea)}
-                    />
-                    <FieldValue
-                      label="Start time"
-                      value={formatTimeLabel(detailAppointment.start_at)}
-                    />
-                    <FieldValue
-                      label="End time"
-                      value={formatTimeLabel(detailAppointment.end_at)}
-                    />
-                  </div>
-                </SectionCard>
-
-                <SectionCard
-                  title="Email and accountability"
-                  subtitle="Confirmation and reminder status are based on successful email logs only."
-                  tone="softBlue"
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
-                  >
-                    <FieldValue
-                      label="Confirmation"
-                      value={
-                        latestConfirmationEmail
-                          ? `Sent ${formatDateTimeLabel(latestConfirmationEmail.sent_at)}${
-                              latestConfirmationEmail.sent_by_name
-                                ? ` by ${latestConfirmationEmail.sent_by_name}`
-                                : ""
-                            }`
-                          : "No confirmation logged"
-                      }
-                    />
-                    <FieldValue
-                      label="Reminder"
-                      value={
-                        latestReminderEmail
-                          ? `Sent ${formatDateTimeLabel(latestReminderEmail.sent_at)}${
-                              latestReminderEmail.sent_by_name
-                                ? ` by ${latestReminderEmail.sent_by_name}`
-                                : ""
-                            }`
-                          : detailAppointment.customer_email
-                            ? "No reminder logged"
-                            : "No email address on appointment"
-                      }
-                    />
-                    <FieldValue
-                      label="Created at"
-                      value={formatDateTimeLabel(detailAppointment.created_at)}
-                    />
-                    <FieldValue
-                      label="Last updated"
-                      value={
-                        detailLastChange
-                          ? formatDateTimeLabel(detailLastChange.created_at)
-                          : formatDateTimeLabel(detailAppointment.updated_at)
-                      }
-                    />
-                    <FieldValue
-                      label="Last updated by"
-                      value={
-                        detailLastChange?.changed_by_name || "Not available"
-                      }
-                    />
-                    <FieldValue
-                      label="Email status"
-                      value={
-                        !detailAppointment.customer_email
-                          ? "No email"
-                          : latestReminderEmail
-                            ? "Reminder sent"
-                            : latestConfirmationEmail
-                              ? "Confirmation sent"
-                              : "No email logged"
-                      }
-                    />
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Internal notes" tone="softSlate">
-                  <div
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {detailAppointment.internal_notes || "No internal notes"}
-                  </div>
-                </SectionCard>
-
-                <CollapsibleCard
-                  title="Email history"
-                  subtitle="Confirmation and reminder sends recorded against this appointment."
-                  open={emailSectionOpen}
-                  onToggle={() => setEmailSectionOpen((prev) => !prev)}
-                >
-                  {emailLogLoading ? (
-                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                      Loading email history...
-                    </div>
-                  ) : emailLogError ? (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        padding: 10,
-                        borderRadius: 10,
-                        background: "rgba(245,158,11,0.12)",
-                        border: "1px solid rgba(245,158,11,0.35)",
-                      }}
-                    >
-                      {emailLogError}
-                    </div>
-                  ) : emailLogRows.length === 0 ? (
-                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                      No confirmation or reminder emails have been logged yet.
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                      {emailLogRows.map((row) => (
-                        <div
-                          key={row.id}
-                          style={{
-                            padding: 10,
-                            borderRadius: 10,
-                            background: ui.colors.cardBg,
-                            border: `1px solid ${ui.colors.border}`,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {row.email_type} - {row.status}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 13,
-                              color: ui.colors.muted,
-                            }}
-                          >
-                            {formatDateTimeLabel(row.sent_at)}
-                            {row.sent_by_name ? ` by ${row.sent_by_name}` : ""}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 13,
-                              color: ui.colors.text,
-                            }}
-                          >
-                            {row.recipient_email}
-                          </div>
-                          {row.error_message ? (
-                            <div
-                              style={{
-                                marginTop: 6,
-                                fontSize: 13,
-                                color: ui.colors.muted,
-                              }}
-                            >
-                              {row.error_message}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CollapsibleCard>
-
-                <CollapsibleCard
-                  title="Activity"
-                  subtitle="Appointment updates and accountability trail."
-                  open={activitySectionOpen}
-                  onToggle={() => setActivitySectionOpen((prev) => !prev)}
-                >
-                  {activityLoading ? (
-                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                      Loading activity...
-                    </div>
-                  ) : activityError ? (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        padding: 10,
-                        borderRadius: 10,
-                        background: "rgba(245,158,11,0.12)",
-                        border: "1px solid rgba(245,158,11,0.35)",
-                      }}
-                    >
-                      {activityError}
-                    </div>
-                  ) : visibleActivityRows.length === 0 ? (
-                    <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                      No appointment activity has been recorded yet.
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                      {visibleActivityRows.map((row) => (
-                        <div
-                          key={row.id}
-                          style={{
-                            padding: 10,
-                            borderRadius: 10,
-                            background: ui.colors.cardBg,
-                            border: `1px solid ${ui.colors.border}`,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 800,
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {row.action}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 13,
-                              color: ui.colors.muted,
-                            }}
-                          >
-                            {formatDateTimeLabel(row.created_at)}
-                            {row.changed_by_name
-                              ? ` by ${row.changed_by_name}`
-                              : ""}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 13,
-                              color: ui.colors.text,
-                            }}
-                          >
-                            {describeActivity(row)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CollapsibleCard>
-              </div>
-
-              {detailAppointment.status !== "cancelled" &&
-              !String(detailAppointment.customer_email || "").trim() ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(245,158,11,0.10)",
-                    border: "1px solid rgba(245,158,11,0.35)",
-                    color: ui.colors.text,
-                  }}
-                >
-                  Customer email required before sending reminder.
-                </div>
-              ) : null}
-
-              {detailError ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                  }}
-                >
-                  {detailError}
-                </div>
-              ) : null}
-
-              <div
-                style={{
-                  position: "sticky",
-                  bottom: 0,
-                  zIndex: 2,
-                  marginTop: 16,
-                  marginLeft: -16,
-                  marginRight: -16,
-                  marginBottom: -12,
-                  padding: 12,
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  background: ui.colors.cardBg,
-                  borderTop: `1px solid ${ui.colors.border}`,
-                  boxShadow: "0 -8px 18px rgba(15,23,42,0.06)",
-                }}
-              >
-                {canManageSelectedAppointment &&
-                detailAppointment.status !== "cancelled" ? (
-                  <button
-                    type="button"
-                    onClick={sendReminderEmail}
-                    disabled={!canSendReminder || sendingReminder}
-                    title={
-                      detailAppointment.customer_email
-                        ? undefined
-                        : "Customer email required before sending reminder."
-                    }
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: "1px solid rgba(59,130,246,0.35)",
-                      background: "rgba(59,130,246,0.12)",
-                      color: ui.colors.text,
-                      cursor:
-                        !canSendReminder || sendingReminder
-                          ? "not-allowed"
-                          : "pointer",
-                      fontWeight: 900,
-                      opacity: !canSendReminder || sendingReminder ? 0.6 : 1,
-                    }}
-                  >
-                    {sendingReminder ? "Sending..." : "Send reminder"}
-                  </button>
-                ) : null}
-
-                {canManageSelectedAppointment ? (
-                  <button
-                    type="button"
-                    onClick={sendConfirmationEmail}
-                    disabled={!canSendConfirmation || sendingConfirmation}
-                    title={
-                      detailAppointment.customer_email
-                        ? undefined
-                        : "Customer email is required before sending confirmation."
-                    }
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: "1px solid rgba(16,185,129,0.35)",
-                      background: "rgba(16,185,129,0.12)",
-                      color: ui.colors.text,
-                      cursor:
-                        !canSendConfirmation || sendingConfirmation
-                          ? "not-allowed"
-                          : "pointer",
-                      fontWeight: 900,
-                      opacity:
-                        !canSendConfirmation || sendingConfirmation ? 0.6 : 1,
-                    }}
-                  >
-                    {sendingConfirmation ? "Sending..." : "Send confirmation"}
-                  </button>
-                ) : null}
-
-                {canManageSelectedAppointment ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetailEditing(true);
-                      setDetailForm(
-                        buildDetailForm(detailAppointment, detailSiteId),
-                      );
-                      setDetailError("");
-                    }}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: `1px solid rgba(168,85,247,0.35)`,
-                      background: ui.colors.brandSoft,
-                      color: ui.colors.text,
-                      cursor: "pointer",
-                      fontWeight: 900,
-                    }}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-
-                {canManageSelectedAppointment ? (
-                  <button
-                    type="button"
-                    onClick={cancelAppointment}
-                    disabled={detailSaving}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: "1px solid rgba(239,68,68,0.35)",
-                      background: "rgba(239,68,68,0.12)",
-                      color: ui.colors.text,
-                      cursor: detailSaving ? "not-allowed" : "pointer",
-                      fontWeight: 900,
-                      opacity: detailSaving ? 0.6 : 1,
-                    }}
-                  >
-                    Cancel appointment
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={closeDetailModal}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: `1px solid ${ui.colors.border}`,
-                    background: ui.colors.cardBg,
-                    color: ui.colors.text,
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
         </ModalShell>
       ) : null}
 
