@@ -97,17 +97,6 @@
   box-sizing: border-box;
 }
 
-.appointment-calendar-card::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--appointments-border);
-  pointer-events: none;
-}
-
 .appointment-calendar-header {
   padding: calc(12px * var(--appointments-ui-scale))
     calc(var(--appointments-panel-padding) * var(--appointments-ui-scale));
@@ -621,7 +610,7 @@
   margin-left: 0;
   margin-right: 0;
   margin-bottom: 0;
-  padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 20px;
   border-top: 1px solid var(--appointments-border);
   box-shadow: none;
   backdrop-filter: none;

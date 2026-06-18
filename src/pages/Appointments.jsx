@@ -4347,230 +4347,233 @@ export default function Appointments() {
           </div>
 
           <div className="appointment-drawer-scroll">
-            <form
-              className="appointment-drawer-body appointment-quick-create"
-              onSubmit={submitCreateAppointment}
-              style={{ padding: 20, paddingBottom: 16 }}
-            >
-              <div className="appointment-wizard-fields">
-                <label className="appointment-wizard-field">
-                  <span>Appointment category</span>
-                  <select
-                    value={wizardForm.category}
-                    onChange={(e) => updateQuickCreateCategory(e.target.value)}
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Select a category...</option>
-                    {WIZARD_CATEGORY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {wizardForm.category ? (
+            <form className="appointment-drawer-shell" onSubmit={submitCreateAppointment}>
+              <div
+                className="appointment-drawer-body appointment-quick-create"
+                style={{ padding: 20, paddingBottom: 16 }}
+              >
+                <div className="appointment-wizard-fields">
                   <label className="appointment-wizard-field">
-                    <span>Appointment type</span>
+                    <span>Appointment category</span>
                     <select
-                      value={quickCreateTypeKey}
-                      onChange={(e) => updateQuickCreateType(e.target.value)}
+                      value={wizardForm.category}
+                      onChange={(e) => updateQuickCreateCategory(e.target.value)}
                       style={{ ...baseInputStyle, marginTop: 6 }}
                     >
-                      <option value="">Select a type...</option>
-                      {quickCreateTypeOptions.map((option) => (
+                      <option value="">Select a category...</option>
+                      {WIZARD_CATEGORY_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
                   </label>
-                ) : null}
 
-                {quickCreateTypeKey === "other-custom" ? (
-                  <div className="appointment-quick-create-grid">
+                  {wizardForm.category ? (
                     <label className="appointment-wizard-field">
-                      <span>Custom appointment label</span>
-                      <input
-                        value={wizardForm.customLabel}
-                        onChange={(e) =>
-                          updateWizardForm("customLabel", e.target.value)
-                        }
+                      <span>Appointment type</span>
+                      <select
+                        value={quickCreateTypeKey}
+                        onChange={(e) => updateQuickCreateType(e.target.value)}
                         style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
+                      >
+                        <option value="">Select a type...</option>
+                        {quickCreateTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
-                    <label className="appointment-wizard-field">
-                      <span>Duration (mins)</span>
-                      <input
-                        type="number"
-                        min="5"
-                        step="5"
-                        value={wizardForm.customDurationMinutes}
-                        onChange={(e) =>
-                          updateWizardForm(
-                            "customDurationMinutes",
-                            e.target.value,
-                          )
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-                  </div>
-                ) : null}
+                  ) : null}
 
-                {quickCreateTypeKey ? (
-                  <div className="appointment-wizard-metric-grid">
-                    <label className="appointment-wizard-field">
-                      <span>Adults</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={wizardForm.adults}
-                        onChange={(e) => updateWizardForm("adults", e.target.value)}
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-                    <label className="appointment-wizard-field">
-                      <span>Children</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={wizardForm.children}
-                        onChange={(e) =>
-                          updateWizardForm("children", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-                  </div>
-                ) : null}
-
-                {quickCreateTypeKey && !quickCreateAvailability.isPossible ? (
-                  <div
-                    className={`appointment-quick-create-status appointment-quick-create-status--${quickCreateAvailability.tone}`}
-                  >
-                    <div>{quickCreateAvailability.message}</div>
-                  </div>
-                ) : null}
-
-                {quickCreateAvailability.isPossible ? (
-                  <>
+                  {quickCreateTypeKey === "other-custom" ? (
                     <div className="appointment-quick-create-grid">
                       <label className="appointment-wizard-field">
-                        <span>Appointment type</span>
+                        <span>Custom appointment label</span>
                         <input
-                          value={wizardSummaryLabel}
-                          readOnly
-                          style={{
-                            ...baseInputStyle,
-                            marginTop: 6,
-                            background: "rgba(2, 6, 23, 0.03)",
-                          }}
-                        />
-                      </label>
-                      <label className="appointment-wizard-field">
-                        <span>End time</span>
-                        <input
-                          value={
-                            quickCreateSuggestedEndTime || form.endTime
-                          }
-                          readOnly
-                          style={{
-                            ...baseInputStyle,
-                            marginTop: 6,
-                            background: "rgba(2, 6, 23, 0.03)",
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                  <label className="appointment-wizard-field">
-                    <span>Customer name</span>
-                    <input
-                      value={form.customerName}
-                      onChange={(e) => updateForm("customerName", e.target.value)}
-                      style={{ ...baseInputStyle, marginTop: 6 }}
-                    />
-                  </label>
-
-                    <div className="appointment-quick-create-grid">
-                      <label className="appointment-wizard-field">
-                        <span>Customer email</span>
-                        <input
-                          type="email"
-                          value={form.customerEmail}
+                          value={wizardForm.customLabel}
                           onChange={(e) =>
-                            updateForm("customerEmail", e.target.value)
+                            updateWizardForm("customLabel", e.target.value)
                           }
                           style={{ ...baseInputStyle, marginTop: 6 }}
                         />
                       </label>
-
                       <label className="appointment-wizard-field">
-                        <span>Customer phone</span>
+                        <span>Duration (mins)</span>
                         <input
-                          value={form.customerPhone}
+                          type="number"
+                          min="5"
+                          step="5"
+                          value={wizardForm.customDurationMinutes}
                           onChange={(e) =>
-                            updateForm("customerPhone", e.target.value)
+                            updateWizardForm(
+                              "customDurationMinutes",
+                              e.target.value,
+                            )
                           }
                           style={{ ...baseInputStyle, marginTop: 6 }}
                         />
                       </label>
                     </div>
+                  ) : null}
 
-                    <label className="appointment-wizard-field">
-                      <span>Notes</span>
-                      <textarea
-                        rows={4}
-                        value={form.internalNotes}
-                        onChange={(e) =>
-                          updateForm("internalNotes", e.target.value)
-                        }
-                        style={{
-                          ...baseInputStyle,
-                          marginTop: 6,
-                          resize: "vertical",
-                        }}
-                      />
-                    </label>
+                  {quickCreateTypeKey ? (
+                    <div className="appointment-wizard-metric-grid">
+                      <label className="appointment-wizard-field">
+                        <span>Adults</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={wizardForm.adults}
+                          onChange={(e) =>
+                            updateWizardForm("adults", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+                      <label className="appointment-wizard-field">
+                        <span>Children</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={wizardForm.children}
+                          onChange={(e) =>
+                            updateWizardForm("children", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
 
-                    <label className="appointment-wizard-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={
-                          !!form.sendConfirmationAfterSave &&
-                          canAutoSendConfirmationOnCreate
-                        }
-                        disabled={!canAutoSendConfirmationOnCreate || saving}
-                        onChange={(e) => {
-                          setCreateSendConfirmationTouched(true);
-                          updateForm(
-                            "sendConfirmationAfterSave",
-                            e.target.checked,
-                          );
-                        }}
-                      />
-                      <span>Send confirmation email after saving</span>
-                    </label>
+                  {quickCreateTypeKey && !quickCreateAvailability.isPossible ? (
+                    <div
+                      className={`appointment-quick-create-status appointment-quick-create-status--${quickCreateAvailability.tone}`}
+                    >
+                      <div>{quickCreateAvailability.message}</div>
+                    </div>
+                  ) : null}
 
-                    {!canAutoSendConfirmationOnCreate ? (
-                      <div className="appointment-wizard-note">
-                        Add a valid customer email to send the confirmation.
+                  {quickCreateAvailability.isPossible ? (
+                    <>
+                      <div className="appointment-quick-create-grid">
+                        <label className="appointment-wizard-field">
+                          <span>Appointment type</span>
+                          <input
+                            value={wizardSummaryLabel}
+                            readOnly
+                            style={{
+                              ...baseInputStyle,
+                              marginTop: 6,
+                              background: "rgba(2, 6, 23, 0.03)",
+                            }}
+                          />
+                        </label>
+                        <label className="appointment-wizard-field">
+                          <span>End time</span>
+                          <input
+                            value={quickCreateSuggestedEndTime || form.endTime}
+                            readOnly
+                            style={{
+                              ...baseInputStyle,
+                              marginTop: 6,
+                              background: "rgba(2, 6, 23, 0.03)",
+                            }}
+                          />
+                        </label>
                       </div>
-                    ) : null}
-                  </>
-                ) : null}
 
-                {formError ? (
-                  <div className="appointment-wizard-warning-inline">
-                    {formError}
-                  </div>
-                ) : null}
+                      <label className="appointment-wizard-field">
+                        <span>Customer name</span>
+                        <input
+                          value={form.customerName}
+                          onChange={(e) =>
+                            updateForm("customerName", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <div className="appointment-quick-create-grid">
+                        <label className="appointment-wizard-field">
+                          <span>Customer email</span>
+                          <input
+                            type="email"
+                            value={form.customerEmail}
+                            onChange={(e) =>
+                              updateForm("customerEmail", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+
+                        <label className="appointment-wizard-field">
+                          <span>Customer phone</span>
+                          <input
+                            value={form.customerPhone}
+                            onChange={(e) =>
+                              updateForm("customerPhone", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+                      </div>
+
+                      <label className="appointment-wizard-field">
+                        <span>Notes</span>
+                        <textarea
+                          rows={4}
+                          value={form.internalNotes}
+                          onChange={(e) =>
+                            updateForm("internalNotes", e.target.value)
+                          }
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+
+                      <label className="appointment-wizard-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={
+                            !!form.sendConfirmationAfterSave &&
+                            canAutoSendConfirmationOnCreate
+                          }
+                          disabled={!canAutoSendConfirmationOnCreate || saving}
+                          onChange={(e) => {
+                            setCreateSendConfirmationTouched(true);
+                            updateForm(
+                              "sendConfirmationAfterSave",
+                              e.target.checked,
+                            );
+                          }}
+                        />
+                        <span>Send confirmation email after saving</span>
+                      </label>
+
+                      {!canAutoSendConfirmationOnCreate ? (
+                        <div className="appointment-wizard-note">
+                          Add a valid customer email to send the confirmation.
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {formError ? (
+                    <div className="appointment-wizard-warning-inline">
+                      {formError}
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
-              <div className="appointment-drawer-footer">
+              <div className="appointment-drawer-footer appointment-drawer-footer--contained">
                 <button
                   className="appointment-drawer-action-button appointment-drawer-action-button--close"
                   type="button"
