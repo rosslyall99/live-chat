@@ -18,7 +18,9 @@ const CALENDAR_START_MINUTES = 9 * 60 + 30;
 const CALENDAR_END_MINUTES = 17 * 60 + 30;
 const CALENDAR_TOTAL_MINUTES = CALENDAR_END_MINUTES - CALENDAR_START_MINUTES;
 const HOUR_HEIGHT = 50;
-const TIME_OPTION_INTERVAL_MINUTES = 15;
+const CALENDAR_SLOT_INTERVAL_MINUTES = 15;
+const TIME_OPTION_INTERVAL_MINUTES = 5;
+const QUICK_CREATE_DEFAULT_DURATION_MINUTES = 30;
 const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 198px)";
 
 function todayInputValue() {
@@ -116,6 +118,14 @@ function formatDateTimeLabel(iso) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function roundMinutesToNearestInterval(
+  totalMinutes,
+  intervalMinutes = CALENDAR_SLOT_INTERVAL_MINUTES,
+) {
+  if (!Number.isFinite(totalMinutes) || intervalMinutes <= 0) return 0;
+  return Math.round(totalMinutes / intervalMinutes) * intervalMinutes;
 }
 
 function minutesFromIso(iso) {
@@ -386,6 +396,57 @@ const WIZARD_CATEGORY_OPTIONS = [
     description: "Alterations and custom appointment requests",
   },
 ];
+
+const QUICK_CREATE_TYPE_OPTIONS = {
+  hire: [
+    { value: "hire-measurement", label: "Measurement" },
+    { value: "hire-remeasure", label: "Remeasure" },
+    { value: "hire-collection", label: "Collection" },
+    { value: "hire-style-fit", label: "Style & Fit" },
+    { value: "hire-full-try-on", label: "Full Try On" },
+  ],
+  purchase: [
+    {
+      value: "purchase-new-order-full-kilt-package",
+      label: "New order - Full Kilt Package",
+    },
+    { value: "purchase-new-order-kilt-only", label: "New order - Kilt Only" },
+    { value: "purchase-new-order-trousers", label: "New order - Trousers" },
+    {
+      value: "purchase-new-order-jacket-waistcoat",
+      label: "New order - Jacket & Waistcoat",
+    },
+    {
+      value: "purchase-new-order-accessories",
+      label: "New order - Accessories",
+    },
+    {
+      value: "purchase-collection-full-kilt-package",
+      label: "Collection - Full Kilt Package",
+    },
+    { value: "purchase-collection-kilt-only", label: "Collection - Kilt Only" },
+    {
+      value: "purchase-collection-trousers",
+      label: "Collection - Trousers",
+    },
+    {
+      value: "purchase-collection-jacket-waistcoat",
+      label: "Collection - Jacket & Waistcoat",
+    },
+    {
+      value: "purchase-collection-accessories",
+      label: "Collection - Accessories",
+    },
+  ],
+  other: [
+    { value: "other-alteration-kilt", label: "Alteration - Kilt" },
+    {
+      value: "other-alteration-trews",
+      label: "Alteration - Trews/Trousers",
+    },
+    { value: "other-custom", label: "Custom appointment" },
+  ],
+};
 
 const APPOINTMENT_TYPE_ALIASES = {
   hireMeasurement: ["Hire Measurement"],
@@ -1116,6 +1177,9 @@ export default function Appointments() {
   const [form, setForm] = React.useState(() => buildInitialForm({}));
   const [createSendConfirmationTouched, setCreateSendConfirmationTouched] =
     React.useState(false);
+  const [quickCreateEndTimeTouched, setQuickCreateEndTimeTouched] =
+    React.useState(false);
+  const [quickCreateTypeKey, setQuickCreateTypeKey] = React.useState("");
   const [drawerMode, setDrawerMode] = React.useState("empty");
   const [drawerReturnMode, setDrawerReturnMode] = React.useState("empty");
   const [wizardStep, setWizardStep] = React.useState(0);
@@ -1183,6 +1247,7 @@ export default function Appointments() {
   const canOpenBlock = canManageBlocks && selectedSiteIsBookable;
   const canAutoSendConfirmationOnCreate = isLikelyEmail(form.customerEmail);
   const createWizardOpen = modalOpen && drawerMode === "newWizard";
+  const quickCreateOpen = modalOpen && drawerMode === "quickCreate";
 
   const baseInputStyle = React.useMemo(
     () => ({
@@ -1717,6 +1782,18 @@ export default function Appointments() {
     return items;
   }, [timelineEndMinutes, timelineStartMinutes]);
 
+  const quickCreateSlotStarts = React.useMemo(() => {
+    const items = [];
+    for (
+      let minutes = timelineStartMinutes;
+      minutes < timelineEndMinutes;
+      minutes += CALENDAR_SLOT_INTERVAL_MINUTES
+    ) {
+      items.push(minutes);
+    }
+    return items;
+  }, [timelineEndMinutes, timelineStartMinutes]);
+
   const appointmentsByArea = React.useMemo(() => {
     const map = {};
     for (const area of areas) map[area.id] = [];
@@ -1741,6 +1818,18 @@ export default function Appointments() {
   const timeOptions = React.useMemo(
     () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
     [],
+  );
+  const quickCreateEndTimeFor = React.useCallback(
+    (startTime, appointmentTypeId = "") => {
+      if (!startTime) return "";
+      const nextType = appointmentTypes.find(
+        (item) => item.id === appointmentTypeId,
+      );
+      const durationMinutes =
+        Number(nextType?.duration_minutes) || QUICK_CREATE_DEFAULT_DURATION_MINUTES;
+      return addMinutesToTimeValueRoundedUp(startTime, durationMinutes);
+    },
+    [appointmentTypes],
   );
   const detailSelectedType =
     appointmentTypes.find((item) => item.id === detailForm.appointmentTypeId) ||
@@ -1850,9 +1939,37 @@ export default function Appointments() {
     () => modalAreas.find((item) => item.id === form.areaId) || null,
     [form.areaId, modalAreas],
   );
+  const quickCreateSelectedArea = React.useMemo(
+    () =>
+      modalAreas.find((item) => item.id === form.areaId) ||
+      areas.find((item) => item.id === form.areaId) ||
+      null,
+    [areas, form.areaId, modalAreas],
+  );
+  const quickCreateTypeOptions = React.useMemo(
+    () => QUICK_CREATE_TYPE_OPTIONS[wizardForm.category] || [],
+    [wizardForm.category],
+  );
+  const quickCreateUsesPartyCounts =
+    wizardForm.category === "hire" &&
+    (wizardForm.hireRoute === "Measurement" ||
+      wizardForm.hireRoute === "Collection");
+  const quickCreateSuggestedEndTime = React.useMemo(() => {
+    if (!quickCreateOpen || !form.startTime) return "";
+    const durationMinutes =
+      wizardSuggestedDurationMinutes ||
+      Number(wizardSelectedType?.duration_minutes || 0) ||
+      QUICK_CREATE_DEFAULT_DURATION_MINUTES;
+    return addMinutesToTimeValueRoundedUp(form.startTime, durationMinutes);
+  }, [
+    form.startTime,
+    quickCreateOpen,
+    wizardSelectedType,
+    wizardSuggestedDurationMinutes,
+  ]);
 
   React.useEffect(() => {
-    if (!createWizardOpen) return;
+    if (!createWizardOpen && !quickCreateOpen) return;
 
     const nextTypeId = wizardSelectedType?.id || wizardForm.manualAppointmentTypeId;
 
@@ -1861,9 +1978,11 @@ export default function Appointments() {
         const nextType =
           appointmentTypes.find((item) => item.id === nextTypeId) || null;
         const nextEndTime =
-          nextType && prev.startTime
-            ? addMinutesToTimeValue(prev.startTime, nextType.duration_minutes)
-            : prev.endTime;
+          quickCreateOpen && prev.startTime
+            ? quickCreateEndTimeFor(prev.startTime, nextTypeId)
+            : nextType && prev.startTime
+              ? addMinutesToTimeValue(prev.startTime, nextType.duration_minutes)
+              : prev.endTime;
 
         return {
           ...prev,
@@ -1882,11 +2001,17 @@ export default function Appointments() {
       setForm((prev) => ({ ...prev, appointmentTypeId: "" }));
     }
 
-    if (form.startTime && wizardSuggestedDurationMinutes > 0) {
-      const suggestedEndTime = addMinutesToTimeValueRoundedUp(
-        form.startTime,
-        wizardSuggestedDurationMinutes,
-      );
+    if (
+      form.startTime &&
+      wizardSuggestedDurationMinutes > 0 &&
+      (!quickCreateOpen || !quickCreateEndTimeTouched)
+    ) {
+      const suggestedEndTime = quickCreateOpen
+        ? quickCreateSuggestedEndTime
+        : addMinutesToTimeValueRoundedUp(
+            form.startTime,
+            wizardSuggestedDurationMinutes,
+          );
       if (suggestedEndTime && suggestedEndTime !== form.endTime) {
         setForm((prev) => ({ ...prev, endTime: suggestedEndTime }));
       }
@@ -1897,6 +2022,10 @@ export default function Appointments() {
     form.appointmentTypeId,
     form.endTime,
     form.startTime,
+    quickCreateEndTimeTouched,
+    quickCreateEndTimeFor,
+    quickCreateOpen,
+    quickCreateSuggestedEndTime,
     wizardForm.manualAppointmentTypeId,
     wizardSelectedType,
     wizardSuggestedDurationMinutes,
@@ -1906,6 +2035,8 @@ export default function Appointments() {
     setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
     setFormError("");
     setCreateSendConfirmationTouched(false);
+    setQuickCreateEndTimeTouched(false);
+    setQuickCreateTypeKey("");
     setSavePhase("");
     setModalAreas(areas);
     setWizardForm(buildInitialWizardForm());
@@ -1917,11 +2048,34 @@ export default function Appointments() {
     setModalOpen(true);
   }
 
+  function openQuickCreateDrawer({ areaId = "", startTime = "" }) {
+    closeDetailModal();
+    setForm({
+      ...buildInitialForm({ siteId: selectedSiteId, date: selectedDate }),
+      areaId,
+      startTime,
+      endTime: quickCreateEndTimeFor(startTime),
+    });
+    setFormError("");
+    setCreateSendConfirmationTouched(false);
+    setQuickCreateEndTimeTouched(false);
+    setQuickCreateTypeKey("");
+    setSavePhase("");
+    setModalAreas(areas);
+    setWizardForm(buildInitialWizardForm());
+    setWizardStep(0);
+    setDrawerReturnMode("empty");
+    setDrawerMode("quickCreate");
+    setModalOpen(true);
+  }
+
   function closeCreateModal() {
     setModalOpen(false);
     setSaving(false);
     setSavePhase("");
     setFormError("");
+    setQuickCreateEndTimeTouched(false);
+    setQuickCreateTypeKey("");
     setWizardStep(0);
     setDrawerMode(
       drawerReturnMode === "detail" && detailOpen && detailAppointment
@@ -1931,6 +2085,10 @@ export default function Appointments() {
   }
 
   function openBlockModal() {
+    setModalOpen(false);
+    setDrawerMode("empty");
+    setQuickCreateEndTimeTouched(false);
+    setQuickCreateTypeKey("");
     setBlockForm(
       buildInitialBlockForm({ siteId: selectedSiteId, date: selectedDate }),
     );
@@ -1993,6 +2151,19 @@ export default function Appointments() {
     setBlockActivityError("");
   }
 
+  function handleQuickCreateSlotClick(areaId, startMinutes) {
+    if (!canOpenCreate) return;
+    const roundedMinutes = clamp(
+      roundMinutesToNearestInterval(startMinutes),
+      CALENDAR_START_MINUTES,
+      CALENDAR_END_MINUTES,
+    );
+    openQuickCreateDrawer({
+      areaId,
+      startTime: timeLabelFromMinutes(roundedMinutes),
+    });
+  }
+
   function updateForm(key, value) {
     if (key === "appointmentTypeId" || key === "startTime") {
       setForm((prev) => {
@@ -2000,13 +2171,16 @@ export default function Appointments() {
         const nextTypeId =
           key === "appointmentTypeId" ? value : prev.appointmentTypeId;
         const nextStartTime = key === "startTime" ? value : prev.startTime;
-        const nextType = appointmentTypes.find(
-          (item) => item.id === nextTypeId,
-        );
-        const nextEndTime =
-          nextType && nextStartTime
-            ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
-            : "";
+        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const shouldAutoUpdateEndTime =
+          drawerMode !== "quickCreate" || !quickCreateEndTimeTouched;
+        const nextEndTime = shouldAutoUpdateEndTime
+          ? drawerMode === "quickCreate"
+            ? quickCreateEndTimeFor(nextStartTime, nextTypeId)
+            : nextType && nextStartTime
+              ? addMinutesToTimeValue(nextStartTime, nextType.duration_minutes)
+              : ""
+          : prev.endTime;
 
         return {
           ...next,
@@ -2017,6 +2191,9 @@ export default function Appointments() {
     }
 
     if (key === "endTime") {
+      if (drawerMode === "quickCreate") {
+        setQuickCreateEndTimeTouched(true);
+      }
       setForm((prev) => ({ ...prev, endTime: value }));
       return;
     }
@@ -2137,6 +2314,112 @@ export default function Appointments() {
 
   function updateDetailBlockForm(key, value) {
     setDetailBlockForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateQuickCreateCategory(category) {
+    setQuickCreateTypeKey("");
+    setFormError("");
+    setQuickCreateEndTimeTouched(false);
+    setWizardForm({
+      ...buildInitialWizardForm(),
+      category,
+    });
+    setForm((prev) => ({
+      ...prev,
+      appointmentTypeId: "",
+      endTime: quickCreateEndTimeFor(prev.startTime, ""),
+    }));
+  }
+
+  function updateQuickCreateType(value) {
+    setQuickCreateTypeKey(value);
+    setFormError("");
+    setQuickCreateEndTimeTouched(false);
+
+    const next = buildInitialWizardForm();
+    next.category = wizardForm.category;
+
+    switch (value) {
+      case "hire-measurement":
+        next.hireRoute = "Measurement";
+        next.measurementVariant = "new";
+        break;
+      case "hire-remeasure":
+        next.hireRoute = "Measurement";
+        next.measurementVariant = "remeasure";
+        break;
+      case "hire-collection":
+        next.hireRoute = "Collection";
+        break;
+      case "hire-style-fit":
+        next.hireRoute = "Style & Fit";
+        next.adults = "0";
+        next.children = "0";
+        break;
+      case "hire-full-try-on":
+        next.hireRoute = "Full Try On";
+        next.fullTryOnAcknowledged = true;
+        next.adults = "0";
+        next.children = "0";
+        break;
+      case "purchase-new-order-full-kilt-package":
+        next.purchasePath = "New order";
+        next.purchaseItem = "Full Kilt Package";
+        break;
+      case "purchase-new-order-kilt-only":
+        next.purchasePath = "New order";
+        next.purchaseItem = "Kilt Only";
+        break;
+      case "purchase-new-order-trousers":
+        next.purchasePath = "New order";
+        next.purchaseItem = "Trousers";
+        break;
+      case "purchase-new-order-jacket-waistcoat":
+        next.purchasePath = "New order";
+        next.purchaseItem = "Jacket & Waistcoat";
+        break;
+      case "purchase-new-order-accessories":
+        next.purchasePath = "New order";
+        next.purchaseItem = "Accessories";
+        break;
+      case "purchase-collection-full-kilt-package":
+        next.purchasePath = "Collection";
+        next.purchaseItem = "Full Kilt Package";
+        break;
+      case "purchase-collection-kilt-only":
+        next.purchasePath = "Collection";
+        next.purchaseItem = "Kilt Only";
+        break;
+      case "purchase-collection-trousers":
+        next.purchasePath = "Collection";
+        next.purchaseItem = "Trousers";
+        break;
+      case "purchase-collection-jacket-waistcoat":
+        next.purchasePath = "Collection";
+        next.purchaseItem = "Jacket & Waistcoat";
+        break;
+      case "purchase-collection-accessories":
+        next.purchasePath = "Collection";
+        next.purchaseItem = "Accessories";
+        break;
+      case "other-alteration-kilt":
+        next.otherRoute = "Alteration";
+        next.customLabel = "Kilt";
+        break;
+      case "other-alteration-trews":
+        next.otherRoute = "Alteration";
+        next.customLabel = "Trews/Trousers";
+        break;
+      case "other-custom":
+        next.otherRoute = "Custom appointment";
+        next.customLabel = "";
+        next.customDurationMinutes = "";
+        break;
+      default:
+        break;
+    }
+
+    setWizardForm(next);
   }
 
   function validateWizardStep(step) {
@@ -2400,10 +2683,140 @@ export default function Appointments() {
     return "";
   }
 
+  const quickCreateAvailability = (() => {
+    if (!quickCreateOpen) {
+      return {
+        isPossible: false,
+        tone: "muted",
+        message: "",
+      };
+    }
+
+    if (!wizardForm.category) {
+      return {
+        isPossible: false,
+        tone: "muted",
+        message: "Choose an appointment category to continue.",
+      };
+    }
+
+    if (!quickCreateTypeKey) {
+      return {
+        isPossible: false,
+        tone: "muted",
+        message: "Choose the appointment type for this slot.",
+      };
+    }
+
+    if (
+      wizardForm.otherRoute === "Custom appointment" &&
+      !wizardForm.customLabel.trim()
+    ) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "Add a custom appointment label before checking availability.",
+      };
+    }
+
+    if (
+      wizardForm.otherRoute === "Custom appointment" &&
+      !Number(wizardForm.customDurationMinutes)
+    ) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "Enter a custom duration before checking availability.",
+      };
+    }
+
+    if (
+      quickCreateUsesPartyCounts &&
+      parseCount(wizardForm.adults) + parseCount(wizardForm.children) <= 0
+    ) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "Add at least one adult or child before checking availability.",
+      };
+    }
+
+    if (!wizardSelectedType) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message:
+          wizardResolutionWarning ||
+          "Could not match this quick booking to an appointment type.",
+      };
+    }
+
+    const suggestedEndTime = quickCreateSuggestedEndTime;
+
+    if (!suggestedEndTime) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "This slot needs a valid end time before it can be saved.",
+      };
+    }
+
+    const times = validateAppointmentTimes({
+      date: form.date,
+      startTime: form.startTime,
+      endTime: suggestedEndTime,
+      setErrorMessage: () => {},
+    });
+
+    if (!times) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "This booking would run beyond the calendar day.",
+      };
+    }
+
+    const availableAreas = modalAreas.filter(
+      (area) => !findLocalConflict(area.id, times.startAt, times.endAt),
+    );
+    const availableAreaCount = availableAreas.length;
+    const selectedAreaConflict = findLocalConflict(
+      form.areaId,
+      times.startAt,
+      times.endAt,
+    );
+
+    if (selectedAreaConflict) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: "This time is unavailable.",
+      };
+    }
+
+    return {
+      isPossible: true,
+      tone: "success",
+      message:
+        availableAreaCount > 1
+          ? `${availableAreaCount} areas are free at this start time.`
+          : "The clicked location is free for this booking.",
+      suggestedEndTime,
+    };
+  })();
+
   async function submitCreateAppointment(e) {
     e.preventDefault();
     if (saving) return;
     setFormError("");
+
+    if (quickCreateOpen && !quickCreateAvailability.isPossible) {
+      setFormError(
+        quickCreateAvailability.message ||
+          "This quick appointment is not ready to save yet.",
+      );
+      return;
+    }
 
     if (!form.customerName.trim()) {
       setFormError("Customer name is required.");
@@ -2425,7 +2838,11 @@ export default function Appointments() {
       setFormError("Start time is required.");
       return;
     }
-    if (!form.endTime) {
+    const endTimeValue =
+      quickCreateOpen && quickCreateSuggestedEndTime
+        ? quickCreateSuggestedEndTime
+        : form.endTime;
+    if (!endTimeValue) {
       setFormError("End time is required.");
       return;
     }
@@ -2447,7 +2864,7 @@ export default function Appointments() {
     const appointmentTimes = validateAppointmentTimes({
       date: form.date,
       startTime: form.startTime,
-      endTime: form.endTime,
+      endTime: endTimeValue,
       setErrorMessage: setFormError,
     });
     if (!appointmentTimes) {
@@ -3163,6 +3580,36 @@ export default function Appointments() {
                     height: timelineHeight,
                   }}
                 >
+                  {quickCreateSlotStarts.map((minutes) => {
+                    const top =
+                      ((minutes - timelineStartMinutes) /
+                        CALENDAR_TOTAL_MINUTES) *
+                      timelineHeight;
+                    const slotHeight =
+                      (CALENDAR_SLOT_INTERVAL_MINUTES /
+                        CALENDAR_TOTAL_MINUTES) *
+                      timelineHeight;
+                    return (
+                      <button
+                        key={`slot-${area.id}-${minutes}`}
+                        type="button"
+                        className="appointment-area-slot"
+                        onClick={() =>
+                          handleQuickCreateSlotClick(area.id, minutes)
+                        }
+                        aria-label={`Create appointment at ${timeLabelFromMinutes(minutes)} in ${canonicalAreaLabel(area)}`}
+                        style={{
+                          top,
+                          height: slotHeight,
+                        }}
+                      >
+                        <span className="appointment-area-slot-label">
+                          {timeLabelFromMinutes(minutes)}
+                        </span>
+                      </button>
+                    );
+                  })}
+
                   {timeTicks.map((minutes, index) => {
                     const top =
                       ((minutes - timelineStartMinutes) /
@@ -3273,230 +3720,234 @@ export default function Appointments() {
             <div className="appointment-drawer-scroll">
               {detailEditing ? (
                 <form
-                  className="appointment-drawer-body"
+                  className="appointment-drawer-shell"
                   onSubmit={submitDetailUpdate}
-                  style={{ padding: 20, paddingBottom: 16 }}
                 >
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
+                    className="appointment-drawer-body"
+                    style={{ padding: 20, paddingBottom: 16 }}
                   >
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <div style={{ fontSize: 13, fontWeight: 900 }}>
-                        Appointment details
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: ui.colors.muted,
-                        }}
-                      >
-                        Update the date, time, area, and appointment type here.
-                      </div>
-                    </div>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Site
-                      <input
-                        value={prettySiteName(detailSiteId)}
-                        readOnly
-                        style={{
-                          ...baseInputStyle,
-                          marginTop: 6,
-                          background: "rgba(2, 6, 23, 0.03)",
-                        }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Date
-                      <input
-                        type="date"
-                        value={detailForm.date}
-                        onChange={(e) =>
-                          updateDetailForm("date", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Appointment area
-                      <select
-                        value={detailForm.areaId}
-                        onChange={(e) =>
-                          updateDetailForm("areaId", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                        disabled={areas.length === 0}
-                      >
-                        <option value="">Select an area...</option>
-                        {areas.map((area) => (
-                          <option key={area.id} value={area.id}>
-                            {canonicalAreaLabel(area)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Appointment type
-                      <select
-                        value={detailForm.appointmentTypeId}
-                        onChange={(e) =>
-                          updateDetailForm("appointmentTypeId", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">Select a type...</option>
-                        {appointmentTypes.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} ({item.duration_minutes} mins)
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Start time
-                      <select
-                        value={detailForm.startTime}
-                        onChange={(e) =>
-                          updateDetailForm("startTime", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">Select a time...</option>
-                        {timeOptions.map((time) => (
-                          <option key={time} value={time}>
-                            {time}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      End time
-                      <select
-                        value={detailForm.endTime}
-                        onChange={(e) =>
-                          updateDetailForm("endTime", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">
-                          {detailEndTimeLabel
-                            ? `Suggested: ${detailEndTimeLabel}`
-                            : "Select an end time..."}
-                        </option>
-                        {timeOptions.map((time) => (
-                          <option key={time} value={time}>
-                            {time}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        gridColumn: "1 / -1",
-                      }}
-                    >
-                      <div
-                        style={{
-                          marginBottom: 6,
-                          fontSize: 13,
-                          fontWeight: 900,
-                        }}
-                      >
-                        Customer details
-                      </div>
-                      Customer name
-                      <input
-                        value={detailForm.customerName}
-                        onChange={(e) =>
-                          updateDetailForm("customerName", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Customer email
-                      <input
-                        type="email"
-                        value={detailForm.customerEmail}
-                        onChange={(e) =>
-                          updateDetailForm("customerEmail", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Customer phone
-                      <input
-                        value={detailForm.customerPhone}
-                        onChange={(e) =>
-                          updateDetailForm("customerPhone", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-
-                    <label
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        gridColumn: "1 / -1",
-                      }}
-                    >
-                      <div
-                        style={{
-                          marginBottom: 6,
-                          fontSize: 13,
-                          fontWeight: 900,
-                        }}
-                      >
-                        Internal notes
-                      </div>
-                      Internal notes
-                      <textarea
-                        rows={4}
-                        value={detailForm.internalNotes}
-                        onChange={(e) =>
-                          updateDetailForm("internalNotes", e.target.value)
-                        }
-                        style={{
-                          ...baseInputStyle,
-                          marginTop: 6,
-                          resize: "vertical",
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  {detailError ? (
                     <div
                       style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(239,68,68,0.08)",
-                        border: "1px solid rgba(239,68,68,0.35)",
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 12,
                       }}
                     >
-                      {detailError}
-                    </div>
-                  ) : null}
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <div style={{ fontSize: 13, fontWeight: 900 }}>
+                          Appointment details
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 12,
+                            color: ui.colors.muted,
+                          }}
+                        >
+                          Update the date, time, area, and appointment type here.
+                        </div>
+                      </div>
 
-                  <div className="appointment-drawer-footer">
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Site
+                        <input
+                          value={prettySiteName(detailSiteId)}
+                          readOnly
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            background: "rgba(2, 6, 23, 0.03)",
+                          }}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Date
+                        <input
+                          type="date"
+                          value={detailForm.date}
+                          onChange={(e) =>
+                            updateDetailForm("date", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Appointment area
+                        <select
+                          value={detailForm.areaId}
+                          onChange={(e) =>
+                            updateDetailForm("areaId", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                          disabled={areas.length === 0}
+                        >
+                          <option value="">Select an area...</option>
+                          {areas.map((area) => (
+                            <option key={area.id} value={area.id}>
+                              {canonicalAreaLabel(area)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Appointment type
+                        <select
+                          value={detailForm.appointmentTypeId}
+                          onChange={(e) =>
+                            updateDetailForm("appointmentTypeId", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Select a type...</option>
+                          {appointmentTypes.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} ({item.duration_minutes} mins)
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Start time
+                        <select
+                          value={detailForm.startTime}
+                          onChange={(e) =>
+                            updateDetailForm("startTime", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Select a time...</option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        End time
+                        <select
+                          value={detailForm.endTime}
+                          onChange={(e) =>
+                            updateDetailForm("endTime", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">
+                            {detailEndTimeLabel
+                              ? `Suggested: ${detailEndTimeLabel}`
+                              : "Select an end time..."}
+                          </option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          gridColumn: "1 / -1",
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: 6,
+                            fontSize: 13,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Customer details
+                        </div>
+                        Customer name
+                        <input
+                          value={detailForm.customerName}
+                          onChange={(e) =>
+                            updateDetailForm("customerName", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Customer email
+                        <input
+                          type="email"
+                          value={detailForm.customerEmail}
+                          onChange={(e) =>
+                            updateDetailForm("customerEmail", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Customer phone
+                        <input
+                          value={detailForm.customerPhone}
+                          onChange={(e) =>
+                            updateDetailForm("customerPhone", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          gridColumn: "1 / -1",
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: 6,
+                            fontSize: 13,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Internal notes
+                        </div>
+                        Internal notes
+                        <textarea
+                          rows={4}
+                          value={detailForm.internalNotes}
+                          onChange={(e) =>
+                            updateDetailForm("internalNotes", e.target.value)
+                          }
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {detailError ? (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: 12,
+                          borderRadius: 12,
+                          background: "rgba(239,68,68,0.08)",
+                          border: "1px solid rgba(239,68,68,0.35)",
+                        }}
+                      >
+                        {detailError}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="appointment-drawer-footer appointment-drawer-footer--contained">
                     <button
                       type="button"
                       onClick={() => {
@@ -3538,272 +3989,274 @@ export default function Appointments() {
                   </div>
                 </form>
               ) : (
-                <div
-                  className="appointment-drawer-body"
-                  style={{ padding: 20, paddingBottom: 16 }}
-                >
-                  <div style={{ display: "grid", gap: 16 }}>
-                    <SectionCard>
-                      <div className="appointment-drawer-detail-list">
-                        <div className="appointment-drawer-detail-line">
-                          <span className="appointment-drawer-detail-label">
-                            Name
-                          </span>
-                          <span className="appointment-drawer-detail-value">
-                            {detailAppointment.customer_name || "Not provided"}
-                          </span>
+                <div className="appointment-drawer-shell">
+                  <div
+                    className="appointment-drawer-body"
+                    style={{ padding: 20, paddingBottom: 16 }}
+                  >
+                    <div style={{ display: "grid", gap: 16 }}>
+                      <SectionCard>
+                        <div className="appointment-drawer-detail-list">
+                          <div className="appointment-drawer-detail-line">
+                            <span className="appointment-drawer-detail-label">
+                              Name
+                            </span>
+                            <span className="appointment-drawer-detail-value">
+                              {detailAppointment.customer_name || "Not provided"}
+                            </span>
+                          </div>
+                          <div className="appointment-drawer-detail-line">
+                            <span className="appointment-drawer-detail-label">
+                              Email
+                            </span>
+                            <span className="appointment-drawer-detail-value">
+                              {detailAppointment.customer_email ? (
+                                <a
+                                  href={`mailto:${detailAppointment.customer_email}`}
+                                  className="appointment-drawer-detail-link"
+                                >
+                                  {detailAppointment.customer_email}
+                                </a>
+                              ) : (
+                                "Not provided"
+                              )}
+                            </span>
+                          </div>
+                          <div className="appointment-drawer-detail-line">
+                            <span className="appointment-drawer-detail-label">
+                              Phone
+                            </span>
+                            <span className="appointment-drawer-detail-value">
+                              {detailAppointment.customer_phone || "Not provided"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="appointment-drawer-detail-line">
-                          <span className="appointment-drawer-detail-label">
-                            Email
-                          </span>
-                          <span className="appointment-drawer-detail-value">
-                            {detailAppointment.customer_email ? (
-                              <a
-                                href={`mailto:${detailAppointment.customer_email}`}
-                                className="appointment-drawer-detail-link"
-                              >
-                                {detailAppointment.customer_email}
-                              </a>
-                            ) : (
-                              "Not provided"
-                            )}
-                          </span>
-                        </div>
-                        <div className="appointment-drawer-detail-line">
-                          <span className="appointment-drawer-detail-label">
-                            Phone
-                          </span>
-                          <span className="appointment-drawer-detail-value">
-                            {detailAppointment.customer_phone || "Not provided"}
-                          </span>
-                        </div>
-                      </div>
-                    </SectionCard>
+                      </SectionCard>
 
-                    <SectionCard title="Internal notes" tone="softSlate">
-                      <div
-                        style={{
-                          whiteSpace: "pre-wrap",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {detailAppointment.internal_notes ||
-                          "No internal notes"}
-                      </div>
-                    </SectionCard>
-
-                    <SectionCard>
-                      <div className="appointment-drawer-section-header">
-                        <div className="appointment-drawer-section-title">
-                          Email
-                        </div>
-                        <div className="appointment-drawer-section-actions">
-                          {canManageSelectedAppointment &&
-                          detailAppointment.status !== "cancelled" ? (
-                            <button
-                              className="appointment-drawer-action-button appointment-drawer-action-button--reminder"
-                              type="button"
-                              onClick={sendReminderEmail}
-                              disabled={!canSendReminder || sendingReminder}
-                              title={
-                                detailAppointment.customer_email
-                                  ? undefined
-                                  : "Customer email required before sending reminder."
-                              }
-                            >
-                              {sendingReminder ? "Sending..." : "Reminder"}
-                            </button>
-                          ) : null}
-
-                          {canManageSelectedAppointment ? (
-                            <button
-                              className="appointment-drawer-action-button appointment-drawer-action-button--confirmation"
-                              type="button"
-                              onClick={sendConfirmationEmail}
-                              disabled={
-                                !canSendConfirmation || sendingConfirmation
-                              }
-                              title={
-                                detailAppointment.customer_email
-                                  ? undefined
-                                  : "Customer email is required before sending confirmation."
-                              }
-                            >
-                              {sendingConfirmation
-                                ? "Sending..."
-                                : "Confirmation"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {emailLogLoading ? (
-                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                          Loading email history...
-                        </div>
-                      ) : emailLogError ? (
+                      <SectionCard title="Internal notes" tone="softSlate">
                         <div
                           style={{
-                            marginTop: 10,
-                            padding: 10,
-                            borderRadius: 10,
-                            background: "rgba(245,158,11,0.12)",
-                            border: "1px solid rgba(245,158,11,0.35)",
+                            whiteSpace: "pre-wrap",
+                            fontWeight: 700,
                           }}
                         >
-                          {emailLogError}
+                          {detailAppointment.internal_notes ||
+                            "No internal notes"}
                         </div>
-                      ) : emailLogRows.length === 0 ? (
-                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                          No email history yet.
+                      </SectionCard>
+
+                      <SectionCard>
+                        <div className="appointment-drawer-section-header">
+                          <div className="appointment-drawer-section-title">
+                            Email
+                          </div>
+                          <div className="appointment-drawer-section-actions">
+                            {canManageSelectedAppointment &&
+                            detailAppointment.status !== "cancelled" ? (
+                              <button
+                                className="appointment-drawer-action-button appointment-drawer-action-button--reminder"
+                                type="button"
+                                onClick={sendReminderEmail}
+                                disabled={!canSendReminder || sendingReminder}
+                                title={
+                                  detailAppointment.customer_email
+                                    ? undefined
+                                    : "Customer email required before sending reminder."
+                                }
+                              >
+                                {sendingReminder ? "Sending..." : "Reminder"}
+                              </button>
+                            ) : null}
+
+                            {canManageSelectedAppointment ? (
+                              <button
+                                className="appointment-drawer-action-button appointment-drawer-action-button--confirmation"
+                                type="button"
+                                onClick={sendConfirmationEmail}
+                                disabled={
+                                  !canSendConfirmation || sendingConfirmation
+                                }
+                                title={
+                                  detailAppointment.customer_email
+                                    ? undefined
+                                    : "Customer email is required before sending confirmation."
+                                }
+                              >
+                                {sendingConfirmation
+                                  ? "Sending..."
+                                  : "Confirmation"}
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
-                      ) : (
-                        <div
-                          style={{ marginTop: 10, display: "grid", gap: 10 }}
-                        >
-                          {emailLogRows.map((row) => (
-                            <div
-                              key={row.id}
-                              style={{
-                                padding: 10,
-                                borderRadius: 10,
-                                background: ui.colors.cardBg,
-                                border: `1px solid ${ui.colors.border}`,
-                              }}
-                            >
+
+                        {emailLogLoading ? (
+                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                            Loading email history...
+                          </div>
+                        ) : emailLogError ? (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: 10,
+                              borderRadius: 10,
+                              background: "rgba(245,158,11,0.12)",
+                              border: "1px solid rgba(245,158,11,0.35)",
+                            }}
+                          >
+                            {emailLogError}
+                          </div>
+                        ) : emailLogRows.length === 0 ? (
+                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                            No email history yet.
+                          </div>
+                        ) : (
+                          <div
+                            style={{ marginTop: 10, display: "grid", gap: 10 }}
+                          >
+                            {emailLogRows.map((row) => (
                               <div
+                                key={row.id}
                                 style={{
-                                  fontWeight: 800,
-                                  textTransform: "capitalize",
+                                  padding: 10,
+                                  borderRadius: 10,
+                                  background: ui.colors.cardBg,
+                                  border: `1px solid ${ui.colors.border}`,
                                 }}
                               >
-                                {row.email_type} - {row.status}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  fontSize: 13,
-                                  color: ui.colors.muted,
-                                }}
-                              >
-                                {formatDateTimeLabel(row.sent_at)}
-                                {row.sent_by_name
-                                  ? ` by ${row.sent_by_name}`
-                                  : ""}
-                              </div>
-                              {row.error_message ? (
                                 <div
                                   style={{
-                                    marginTop: 6,
+                                    fontWeight: 800,
+                                    textTransform: "capitalize",
+                                  }}
+                                >
+                                  {row.email_type} - {row.status}
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
                                     fontSize: 13,
                                     color: ui.colors.muted,
                                   }}
                                 >
-                                  {row.error_message}
+                                  {formatDateTimeLabel(row.sent_at)}
+                                  {row.sent_by_name
+                                    ? ` by ${row.sent_by_name}`
+                                    : ""}
                                 </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </SectionCard>
+                                {row.error_message ? (
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      fontSize: 13,
+                                      color: ui.colors.muted,
+                                    }}
+                                  >
+                                    {row.error_message}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </SectionCard>
 
-                    <SectionCard title="Activity">
-                      {activityLoading ? (
-                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                          Loading activity...
-                        </div>
-                      ) : activityError ? (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            padding: 10,
-                            borderRadius: 10,
-                            background: "rgba(245,158,11,0.12)",
-                            border: "1px solid rgba(245,158,11,0.35)",
-                          }}
-                        >
-                          {activityError}
-                        </div>
-                      ) : visibleActivityRows.length === 0 ? (
-                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                          No appointment activity has been recorded yet.
-                        </div>
-                      ) : (
-                        <div
-                          style={{ marginTop: 10, display: "grid", gap: 10 }}
-                        >
-                          {visibleActivityRows.map((row) => (
-                            <div
-                              key={row.id}
-                              style={{
-                                padding: 10,
-                                borderRadius: 10,
-                                background: ui.colors.cardBg,
-                                border: `1px solid ${ui.colors.border}`,
-                              }}
-                            >
+                      <SectionCard title="Activity">
+                        {activityLoading ? (
+                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                            Loading activity...
+                          </div>
+                        ) : activityError ? (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: 10,
+                              borderRadius: 10,
+                              background: "rgba(245,158,11,0.12)",
+                              border: "1px solid rgba(245,158,11,0.35)",
+                            }}
+                          >
+                            {activityError}
+                          </div>
+                        ) : visibleActivityRows.length === 0 ? (
+                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                            No appointment activity has been recorded yet.
+                          </div>
+                        ) : (
+                          <div
+                            style={{ marginTop: 10, display: "grid", gap: 10 }}
+                          >
+                            {visibleActivityRows.map((row) => (
                               <div
+                                key={row.id}
                                 style={{
-                                  fontWeight: 800,
-                                  textTransform: "capitalize",
+                                  padding: 10,
+                                  borderRadius: 10,
+                                  background: ui.colors.cardBg,
+                                  border: `1px solid ${ui.colors.border}`,
                                 }}
                               >
-                                {row.action}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 4,
-                                  fontSize: 13,
-                                  color: ui.colors.muted,
-                                }}
-                              >
-                                {formatDateTimeLabel(row.created_at)}
-                                {row.changed_by_name
-                                  ? ` by ${row.changed_by_name}`
-                                  : ""}
-                              </div>
-                              {shouldShowActivityDescription(row) ? (
                                 <div
                                   style={{
-                                    marginTop: 6,
-                                    fontSize: 13,
-                                    color: ui.colors.text,
+                                    fontWeight: 800,
+                                    textTransform: "capitalize",
                                   }}
                                 >
-                                  {describeActivity(row)}
+                                  {row.action}
                                 </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </SectionCard>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 13,
+                                    color: ui.colors.muted,
+                                  }}
+                                >
+                                  {formatDateTimeLabel(row.created_at)}
+                                  {row.changed_by_name
+                                    ? ` by ${row.changed_by_name}`
+                                    : ""}
+                                </div>
+                                {shouldShowActivityDescription(row) ? (
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      fontSize: 13,
+                                      color: ui.colors.text,
+                                    }}
+                                  >
+                                    {describeActivity(row)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </SectionCard>
+                    </div>
+
+                    {detailAppointment.status !== "cancelled" &&
+                    !String(detailAppointment.customer_email || "").trim() ? (
+                      <div className="appointment-drawer-warning">
+                        Customer email required before sending reminder.
+                      </div>
+                    ) : null}
+
+                    {detailError ? (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: 12,
+                          borderRadius: 12,
+                          background: "rgba(239,68,68,0.08)",
+                          border: "1px solid rgba(239,68,68,0.35)",
+                        }}
+                      >
+                        {detailError}
+                      </div>
+                    ) : null}
                   </div>
 
-                  {detailAppointment.status !== "cancelled" &&
-                  !String(detailAppointment.customer_email || "").trim() ? (
-                    <div className="appointment-drawer-warning">
-                      Customer email required before sending reminder.
-                    </div>
-                  ) : null}
-
-                  {detailError ? (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(239,68,68,0.08)",
-                        border: "1px solid rgba(239,68,68,0.35)",
-                      }}
-                    >
-                      {detailError}
-                    </div>
-                  ) : null}
-
-                  <div className="appointment-drawer-footer">
+                  <div className="appointment-drawer-footer appointment-drawer-footer--contained">
                     {canManageSelectedAppointment ? (
                       <button
                         className="appointment-drawer-action-button appointment-drawer-action-button--edit"
@@ -3846,6 +4299,521 @@ export default function Appointments() {
         </aside>
       </>
     ) : null;
+
+  const quickCreateDrawer = quickCreateOpen ? (
+    <>
+      {!isDesktopToolsLayout ? (
+        <button
+          type="button"
+          className="appointment-drawer-backdrop"
+          onClick={closeCreateModal}
+          aria-label="Close quick appointment form"
+        />
+      ) : null}
+
+      <aside
+        className={`appointment-drawer ${
+          isDesktopToolsLayout
+            ? "appointment-drawer--desktop"
+            : "appointment-drawer--mobile"
+        }`}
+        aria-label="Quick appointment form"
+      >
+        <div className="appointment-drawer-panel">
+          <div className="appointment-drawer-header">
+            <div className="appointment-wizard-title-row">
+              <div className="appointment-wizard-title">Quick appointment</div>
+            </div>
+            <div className="appointment-quick-create-meta">
+              <div className="appointment-quick-create-meta-row">
+                <span>Date</span>
+                <strong>{formatDateHeading(form.date)}</strong>
+              </div>
+              <div className="appointment-quick-create-meta-row">
+                <span>Time</span>
+                <strong>{form.startTime || "Choose a time"}</strong>
+              </div>
+              <div className="appointment-quick-create-meta-row">
+                <span>Location</span>
+                <strong>
+                  {form.areaId && quickCreateSelectedArea
+                    ? `${prettySiteName(form.siteId)}, ${canonicalAreaLabel(
+                        quickCreateSelectedArea,
+                      )}`
+                    : prettySiteName(form.siteId)}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="appointment-drawer-scroll">
+            <form
+              className="appointment-drawer-body appointment-quick-create"
+              onSubmit={submitCreateAppointment}
+              style={{ padding: 20, paddingBottom: 16 }}
+            >
+              <div className="appointment-wizard-fields">
+                <label className="appointment-wizard-field">
+                  <span>Appointment category</span>
+                  <select
+                    value={wizardForm.category}
+                    onChange={(e) => updateQuickCreateCategory(e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a category...</option>
+                    {WIZARD_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {wizardForm.category ? (
+                  <label className="appointment-wizard-field">
+                    <span>Appointment type</span>
+                    <select
+                      value={quickCreateTypeKey}
+                      onChange={(e) => updateQuickCreateType(e.target.value)}
+                      style={{ ...baseInputStyle, marginTop: 6 }}
+                    >
+                      <option value="">Select a type...</option>
+                      {quickCreateTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                {quickCreateTypeKey === "other-custom" ? (
+                  <div className="appointment-quick-create-grid">
+                    <label className="appointment-wizard-field">
+                      <span>Custom appointment label</span>
+                      <input
+                        value={wizardForm.customLabel}
+                        onChange={(e) =>
+                          updateWizardForm("customLabel", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-field">
+                      <span>Duration (mins)</span>
+                      <input
+                        type="number"
+                        min="5"
+                        step="5"
+                        value={wizardForm.customDurationMinutes}
+                        onChange={(e) =>
+                          updateWizardForm(
+                            "customDurationMinutes",
+                            e.target.value,
+                          )
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {quickCreateTypeKey ? (
+                  <div className="appointment-wizard-metric-grid">
+                    <label className="appointment-wizard-field">
+                      <span>Adults</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={wizardForm.adults}
+                        onChange={(e) => updateWizardForm("adults", e.target.value)}
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-field">
+                      <span>Children</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={wizardForm.children}
+                        onChange={(e) =>
+                          updateWizardForm("children", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {quickCreateTypeKey && !quickCreateAvailability.isPossible ? (
+                  <div
+                    className={`appointment-quick-create-status appointment-quick-create-status--${quickCreateAvailability.tone}`}
+                  >
+                    <div>{quickCreateAvailability.message}</div>
+                  </div>
+                ) : null}
+
+                {quickCreateAvailability.isPossible ? (
+                  <>
+                    <div className="appointment-quick-create-grid">
+                      <label className="appointment-wizard-field">
+                        <span>Appointment type</span>
+                        <input
+                          value={wizardSummaryLabel}
+                          readOnly
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            background: "rgba(2, 6, 23, 0.03)",
+                          }}
+                        />
+                      </label>
+                      <label className="appointment-wizard-field">
+                        <span>End time</span>
+                        <input
+                          value={
+                            quickCreateSuggestedEndTime || form.endTime
+                          }
+                          readOnly
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            background: "rgba(2, 6, 23, 0.03)",
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                  <label className="appointment-wizard-field">
+                    <span>Customer name</span>
+                    <input
+                      value={form.customerName}
+                      onChange={(e) => updateForm("customerName", e.target.value)}
+                      style={{ ...baseInputStyle, marginTop: 6 }}
+                    />
+                  </label>
+
+                    <div className="appointment-quick-create-grid">
+                      <label className="appointment-wizard-field">
+                        <span>Customer email</span>
+                        <input
+                          type="email"
+                          value={form.customerEmail}
+                          onChange={(e) =>
+                            updateForm("customerEmail", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label className="appointment-wizard-field">
+                        <span>Customer phone</span>
+                        <input
+                          value={form.customerPhone}
+                          onChange={(e) =>
+                            updateForm("customerPhone", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="appointment-wizard-field">
+                      <span>Notes</span>
+                      <textarea
+                        rows={4}
+                        value={form.internalNotes}
+                        onChange={(e) =>
+                          updateForm("internalNotes", e.target.value)
+                        }
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+
+                    <label className="appointment-wizard-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={
+                          !!form.sendConfirmationAfterSave &&
+                          canAutoSendConfirmationOnCreate
+                        }
+                        disabled={!canAutoSendConfirmationOnCreate || saving}
+                        onChange={(e) => {
+                          setCreateSendConfirmationTouched(true);
+                          updateForm(
+                            "sendConfirmationAfterSave",
+                            e.target.checked,
+                          );
+                        }}
+                      />
+                      <span>Send confirmation email after saving</span>
+                    </label>
+
+                    {!canAutoSendConfirmationOnCreate ? (
+                      <div className="appointment-wizard-note">
+                        Add a valid customer email to send the confirmation.
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {formError ? (
+                  <div className="appointment-wizard-warning-inline">
+                    {formError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="appointment-drawer-footer">
+                <button
+                  className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                  type="button"
+                  onClick={closeCreateModal}
+                >
+                  Close
+                </button>
+                <button
+                  className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                  type="submit"
+                  disabled={saving || !quickCreateAvailability.isPossible}
+                >
+                  {savePhase === "sending_confirmation"
+                    ? "Sending confirmation..."
+                    : savePhase === "saving"
+                      ? "Saving appointment..."
+                      : "Save appointment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </aside>
+    </>
+  ) : null;
+
+  const blockCreateDrawer = blockModalOpen ? (
+    <>
+      {!isDesktopToolsLayout ? (
+        <button
+          type="button"
+          className="appointment-drawer-backdrop"
+          onClick={closeBlockModal}
+          aria-label="Close new block form"
+        />
+      ) : null}
+
+      <aside
+        className={`appointment-drawer ${
+          isDesktopToolsLayout
+            ? "appointment-drawer--desktop"
+            : "appointment-drawer--mobile"
+        }`}
+        aria-label="New block form"
+      >
+        <div className="appointment-drawer-panel">
+          <div className="appointment-drawer-header">
+            <div className="appointment-wizard-title-row">
+              <div>
+                <div className="appointment-wizard-title">New block</div>
+                <div className="appointment-wizard-subtitle">
+                  Block unavailable appointment time for one area or the whole
+                  site.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="appointment-drawer-scroll">
+            <form
+              className="appointment-drawer-body"
+              onSubmit={submitCreateBlock}
+              style={{ padding: 20, paddingBottom: 16 }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ fontSize: 13, fontWeight: 900 }}>
+                    Block details
+                  </div>
+                  <div
+                    style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
+                  >
+                    Choose whether this blocks one area or the whole site before
+                    setting the time range.
+                  </div>
+                </div>
+
+                {showSiteSelector ? (
+                  <label style={{ fontSize: 13, fontWeight: 700 }}>
+                    Site
+                    <select
+                      value={blockForm.siteId}
+                      onChange={(e) => updateBlockForm("siteId", e.target.value)}
+                      style={{ ...baseInputStyle, marginTop: 6 }}
+                    >
+                      {bookableSites.map((site) => (
+                        <option key={site.id} value={site.id}>
+                          {site.name || prettySiteName(site.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label style={{ fontSize: 13, fontWeight: 700 }}>
+                    Site
+                    <input
+                      value={prettySiteName(blockForm.siteId)}
+                      readOnly
+                      style={{
+                        ...baseInputStyle,
+                        marginTop: 6,
+                        background: "rgba(2, 6, 23, 0.03)",
+                      }}
+                    />
+                  </label>
+                )}
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Date
+                  <input
+                    type="date"
+                    value={blockForm.date}
+                    onChange={(e) => updateBlockForm("date", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  />
+                </label>
+
+                <label
+                  style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
+                >
+                  Area / resource
+                  <select
+                    value={blockForm.areaId}
+                    onChange={(e) => updateBlockForm("areaId", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                    disabled={blockModalAreasLoading}
+                  >
+                    <option value="">Whole site</option>
+                    {blockModalAreas.map((area) => (
+                      <option key={area.id} value={area.id}>
+                        {canonicalAreaLabel(area)}
+                      </option>
+                    ))}
+                  </select>
+                  <div
+                    style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
+                  >
+                    {blockForm.areaId
+                      ? "This block applies only to the selected area/resource."
+                      : "This block applies to the whole site across every area."}
+                  </div>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Start time
+                  <select
+                    value={blockForm.startTime}
+                    onChange={(e) => updateBlockForm("startTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a time...</option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  End time
+                  <select
+                    value={blockForm.endTime}
+                    onChange={(e) => updateBlockForm("endTime", e.target.value)}
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="">Select a time...</option>
+                    {timeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label
+                  style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
+                >
+                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                    Reason
+                  </div>
+                  Reason
+                  <textarea
+                    rows={4}
+                    value={blockForm.reason}
+                    onChange={(e) => updateBlockForm("reason", e.target.value)}
+                    style={{
+                      ...baseInputStyle,
+                      marginTop: 6,
+                      resize: "vertical",
+                    }}
+                  />
+                </label>
+              </div>
+
+              {blockFormError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {blockFormError}
+                </div>
+              ) : null}
+
+              <div className="appointment-drawer-footer">
+                <button
+                  className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                  type="button"
+                  onClick={closeBlockModal}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="appointment-drawer-action-button"
+                  type="submit"
+                  disabled={blockSaving}
+                  style={{
+                    borderColor: "rgba(100,116,139,0.35)",
+                    background: "rgba(100,116,139,0.12)",
+                    opacity: blockSaving ? 0.6 : 1,
+                  }}
+                >
+                  {blockSaving ? "Saving..." : "Save block"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </aside>
+    </>
+  ) : null;
 
   const appointmentWizardDrawer = createWizardOpen ? (
     <>
@@ -4760,6 +5728,20 @@ export default function Appointments() {
       >
         {appointmentWizardDrawer}
       </div>
+    ) : quickCreateOpen ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {quickCreateDrawer}
+      </div>
+    ) : blockModalOpen ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {blockCreateDrawer}
+      </div>
     ) : detailOpen && detailAppointment ? (
       <div
         className="appointments-layout-side"
@@ -4798,9 +5780,13 @@ export default function Appointments() {
       {!isDesktopToolsLayout
         ? createWizardOpen
           ? appointmentWizardDrawer
-          : detailOpen && detailAppointment
-            ? appointmentDetailDrawer
-            : appointmentPlaceholderDrawer
+          : quickCreateOpen
+            ? quickCreateDrawer
+            : blockModalOpen
+              ? blockCreateDrawer
+            : detailOpen && detailAppointment
+              ? appointmentDetailDrawer
+              : appointmentPlaceholderDrawer
         : null}
 
       {toast ? (
@@ -4811,211 +5797,6 @@ export default function Appointments() {
         >
           {toast.message}
         </div>
-      ) : null}
-
-      {blockModalOpen ? (
-        <ModalShell
-          title="New block"
-          subtitle="Block unavailable appointment time for one area or the whole site."
-          onClose={closeBlockModal}
-          maxWidth={640}
-        >
-          <form onSubmit={submitCreateBlock} style={{ padding: 16 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-              }}
-            >
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontSize: 13, fontWeight: 900 }}>
-                  Block details
-                </div>
-                <div
-                  style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
-                >
-                  Choose whether this blocks one area or the whole site before
-                  setting the time range.
-                </div>
-              </div>
-
-              {showSiteSelector ? (
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <select
-                    value={blockForm.siteId}
-                    onChange={(e) => updateBlockForm("siteId", e.target.value)}
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    {bookableSites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name || prettySiteName(site.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <input
-                    value={prettySiteName(blockForm.siteId)}
-                    readOnly
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      background: "rgba(2, 6, 23, 0.03)",
-                    }}
-                  />
-                </label>
-              )}
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Date
-                <input
-                  type="date"
-                  value={blockForm.date}
-                  onChange={(e) => updateBlockForm("date", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                />
-              </label>
-
-              <label
-                style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
-              >
-                Area / resource
-                <select
-                  value={blockForm.areaId}
-                  onChange={(e) => updateBlockForm("areaId", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                  disabled={blockModalAreasLoading}
-                >
-                  <option value="">Whole site</option>
-                  {blockModalAreas.map((area) => (
-                    <option key={area.id} value={area.id}>
-                      {canonicalAreaLabel(area)}
-                    </option>
-                  ))}
-                </select>
-                <div
-                  style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
-                >
-                  {blockForm.areaId
-                    ? "This block applies only to the selected area/resource."
-                    : "This block applies to the whole site across every area."}
-                </div>
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Start time
-                <select
-                  value={blockForm.startTime}
-                  onChange={(e) => updateBlockForm("startTime", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                >
-                  <option value="">Select a time...</option>
-                  {timeOptions.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                End time
-                <select
-                  value={blockForm.endTime}
-                  onChange={(e) => updateBlockForm("endTime", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                >
-                  <option value="">Select a time...</option>
-                  {timeOptions.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label
-                style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
-              >
-                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
-                  Reason
-                </div>
-                Reason
-                <textarea
-                  rows={4}
-                  value={blockForm.reason}
-                  onChange={(e) => updateBlockForm("reason", e.target.value)}
-                  style={{
-                    ...baseInputStyle,
-                    marginTop: 6,
-                    resize: "vertical",
-                  }}
-                />
-              </label>
-            </div>
-
-            {blockFormError ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.35)",
-                }}
-              >
-                {blockFormError}
-              </div>
-            ) : null}
-
-            <div
-              style={{
-                marginTop: 16,
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                onClick={closeBlockModal}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: ui.colors.cardBg,
-                  color: ui.colors.text,
-                  cursor: "pointer",
-                  fontWeight: 800,
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={blockSaving}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: "1px solid rgba(100,116,139,0.35)",
-                  background: "rgba(100,116,139,0.12)",
-                  color: ui.colors.text,
-                  cursor: blockSaving ? "not-allowed" : "pointer",
-                  fontWeight: 900,
-                  opacity: blockSaving ? 0.6 : 1,
-                }}
-              >
-                {blockSaving ? "Saving..." : "Save block"}
-              </button>
-            </div>
-          </form>
-        </ModalShell>
       ) : null}
 
       {blockDetailOpen && detailBlock ? (
