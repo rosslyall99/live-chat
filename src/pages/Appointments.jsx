@@ -279,9 +279,9 @@ const APPOINTMENT_TYPE_STYLES = {
     pill: "rgba(168,85,247,0.18)",
     accent: "#7e22ce",
   },
-  "Hire Collection": {
+  Collection: {
     icon: "HC",
-    label: "Hire Collection",
+    label: "Collection",
     background: "rgba(20,184,166,0.14)",
     border: "rgba(20,184,166,0.30)",
     pill: "rgba(20,184,166,0.18)",
@@ -317,7 +317,7 @@ function appointmentTypeAccent(label) {
     return APPOINTMENT_TYPE_STYLES.Remeasure;
   }
   if (normalized.includes("collection")) {
-    return APPOINTMENT_TYPE_STYLES["Hire Collection"];
+    return APPOINTMENT_TYPE_STYLES.Collection;
   }
   return APPOINTMENT_TYPE_STYLES.default;
 }
@@ -391,6 +391,7 @@ const APPOINTMENT_TYPE_ALIASES = {
   hireMeasurement: ["Hire Measurement"],
   hireRemeasure: ["Hire Remeasure", "Remeasure"],
   partyHireCollection: ["Party Collection Try On", "Hire Collection"],
+  collection: ["Collection", "Party Collection Try On", "Hire Collection"],
   styleAndFit: ["Style & Fit"],
   fullTryOn: ["Full Try On"],
   retailPurchaseFullKiltPackage: ["Retail Purchase - Full Kilt Package"],
@@ -425,6 +426,7 @@ function buildInitialWizardForm() {
     customDurationMinutes: "",
     manualAppointmentTypeId: "",
     fullTryOnAcknowledged: false,
+    additionalTimeMinutes: "0",
   };
 }
 
@@ -495,6 +497,12 @@ function buildCollectionDurationBreakdown(totalAdults, totalChildren) {
   };
 }
 
+function additionalTimeMinutesValue(value) {
+  const amount = Number.parseInt(String(value || "0"), 10);
+  if (!Number.isFinite(amount)) return 0;
+  return amount;
+}
+
 function addMinutesToTimeValueRoundedUp(
   timeValue,
   minutesToAdd,
@@ -552,6 +560,7 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
   if (!wizardForm?.category) {
     return {
       appointmentType: null,
+      baseDurationMinutes: 0,
       suggestedDurationMinutes: 0,
       appointmentTypeLabel: "",
       routeLabel: "",
@@ -568,6 +577,7 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
       ) || null;
     return {
       appointmentType: manualType,
+      baseDurationMinutes: Number(manualType?.duration_minutes || 0),
       suggestedDurationMinutes: Number(manualType?.duration_minutes || 0),
       appointmentTypeLabel: manualType?.name || "",
       routeLabel: manualType?.name || "",
@@ -579,8 +589,11 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
 
   const adults = parseCount(wizardForm.adults);
   const children = parseCount(wizardForm.children);
+  const additionalTimeMinutes = additionalTimeMinutesValue(
+    wizardForm.additionalTimeMinutes,
+  );
   let candidateNames = [];
-  let suggestedDurationMinutes = 0;
+  let baseDurationMinutes = 0;
   let routeLabel = "";
   let summaryLabel = "";
   let guidance = "";
@@ -593,26 +606,26 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
       durationBreakdown = buildMeasurementDurationBreakdown(adults, children);
       routeLabel = isRemeasure ? "Hire Remeasure" : "Hire Measurement";
       summaryLabel = routeLabel;
-      suggestedDurationMinutes = durationBreakdown.totalMinutes;
+      baseDurationMinutes = durationBreakdown.totalMinutes;
       preferredTypeNames = isRemeasure
         ? APPOINTMENT_TYPE_ALIASES.hireRemeasure
         : APPOINTMENT_TYPE_ALIASES.hireMeasurement;
     } else if (wizardForm.hireRoute === "Collection") {
-      const collectionTypeLabel = "Party Collection Try On";
+      const collectionTypeLabel = "Collection";
       durationBreakdown = buildCollectionDurationBreakdown(adults, children);
       routeLabel = "Hire Collection";
       summaryLabel = collectionTypeLabel;
-      suggestedDurationMinutes = durationBreakdown.totalMinutes;
-      preferredTypeNames = APPOINTMENT_TYPE_ALIASES.partyHireCollection;
+      baseDurationMinutes = durationBreakdown.totalMinutes;
+      preferredTypeNames = APPOINTMENT_TYPE_ALIASES.collection;
     } else if (wizardForm.hireRoute === "Style & Fit") {
       routeLabel = "Style & Fit";
       summaryLabel = "Style & Fit";
-      suggestedDurationMinutes = 30;
+      baseDurationMinutes = 30;
       preferredTypeNames = APPOINTMENT_TYPE_ALIASES.styleAndFit;
     } else if (wizardForm.hireRoute === "Full Try On") {
       routeLabel = "Full Try On";
       summaryLabel = "Full Try On";
-      suggestedDurationMinutes = 30;
+      baseDurationMinutes = 30;
       preferredTypeNames = APPOINTMENT_TYPE_ALIASES.fullTryOn;
       guidance =
         "Please make sure an outfit has been booked in the hire database for this full try-on appointment.";
@@ -654,7 +667,7 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
         Accessories: 15,
       },
     };
-    suggestedDurationMinutes =
+    baseDurationMinutes =
       durationMap[wizardForm.purchasePath]?.[wizardForm.purchaseItem] || 0;
     preferredTypeNames =
       wizardForm.purchasePath === "Collection" &&
@@ -690,7 +703,7 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
           : wizardForm.customLabel === "Kilt"
             ? "Alteration - Kilt"
             : routeLabel;
-      suggestedDurationMinutes = 20;
+      baseDurationMinutes = 20;
       preferredTypeNames =
         wizardForm.customLabel === "Trews/Trousers"
           ? APPOINTMENT_TYPE_ALIASES.alterationTrews
@@ -700,16 +713,18 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
     } else if (wizardForm.otherRoute === "Custom appointment") {
       routeLabel = wizardForm.customLabel || "Custom appointment";
       summaryLabel = routeLabel;
-      suggestedDurationMinutes = Number(wizardForm.customDurationMinutes || 0);
+      baseDurationMinutes = Number(wizardForm.customDurationMinutes || 0);
       preferredTypeNames = [];
     }
   }
 
   candidateNames = preferredTypeNames;
   const appointmentType = findAppointmentTypeMatch(appointmentTypes, candidateNames);
-  const resolvedSuggestedDurationMinutes = durationBreakdown
+  const resolvedBaseDurationMinutes = durationBreakdown
     ? durationBreakdown.totalMinutes
-    : Number(appointmentType?.duration_minutes || 0) || suggestedDurationMinutes;
+    : baseDurationMinutes || Number(appointmentType?.duration_minutes || 0);
+  const resolvedSuggestedDurationMinutes =
+    resolvedBaseDurationMinutes + additionalTimeMinutes;
   const resolutionWarning =
     !appointmentType && preferredTypeNames.length > 0
       ? "Could not find a matching appointment type for this booking. Please choose one manually."
@@ -719,13 +734,15 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
 
   return {
     appointmentType,
+    baseDurationMinutes: resolvedBaseDurationMinutes,
     suggestedDurationMinutes: resolvedSuggestedDurationMinutes,
-    appointmentTypeLabel: appointmentType?.name || summaryLabel,
+    appointmentTypeLabel: summaryLabel || appointmentType?.name || "",
     routeLabel,
     summaryLabel,
     guidance,
     durationBreakdown,
     resolutionWarning,
+    additionalTimeMinutes,
   };
 }
 
@@ -1685,7 +1702,7 @@ export default function Appointments() {
     if (!isDesktopToolsLayout) {
       return Math.max((CALENDAR_TOTAL_MINUTES / 60) * HOUR_HEIGHT, 540);
     }
-    return Math.max(viewportHeight - 316, 540);
+    return Math.max(viewportHeight - 288, 540);
   }, [isDesktopToolsLayout, viewportHeight]);
 
   const timeTicks = React.useMemo(() => {
@@ -1720,8 +1737,6 @@ export default function Appointments() {
     }
     return map;
   }, [blocks, areas]);
-  const hasAnyCalendarItems = appointments.length > 0 || blocks.length > 0;
-
   const selectorSites = showSiteSelector ? bookableSites : sites;
   const timeOptions = React.useMemo(
     () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
@@ -1807,6 +1822,7 @@ export default function Appointments() {
     [appointmentTypes, wizardForm],
   );
   const wizardSelectedType = wizardResolution.appointmentType;
+  const wizardBaseDurationMinutes = wizardResolution.baseDurationMinutes;
   const wizardSuggestedDurationMinutes =
     wizardResolution.suggestedDurationMinutes;
   const wizardSummaryLabel =
@@ -1818,6 +1834,7 @@ export default function Appointments() {
   );
   const wizardDurationBreakdown = wizardResolution.durationBreakdown;
   const wizardResolutionWarning = wizardResolution.resolutionWarning;
+  const wizardAdditionalTimeMinutes = wizardResolution.additionalTimeMinutes;
 
   const wizardCountsSummary = React.useMemo(() => {
     const adults = parseCount(wizardForm.adults);
@@ -2074,6 +2091,7 @@ export default function Appointments() {
           adults: "1",
           children: "0",
           measurementVariant: "new",
+          additionalTimeMinutes: "0",
         };
       }
 
@@ -2090,6 +2108,7 @@ export default function Appointments() {
               : "0",
           measurementVariant:
             value === "Measurement" ? prev.measurementVariant : "new",
+          additionalTimeMinutes: "0",
         };
       }
 
@@ -2098,6 +2117,7 @@ export default function Appointments() {
           ...next,
           purchaseItem: "",
           manualAppointmentTypeId: "",
+          additionalTimeMinutes: "0",
         };
       }
 
@@ -2107,6 +2127,7 @@ export default function Appointments() {
           customLabel: "",
           customDurationMinutes: "",
           manualAppointmentTypeId: "",
+          additionalTimeMinutes: "0",
         };
       }
 
@@ -2240,7 +2261,7 @@ export default function Appointments() {
   function chooseHireRoute(route) {
     updateWizardForm("hireRoute", route);
     setFormError("");
-    setWizardStep(route === "Style & Fit" ? 3 : 2);
+    setWizardStep(2);
   }
 
   function choosePurchasePath(path) {
@@ -2256,7 +2277,7 @@ export default function Appointments() {
 
     updateWizardForm("purchaseItem", item);
     setFormError("");
-    setWizardStep(3);
+    setWizardStep(2);
   }
 
   function chooseOtherRoute(route) {
@@ -2960,10 +2981,8 @@ export default function Appointments() {
     <div
       className="appointment-calendar-card"
       style={{
-        height: isDesktopToolsLayout
-          ? `max(620px, ${CALENDAR_VIEWPORT_HEIGHT})`
-          : "auto",
-        minHeight: isDesktopToolsLayout ? 620 : undefined,
+        height: isDesktopToolsLayout ? "100%" : "auto",
+        minHeight: isDesktopToolsLayout ? 0 : undefined,
       }}
     >
       <div className="appointment-calendar-header">
@@ -3065,11 +3084,6 @@ export default function Appointments() {
         </div>
       ) : (
         <div className="appointment-calendar-scroll">
-          {!hasAnyCalendarItems ? (
-            <div className="appointment-calendar-empty-day">
-              No appointments or blocks are booked for this day yet.
-            </div>
-          ) : null}
           <div
             className="appointment-calendar-grid"
             style={{
@@ -3081,8 +3095,15 @@ export default function Appointments() {
               Time
             </div>
 
-            {areas.map((area) => (
-              <div key={area.id} className="appointment-grid-cell-header">
+            {areas.map((area, index) => (
+              <div
+                key={area.id}
+                className={`appointment-grid-cell-header${
+                  index === areas.length - 1
+                    ? " appointment-grid-cell-header--last"
+                    : ""
+                }`}
+              >
                 <div className="appointment-area-header-title">
                   {canonicalAreaLabel(area)}
                 </div>
@@ -3123,19 +3144,21 @@ export default function Appointments() {
               })}
             </div>
 
-            {areas.map((area) => {
+            {areas.map((area, index) => {
               const areaAppointments = appointmentsByArea[area.id] || [];
               const areaBlocks = [
                 ...(blocksByArea[area.id] || []),
                 ...(blocksByArea.__branch__ || []),
               ];
-              const hasItems =
-                areaAppointments.length > 0 || areaBlocks.length > 0;
 
               return (
                 <div
                   key={area.id}
-                  className="appointment-area-column"
+                  className={`appointment-area-column${
+                    index === areas.length - 1
+                      ? " appointment-area-column--last"
+                      : ""
+                  }`}
                   style={{
                     height: timelineHeight,
                   }}
@@ -3186,12 +3209,6 @@ export default function Appointments() {
                       onClick={() => openDetailModal(item)}
                     />
                   ))}
-
-                  {!hasItems ? (
-                    <div className="appointment-area-empty">
-                      Clear for this area
-                    </div>
-                  ) : null}
                 </div>
               );
             })}
@@ -3201,9 +3218,7 @@ export default function Appointments() {
     </div>
   );
 
-  const desktopWorkspaceHeight = isDesktopToolsLayout
-    ? `max(620px, ${CALENDAR_VIEWPORT_HEIGHT})`
-    : undefined;
+  const desktopWorkspaceHeight = isDesktopToolsLayout ? "100%" : undefined;
 
   const appointmentDetailDrawer =
     detailOpen && detailAppointment ? (
@@ -3863,12 +3878,12 @@ export default function Appointments() {
                   {wizardStepLabel(wizardStep)}
                 </div>
               </div>
-              {wizardSelectedType ? (
+              {wizardStep >= 2 && wizardSummaryLabel ? (
                 <div
                   className="appointment-wizard-type"
                   style={{ color: wizardTypeAccent.accent }}
                 >
-                  {wizardSelectedType.name}
+                  {wizardSummaryLabel}
                 </div>
               ) : null}
             </div>
@@ -4193,11 +4208,43 @@ export default function Appointments() {
                     </div>
                   ) : null}
 
+                  <div className="appointment-wizard-fields">
+                    <label className="appointment-wizard-field">
+                      <span>Additional time if required</span>
+                      <select
+                        value={wizardForm.additionalTimeMinutes}
+                        onChange={(e) =>
+                          updateWizardForm(
+                            "additionalTimeMinutes",
+                            e.target.value,
+                          )
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        {[-30, -20, -10, 0, 10, 20, 30, 40, 50, 60].map((minutes) => (
+                          <option key={minutes} value={String(minutes)}>
+                            {minutes > 0
+                              ? `+${minutes} mins`
+                              : `${minutes} mins`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
                     <div className="appointment-wizard-summary-card">
                       <div className="appointment-wizard-summary-row">
                         <span>Suggested appointment type</span>
                         <strong style={{ color: wizardTypeAccent.accent }}>
-                          {wizardSelectedType?.name || "Choose below"}
+                          {wizardSummaryLabel || "Choose below"}
+                        </strong>
+                      </div>
+                      <div className="appointment-wizard-summary-row">
+                        <span>Base duration</span>
+                        <strong>
+                          {wizardBaseDurationMinutes
+                            ? `${wizardBaseDurationMinutes} mins`
+                            : "0 mins"}
                         </strong>
                       </div>
                       {wizardDurationBreakdown ? (
@@ -4258,6 +4305,10 @@ export default function Appointments() {
                           )}
                         </div>
                       ) : null}
+                      <div className="appointment-wizard-summary-row">
+                        <span>Additional time</span>
+                        <strong>{wizardAdditionalTimeMinutes} mins</strong>
+                      </div>
                       <div className="appointment-wizard-summary-row">
                         <span>Total duration</span>
                         <strong>
@@ -4497,8 +4548,7 @@ export default function Appointments() {
               {wizardStep === 5 ? (
                 <div className="appointment-wizard-section">
                   <div className="appointment-wizard-question">
-                    You are booking {form.customerName || "this customer"} for
-                    a {wizardSummaryLabel} appointment.
+                    Please check before confirming...
                   </div>
                   <div className="appointment-wizard-summary-grid">
                     <div className="appointment-wizard-summary-row">
@@ -4506,20 +4556,9 @@ export default function Appointments() {
                       <strong>{form.customerName || "Not provided"}</strong>
                     </div>
                     <div className="appointment-wizard-summary-row">
-                      <span>Appointment category</span>
-                      <strong>
-                        {WIZARD_CATEGORY_OPTIONS.find(
-                          (item) => item.value === wizardForm.category,
-                        )?.label || wizardForm.category}
-                        {wizardResolution.routeLabel
-                          ? ` - ${wizardResolution.routeLabel}`
-                          : ""}
-                      </strong>
-                    </div>
-                    <div className="appointment-wizard-summary-row">
                       <span>Appointment type</span>
                       <strong style={{ color: wizardTypeAccent.accent }}>
-                        {wizardSelectedType?.name || "Not selected"}
+                        {wizardSummaryLabel || "Not selected"}
                       </strong>
                     </div>
                     <div className="appointment-wizard-summary-row">
@@ -4707,10 +4746,6 @@ export default function Appointments() {
           {sideCardCreateActions}
           <div className="appointment-drawer-empty-title">
             Select an appointment
-          </div>
-          <div className="appointment-drawer-empty-text">
-            Appointment details will appear here while the calendar keeps its
-            width and position.
           </div>
         </div>
       </div>

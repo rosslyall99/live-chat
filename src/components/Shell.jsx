@@ -645,6 +645,8 @@ export default function Shell() {
                         background: ui.colors.pageBg,
                         padding: 18,
                         boxSizing: "border-box",
+                        display: isWideAppointmentsRoute ? "flex" : undefined,
+                        flexDirection: isWideAppointmentsRoute ? "column" : undefined,
                     }}
                 >
                     <div
@@ -652,6 +654,9 @@ export default function Shell() {
                             maxWidth: isWideAppointmentsRoute ? "none" : 1100,
                             margin: isWideAppointmentsRoute ? 0 : "0 auto",
                             width: "100%",
+                            flex: isWideAppointmentsRoute ? 1 : undefined,
+                            display: isWideAppointmentsRoute ? "flex" : undefined,
+                            flexDirection: isWideAppointmentsRoute ? "column" : undefined,
                         }}
                     >
                         <div
@@ -662,8 +667,11 @@ export default function Shell() {
                                 boxShadow: ui.shadow.card,
                                 padding: 16,
                                 boxSizing: "border-box",
-                                minHeight: "100%",
+                                minHeight: isWideAppointmentsRoute ? 0 : "100%",
                                 width: "100%",
+                                flex: isWideAppointmentsRoute ? 1 : undefined,
+                                display: isWideAppointmentsRoute ? "flex" : undefined,
+                                flexDirection: isWideAppointmentsRoute ? "column" : undefined,
                             }}
                         >
                             <Outlet />
