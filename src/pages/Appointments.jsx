@@ -17,9 +17,9 @@ const DEFAULT_END_HOUR = 18;
 const CALENDAR_START_MINUTES = 9 * 60 + 30;
 const CALENDAR_END_MINUTES = 17 * 60 + 30;
 const CALENDAR_TOTAL_MINUTES = CALENDAR_END_MINUTES - CALENDAR_START_MINUTES;
-const HOUR_HEIGHT = 52;
+const HOUR_HEIGHT = 50;
 const TIME_OPTION_INTERVAL_MINUTES = 15;
-const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 245px)";
+const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 198px)";
 
 function todayInputValue() {
   const now = new Date();
@@ -1683,9 +1683,9 @@ export default function Appointments() {
   const timelineEndMinutes = CALENDAR_END_MINUTES;
   const timelineHeight = React.useMemo(() => {
     if (!isDesktopToolsLayout) {
-      return Math.max((CALENDAR_TOTAL_MINUTES / 60) * HOUR_HEIGHT, 560);
+      return Math.max((CALENDAR_TOTAL_MINUTES / 60) * HOUR_HEIGHT, 540);
     }
-    return Math.max(viewportHeight - 360, 560);
+    return Math.max(viewportHeight - 316, 540);
   }, [isDesktopToolsLayout, viewportHeight]);
 
   const timeTicks = React.useMemo(() => {
@@ -4651,6 +4651,72 @@ export default function Appointments() {
     </>
   ) : null;
 
+  const sideCardCreateActions = (
+    <div className="appointment-drawer-empty-actions">
+      <button
+        type="button"
+        disabled={!canOpenCreate}
+        onClick={openCreateModal}
+        style={{
+          padding: "8px 12px",
+          borderRadius: ui.radius.md,
+          border: `1px solid rgba(168,85,247,0.35)`,
+          background: ui.colors.brandSoft,
+          color: ui.colors.text,
+          cursor: canOpenCreate ? "pointer" : "not-allowed",
+          fontWeight: 900,
+          opacity: canOpenCreate ? 1 : 0.55,
+        }}
+      >
+        New appointment
+      </button>
+
+      {canManageBlocks ? (
+        <button
+          type="button"
+          disabled={!canOpenBlock}
+          onClick={openBlockModal}
+          style={{
+            padding: "8px 12px",
+            borderRadius: ui.radius.md,
+            border: "1px solid rgba(100,116,139,0.35)",
+            background: "rgba(100,116,139,0.12)",
+            color: ui.colors.text,
+            cursor: canOpenBlock ? "pointer" : "not-allowed",
+            fontWeight: 900,
+            opacity: canOpenBlock ? 1 : 0.55,
+          }}
+        >
+          New block
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const appointmentPlaceholderDrawer = (
+    <aside
+      className={`appointment-drawer ${
+        isDesktopToolsLayout
+          ? "appointment-drawer--desktop"
+          : "appointment-drawer--placeholder-stack"
+      } appointment-drawer--placeholder`}
+      aria-label="Appointment actions"
+    >
+      <div className="appointment-drawer-panel">
+        <div className="appointment-drawer-empty appointment-drawer-empty--actions">
+          {sideCardCreateActions}
+          <div className="appointment-drawer-empty-title">
+            Select an appointment
+          </div>
+          <div className="appointment-drawer-empty-text">
+            Appointment details will appear here while the calendar keeps its
+            width and position.
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+
   const desktopDetailPanel = isDesktopToolsLayout ? (
     createWizardOpen ? (
       <div
@@ -4671,22 +4737,7 @@ export default function Appointments() {
         className="appointments-layout-side"
         style={{ height: desktopWorkspaceHeight }}
       >
-        <aside
-          className="appointment-drawer appointment-drawer--desktop appointment-drawer--placeholder"
-          aria-label="Appointment details"
-        >
-          <div className="appointment-drawer-panel">
-            <div className="appointment-drawer-empty">
-              <div className="appointment-drawer-empty-title">
-                Select an appointment
-              </div>
-              <div className="appointment-drawer-empty-text">
-                Appointment details will appear here while the calendar keeps
-                its width and position.
-              </div>
-            </div>
-          </div>
-        </aside>
+        {appointmentPlaceholderDrawer}
       </div>
     )
   ) : null;
@@ -4704,53 +4755,7 @@ export default function Appointments() {
         "--appointments-card-bg": ui.colors.cardBg,
       }}
     >
-      <div className="appointments-page-header">
-        <div className="appointments-page-heading-group">
-          <h2 className="appointments-page-heading">Appointments</h2>
-        </div>
-
-        <div className="appointments-page-actions">
-          <button
-            type="button"
-            disabled={!canOpenCreate}
-            onClick={openCreateModal}
-            style={{
-              padding: "8px 12px",
-              borderRadius: ui.radius.md,
-              border: `1px solid rgba(168,85,247,0.35)`,
-              background: ui.colors.brandSoft,
-              color: ui.colors.text,
-              cursor: canOpenCreate ? "pointer" : "not-allowed",
-              fontWeight: 900,
-              opacity: canOpenCreate ? 1 : 0.55,
-            }}
-          >
-            New appointment
-          </button>
-
-          {canManageBlocks ? (
-            <button
-              type="button"
-              disabled={!canOpenBlock}
-              onClick={openBlockModal}
-              style={{
-                padding: "8px 12px",
-                borderRadius: ui.radius.md,
-                border: "1px solid rgba(100,116,139,0.35)",
-                background: "rgba(100,116,139,0.12)",
-                color: ui.colors.text,
-                cursor: canOpenBlock ? "pointer" : "not-allowed",
-                fontWeight: 900,
-                opacity: canOpenBlock ? 1 : 0.55,
-              }}
-            >
-              New block
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="appointments-layout" style={{ marginTop: 16 }}>
+      <div className="appointments-layout">
         <div className="appointments-layout-main">{calendarPanel}</div>
         {desktopDetailPanel}
       </div>
@@ -4758,7 +4763,9 @@ export default function Appointments() {
       {!isDesktopToolsLayout
         ? createWizardOpen
           ? appointmentWizardDrawer
-          : appointmentDetailDrawer
+          : detailOpen && detailAppointment
+            ? appointmentDetailDrawer
+            : appointmentPlaceholderDrawer
         : null}
 
       {toast ? (

@@ -1,4 +1,12 @@
 .appointments-page {
+  --appointments-ui-scale: 1;
+  --appointments-calendar-font-size: 0.9rem;
+  --appointments-card-font-size: 0.9rem;
+  --appointments-layout-gap: 16px;
+  --appointments-side-width: 392px;
+  --appointments-card-radius: 20px;
+  --appointments-panel-padding: 18px;
+  --appointments-time-label-width: 74px;
   --appointments-text: #0f172a;
   --appointments-muted: #64748b;
   --appointments-border: rgba(148, 163, 184, 0.35);
@@ -27,41 +35,15 @@
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 0 0 24px;
+  padding: 0 0 16px;
   box-sizing: border-box;
   align-self: stretch;
 }
 
-.appointments-page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-  width: 100%;
-  margin-bottom: 16px;
-}
-
-.appointments-page-heading-group {
-  min-width: 0;
-}
-
-.appointments-page-heading {
-  margin: 0;
-}
-
-.appointments-page-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .appointments-layout {
   display: grid;
-  grid-template-columns: minmax(720px, 1fr) 392px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, var(--appointments-side-width));
+  gap: clamp(8px, 1vw, var(--appointments-layout-gap));
   align-items: stretch;
   width: 100%;
 }
@@ -77,7 +59,7 @@
 
 .appointment-calendar-card {
   border: 1px solid var(--appointments-border);
-  border-radius: 20px;
+  border-radius: var(--appointments-card-radius);
   overflow: hidden;
   background: var(--appointments-surface-soft);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
@@ -87,7 +69,8 @@
 }
 
 .appointment-calendar-header {
-  padding: 16px 18px;
+  padding: calc(12px * var(--appointments-ui-scale))
+    calc(var(--appointments-panel-padding) * var(--appointments-ui-scale));
   border-bottom: 1px solid var(--appointments-border);
   background: var(--appointments-header-bg);
   display: grid;
@@ -120,7 +103,7 @@
   background: transparent;
   color: var(--appointments-text);
   cursor: pointer;
-  font-size: 28px;
+  font-size: calc(28px * var(--appointments-ui-scale));
   font-weight: 900;
   line-height: 1.1;
   text-align: center;
@@ -130,7 +113,7 @@
 .appointment-quick-jumps {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--appointments-ui-scale));
   flex-wrap: wrap;
   justify-content: flex-start;
 }
@@ -181,17 +164,18 @@
 }
 
 .appointment-calendar-message {
-  padding: 16px;
+  padding: calc(14px * var(--appointments-ui-scale));
   color: var(--appointments-muted);
   flex: 1;
+  font-size: var(--appointments-card-font-size);
 }
 
 .appointment-calendar-empty-day {
-  padding: 14px;
+  padding: calc(12px * var(--appointments-ui-scale));
   border-bottom: 1px solid var(--appointments-border);
   background: var(--appointments-header-bg-soft);
   color: var(--appointments-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--appointments-ui-scale));
   font-weight: 700;
 }
 
@@ -200,7 +184,8 @@
 }
 
 .appointment-grid-cell-header {
-  padding: 12px 10px;
+  padding: calc(10px * var(--appointments-ui-scale))
+    calc(9px * var(--appointments-ui-scale));
   border-right: 1px solid var(--appointments-border);
   border-bottom: 1px solid var(--appointments-border);
   background: var(--appointments-header-bg);
@@ -238,7 +223,7 @@
   position: absolute;
   top: -8px;
   left: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--appointments-ui-scale));
   font-weight: 800;
   color: var(--appointments-muted);
   background: var(--appointments-time-label-bg);
@@ -251,17 +236,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: calc(14px * var(--appointments-ui-scale));
   text-align: center;
   color: var(--appointments-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--appointments-ui-scale));
   font-weight: 700;
 }
 
 .appointment-entry {
   position: absolute;
-  border-radius: 12px;
-  padding: 4px 7px;
+  border-radius: calc(12px * var(--appointments-ui-scale));
+  padding: calc(4px * var(--appointments-ui-scale))
+    calc(7px * var(--appointments-ui-scale));
   box-sizing: border-box;
   overflow: hidden;
   cursor: pointer;
@@ -394,7 +380,7 @@
 }
 
 .appointment-drawer--desktop .appointment-drawer-panel {
-  border-radius: 22px;
+  border-radius: calc((var(--appointments-card-radius) + 2px));
 }
 
 .appointment-drawer--mobile .appointment-drawer-panel {
@@ -403,7 +389,9 @@
 }
 
 .appointment-drawer-header {
-  padding: 16px 18px 14px;
+  padding: calc(14px * var(--appointments-ui-scale))
+    calc(var(--appointments-panel-padding) * var(--appointments-ui-scale))
+    calc(12px * var(--appointments-ui-scale));
   border-bottom: 1px solid var(--appointments-border);
   background:
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 32%),
@@ -420,7 +408,7 @@
 
 .appointment-drawer-summary-item {
   min-width: 0;
-  font-size: 0.92rem;
+  font-size: var(--appointments-card-font-size);
   line-height: 1.2;
   color: var(--appointments-text);
   white-space: nowrap;
@@ -473,14 +461,14 @@
 }
 
 .appointment-drawer-detail-label {
-  font-size: 0.84rem;
+  font-size: calc(var(--appointments-card-font-size) - 0.08rem);
   font-weight: 900;
   color: var(--appointments-muted);
 }
 
 .appointment-drawer-detail-value {
   min-width: 0;
-  font-size: 0.92rem;
+  font-size: var(--appointments-card-font-size);
   font-weight: 700;
   color: var(--appointments-text);
   word-break: break-word;
@@ -841,11 +829,29 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 28px;
+  padding: calc(22px * var(--appointments-ui-scale));
   text-align: center;
   background:
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.05), transparent 34%),
     linear-gradient(180deg, rgba(248, 250, 252, 0.85), rgba(255, 255, 255, 1));
+}
+
+.appointment-drawer-empty--actions {
+  justify-content: flex-start;
+  gap: 14px;
+  padding-top: calc(18px * var(--appointments-ui-scale));
+}
+
+.appointment-drawer-empty-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.appointment-drawer-empty-actions > button {
+  width: 100%;
+  min-width: 0;
 }
 
 .appointment-drawer-empty-title {
@@ -855,12 +861,16 @@
 }
 
 .appointment-drawer-empty-text {
-  margin-top: 8px;
+  margin-top: 0;
   max-width: 26ch;
-  font-size: 0.9rem;
+  font-size: var(--appointments-card-font-size);
   font-weight: 700;
   line-height: 1.45;
   color: var(--appointments-muted);
+}
+
+.appointment-drawer--placeholder-stack {
+  width: 100%;
 }
 
 .appointment-toast {
@@ -896,6 +906,33 @@
   border-color: rgba(59, 130, 246, 0.3);
 }
 
+@media (max-width: 1250px), (max-height: 760px) {
+  .appointments-page {
+    --appointments-ui-scale: 0.92;
+    --appointments-calendar-font-size: 0.84rem;
+    --appointments-card-font-size: 0.84rem;
+    --appointments-layout-gap: 12px;
+    --appointments-side-width: 360px;
+    --appointments-card-radius: 18px;
+    --appointments-panel-padding: 16px;
+    --appointments-time-label-width: 64px;
+    padding-bottom: 12px;
+  }
+}
+
+@media (max-width: 1120px), (max-height: 700px) {
+  .appointments-page {
+    --appointments-ui-scale: 0.88;
+    --appointments-calendar-font-size: 0.8rem;
+    --appointments-card-font-size: 0.8rem;
+    --appointments-layout-gap: 10px;
+    --appointments-side-width: 328px;
+    --appointments-card-radius: 16px;
+    --appointments-panel-padding: 14px;
+    --appointments-time-label-width: 58px;
+  }
+}
+
 @media (max-width: 1079px) {
   .appointments-page {
     padding-bottom: 20px;
@@ -907,19 +944,11 @@
 
   .appointments-layout-side {
     display: block;
-    margin-top: 16px;
+    margin-top: 12px;
   }
 }
 
 @media (max-width: 860px) {
-  .appointments-page-header {
-    align-items: stretch;
-  }
-
-  .appointments-page-actions {
-    justify-content: flex-start;
-  }
-
   .appointment-calendar-header {
     grid-template-columns: 1fr;
     justify-items: stretch;
@@ -969,6 +998,10 @@
   .appointment-site-picker-wrap,
   .appointment-site-picker {
     width: 100%;
+  }
+
+  .appointment-drawer-empty-actions {
+    grid-template-columns: 1fr;
   }
 
   .appointment-drawer-footer {
