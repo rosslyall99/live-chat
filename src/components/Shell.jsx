@@ -491,9 +491,11 @@ export default function Shell() {
             style={{
                 display: "flex",
                 minHeight: "100vh",
+                height: "100vh",
                 width: "100%",
                 fontFamily: ui.font.ui,
                 background: ui.colors.pageBg,
+                overflow: "hidden",
             }}
         >
             <Sidebar role={role} />
@@ -502,9 +504,11 @@ export default function Shell() {
                 style={{
                     flex: 1,
                     minWidth: 0,
+                    minHeight: 0,
                     display: "flex",
                     flexDirection: "column",
                     background: ui.colors.pageBg,
+                    overflow: "hidden",
                 }}
             >
                 {/* Top bar */}
@@ -647,6 +651,8 @@ export default function Shell() {
                         boxSizing: "border-box",
                         display: isWideAppointmentsRoute ? "flex" : undefined,
                         flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+                        minHeight: isWideAppointmentsRoute ? 0 : undefined,
+                        overflow: isWideAppointmentsRoute ? "hidden" : undefined,
                     }}
                 >
                     <div
@@ -657,6 +663,8 @@ export default function Shell() {
                             flex: isWideAppointmentsRoute ? 1 : undefined,
                             display: isWideAppointmentsRoute ? "flex" : undefined,
                             flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+                            minHeight: isWideAppointmentsRoute ? 0 : undefined,
+                            overflow: isWideAppointmentsRoute ? "hidden" : undefined,
                         }}
                     >
                         <div
@@ -672,6 +680,7 @@ export default function Shell() {
                                 flex: isWideAppointmentsRoute ? 1 : undefined,
                                 display: isWideAppointmentsRoute ? "flex" : undefined,
                                 flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+                                overflow: isWideAppointmentsRoute ? "hidden" : undefined,
                             }}
                         >
                             <Outlet />
