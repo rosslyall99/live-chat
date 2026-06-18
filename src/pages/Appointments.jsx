@@ -353,6 +353,394 @@ function buildInitialForm({ siteId, date }) {
   };
 }
 
+const PURCHASE_ITEM_OPTIONS = [
+  "Full Kilt Package",
+  "Kilt Only",
+  "Trousers",
+  "Jacket & Waistcoat",
+  "Accessories",
+];
+
+const HIRE_ROUTE_OPTIONS = [
+  "Measurement",
+  "Collection",
+  "Style & Fit",
+  "Full Try On",
+];
+
+const OTHER_ROUTE_OPTIONS = ["Alteration", "Custom appointment"];
+const WIZARD_CATEGORY_OPTIONS = [
+  {
+    value: "hire",
+    label: "Hire",
+    description: "Measurements, collections and try-ons",
+  },
+  {
+    value: "purchase",
+    label: "Purchase",
+    description: "Retail order and collection journeys",
+  },
+  {
+    value: "other",
+    label: "Other",
+    description: "Alterations and custom appointment requests",
+  },
+];
+
+const APPOINTMENT_TYPE_ALIASES = {
+  hireMeasurement: ["Hire Measurement"],
+  hireRemeasure: ["Hire Remeasure", "Remeasure"],
+  partyHireCollection: ["Party Collection Try On", "Hire Collection"],
+  styleAndFit: ["Style & Fit"],
+  fullTryOn: ["Full Try On"],
+  retailPurchaseFullKiltPackage: ["Retail Purchase - Full Kilt Package"],
+  retailPurchaseKiltOnly: ["Retail Purchase - Kilt Only"],
+  retailPurchaseTrousers: ["Retail Purchase - Trousers"],
+  retailPurchaseJacketAndWaistcoat: [
+    "Retail Purchase - Jacket & Waistcoat",
+  ],
+  retailPurchaseAccessories: ["Retail Purchase - Accessories"],
+  retailCollectionFullKiltOutfit: ["Retail Collection - Full Kilt Outfit"],
+  retailCollectionKiltOnly: ["Retail Collection - Kilt Only"],
+  retailCollectionTrousers: ["Retail Collection - Trousers"],
+  retailCollectionJacketAndWaistcoat: [
+    "Retail Collection - Jacket & Waistcoat",
+  ],
+  retailCollectionAccessories: ["Retail Collection - Accessories"],
+  alterationKilt: ["Alteration - Kilt"],
+  alterationTrews: ["Alteration - Trews"],
+};
+
+function buildInitialWizardForm() {
+  return {
+    category: "",
+    hireRoute: "",
+    purchasePath: "",
+    purchaseItem: "",
+    otherRoute: "",
+    measurementVariant: "new",
+    adults: "1",
+    children: "0",
+    customLabel: "",
+    customDurationMinutes: "",
+    manualAppointmentTypeId: "",
+    fullTryOnAcknowledged: false,
+  };
+}
+
+function parseCount(value) {
+  const nextValue = Number.parseInt(String(value || "0"), 10);
+  if (!Number.isFinite(nextValue) || nextValue < 0) return 0;
+  return nextValue;
+}
+
+function durationFromPartySize(totalPeople) {
+  if (totalPeople <= 0) return 0;
+  return Math.min(60, 10 + totalPeople * 5);
+}
+
+function durationFromAdultMeasurementCount(totalAdults) {
+  const count = Math.max(0, parseCount(totalAdults));
+  if (count === 0) return 0;
+  if (count >= 10) return 60;
+  return 10 + count * 5;
+}
+
+// Explicit children mapping taken from the "Services List" sheet in
+// Ross's uploaded "Appointment Types.xlsx" workbook:
+// - Childs Hire Measurement: 1 = 30, 2 = 45, 3 = 60
+// - Childs Hire Remeasure: 1 = 30, 2 = 45, 3 = 60
+// The workbook currently defines rows up to 3 children only, so larger values
+// clamp to the highest known workbook duration instead of guessing new timings.
+const CHILD_MEASUREMENT_DURATION_BY_COUNT = {
+  0: 0,
+  1: 30,
+  2: 45,
+  3: 60,
+};
+
+function durationFromChildMeasurementCount(totalChildren) {
+  const count = Math.max(0, parseCount(totalChildren));
+  if (count >= 3) return CHILD_MEASUREMENT_DURATION_BY_COUNT[3];
+  return CHILD_MEASUREMENT_DURATION_BY_COUNT[count] || 0;
+}
+
+function buildMeasurementDurationBreakdown(totalAdults, totalChildren) {
+  const adultCount = parseCount(totalAdults);
+  const childCount = parseCount(totalChildren);
+  const adultMinutes = durationFromAdultMeasurementCount(adultCount);
+  const childMinutes = durationFromChildMeasurementCount(childCount);
+
+  return {
+    kind: "measurement",
+    adultCount,
+    childCount,
+    adultMinutes,
+    childMinutes,
+    totalMinutes: adultMinutes + childMinutes,
+  };
+}
+
+function buildCollectionDurationBreakdown(totalAdults, totalChildren) {
+  const adultCount = parseCount(totalAdults);
+  const childCount = parseCount(totalChildren);
+  const totalPeople = adultCount + childCount;
+
+  return {
+    kind: "collection",
+    adultCount,
+    childCount,
+    totalPeople,
+    totalMinutes: durationFromPartySize(totalPeople),
+  };
+}
+
+function addMinutesToTimeValueRoundedUp(
+  timeValue,
+  minutesToAdd,
+  intervalMinutes = TIME_OPTION_INTERVAL_MINUTES,
+) {
+  const [hh, mm] = String(timeValue || "").split(":");
+  const baseHours = Number(hh);
+  const baseMinutes = Number(mm);
+  if (
+    !Number.isInteger(baseHours) ||
+    !Number.isInteger(baseMinutes) ||
+    !Number.isFinite(minutesToAdd)
+  ) {
+    return "";
+  }
+
+  const totalMinutes = baseHours * 60 + baseMinutes + minutesToAdd;
+  if (totalMinutes < 0) return "";
+  const roundedMinutes =
+    Math.ceil(totalMinutes / intervalMinutes) * intervalMinutes;
+  const nextHours = Math.floor(roundedMinutes / 60);
+  const nextMinutes = roundedMinutes % 60;
+  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(2, "0")}`;
+}
+
+function normalizeAppointmentTypeName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function findAppointmentTypeMatch(appointmentTypes, candidateNames) {
+  if (!Array.isArray(appointmentTypes) || appointmentTypes.length === 0) {
+    return null;
+  }
+
+  const normalizedCandidates = candidateNames
+    .map((item) => normalizeAppointmentTypeName(item))
+    .filter(Boolean);
+
+  for (const candidate of normalizedCandidates) {
+    const exact = appointmentTypes.find(
+      (item) => normalizeAppointmentTypeName(item.name) === candidate,
+    );
+    if (exact) return exact;
+  }
+
+  return null;
+}
+
+function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
+  if (!wizardForm?.category) {
+    return {
+      appointmentType: null,
+      suggestedDurationMinutes: 0,
+      appointmentTypeLabel: "",
+      routeLabel: "",
+      summaryLabel: "",
+      guidance: "",
+      resolutionWarning: "",
+    };
+  }
+
+  if (wizardForm.manualAppointmentTypeId) {
+    const manualType =
+      appointmentTypes.find(
+        (item) => item.id === wizardForm.manualAppointmentTypeId,
+      ) || null;
+    return {
+      appointmentType: manualType,
+      suggestedDurationMinutes: Number(manualType?.duration_minutes || 0),
+      appointmentTypeLabel: manualType?.name || "",
+      routeLabel: manualType?.name || "",
+      summaryLabel: manualType?.name || "",
+      guidance: "",
+      resolutionWarning: "",
+    };
+  }
+
+  const adults = parseCount(wizardForm.adults);
+  const children = parseCount(wizardForm.children);
+  let candidateNames = [];
+  let suggestedDurationMinutes = 0;
+  let routeLabel = "";
+  let summaryLabel = "";
+  let guidance = "";
+  let durationBreakdown = null;
+  let preferredTypeNames = [];
+
+  if (wizardForm.category === "hire") {
+    if (wizardForm.hireRoute === "Measurement") {
+      const isRemeasure = wizardForm.measurementVariant === "remeasure";
+      durationBreakdown = buildMeasurementDurationBreakdown(adults, children);
+      routeLabel = isRemeasure ? "Hire Remeasure" : "Hire Measurement";
+      summaryLabel = routeLabel;
+      suggestedDurationMinutes = durationBreakdown.totalMinutes;
+      preferredTypeNames = isRemeasure
+        ? APPOINTMENT_TYPE_ALIASES.hireRemeasure
+        : APPOINTMENT_TYPE_ALIASES.hireMeasurement;
+    } else if (wizardForm.hireRoute === "Collection") {
+      const collectionTypeLabel = "Party Collection Try On";
+      durationBreakdown = buildCollectionDurationBreakdown(adults, children);
+      routeLabel = "Hire Collection";
+      summaryLabel = collectionTypeLabel;
+      suggestedDurationMinutes = durationBreakdown.totalMinutes;
+      preferredTypeNames = APPOINTMENT_TYPE_ALIASES.partyHireCollection;
+    } else if (wizardForm.hireRoute === "Style & Fit") {
+      routeLabel = "Style & Fit";
+      summaryLabel = "Style & Fit";
+      suggestedDurationMinutes = 30;
+      preferredTypeNames = APPOINTMENT_TYPE_ALIASES.styleAndFit;
+    } else if (wizardForm.hireRoute === "Full Try On") {
+      routeLabel = "Full Try On";
+      summaryLabel = "Full Try On";
+      suggestedDurationMinutes = 30;
+      preferredTypeNames = APPOINTMENT_TYPE_ALIASES.fullTryOn;
+      guidance =
+        "Please make sure an outfit has been booked in the hire database for this full try-on appointment.";
+    }
+  } else if (wizardForm.category === "purchase") {
+    const purchaseModeLabel =
+      wizardForm.purchasePath === "Collection"
+        ? "Retail Collection"
+        : "Retail Purchase";
+    routeLabel = `${wizardForm.purchasePath || "Purchase"}${wizardForm.purchaseItem ? ` - ${wizardForm.purchaseItem}` : ""}`;
+    summaryLabel =
+      wizardForm.purchasePath === "Collection" &&
+      wizardForm.purchaseItem === "Full Kilt Package"
+        ? "Retail Collection - Full Kilt Outfit"
+        : wizardForm.purchaseItem === "Full Kilt Package"
+          ? "Retail Purchase - Full Kilt Package"
+          : wizardForm.purchaseItem === "Kilt Only"
+            ? `${purchaseModeLabel} - Kilt Only`
+            : wizardForm.purchaseItem === "Trousers"
+              ? `${purchaseModeLabel} - Trousers`
+              : wizardForm.purchaseItem === "Jacket & Waistcoat"
+                ? `${purchaseModeLabel} - Jacket & Waistcoat`
+                : wizardForm.purchaseItem === "Accessories"
+                  ? `${purchaseModeLabel} - Accessories`
+                  : routeLabel;
+    const durationMap = {
+      "New order": {
+        "Full Kilt Package": 60,
+        "Kilt Only": 30,
+        Trousers: 30,
+        "Jacket & Waistcoat": 30,
+        Accessories: 20,
+      },
+      Collection: {
+        "Full Kilt Package": 60,
+        "Kilt Only": 30,
+        Trousers: 30,
+        "Jacket & Waistcoat": 15,
+        Accessories: 15,
+      },
+    };
+    suggestedDurationMinutes =
+      durationMap[wizardForm.purchasePath]?.[wizardForm.purchaseItem] || 0;
+    preferredTypeNames =
+      wizardForm.purchasePath === "Collection" &&
+      wizardForm.purchaseItem === "Full Kilt Package"
+        ? APPOINTMENT_TYPE_ALIASES.retailCollectionFullKiltOutfit
+        : wizardForm.purchaseItem === "Full Kilt Package"
+          ? APPOINTMENT_TYPE_ALIASES.retailPurchaseFullKiltPackage
+          : wizardForm.purchaseItem === "Kilt Only"
+            ? wizardForm.purchasePath === "Collection"
+              ? APPOINTMENT_TYPE_ALIASES.retailCollectionKiltOnly
+              : APPOINTMENT_TYPE_ALIASES.retailPurchaseKiltOnly
+            : wizardForm.purchaseItem === "Trousers"
+              ? wizardForm.purchasePath === "Collection"
+                ? APPOINTMENT_TYPE_ALIASES.retailCollectionTrousers
+                : APPOINTMENT_TYPE_ALIASES.retailPurchaseTrousers
+              : wizardForm.purchaseItem === "Jacket & Waistcoat"
+                ? wizardForm.purchasePath === "Collection"
+                  ? APPOINTMENT_TYPE_ALIASES.retailCollectionJacketAndWaistcoat
+                  : APPOINTMENT_TYPE_ALIASES.retailPurchaseJacketAndWaistcoat
+                : wizardForm.purchaseItem === "Accessories"
+                  ? wizardForm.purchasePath === "Collection"
+                    ? APPOINTMENT_TYPE_ALIASES.retailCollectionAccessories
+                    : APPOINTMENT_TYPE_ALIASES.retailPurchaseAccessories
+                  : wizardForm.purchaseItem
+                    ? [wizardForm.purchaseItem]
+          : [];
+  } else if (wizardForm.category === "other") {
+    if (wizardForm.otherRoute === "Alteration") {
+      routeLabel = `Alteration${wizardForm.customLabel ? ` - ${wizardForm.customLabel}` : ""}`;
+      summaryLabel =
+        wizardForm.customLabel === "Trews/Trousers"
+          ? "Alteration - Trews"
+          : wizardForm.customLabel === "Kilt"
+            ? "Alteration - Kilt"
+            : routeLabel;
+      suggestedDurationMinutes = 20;
+      preferredTypeNames =
+        wizardForm.customLabel === "Trews/Trousers"
+          ? APPOINTMENT_TYPE_ALIASES.alterationTrews
+          : wizardForm.customLabel
+            ? APPOINTMENT_TYPE_ALIASES.alterationKilt
+            : [];
+    } else if (wizardForm.otherRoute === "Custom appointment") {
+      routeLabel = wizardForm.customLabel || "Custom appointment";
+      summaryLabel = routeLabel;
+      suggestedDurationMinutes = Number(wizardForm.customDurationMinutes || 0);
+      preferredTypeNames = [];
+    }
+  }
+
+  candidateNames = preferredTypeNames;
+  const appointmentType = findAppointmentTypeMatch(appointmentTypes, candidateNames);
+  const resolvedSuggestedDurationMinutes = durationBreakdown
+    ? durationBreakdown.totalMinutes
+    : Number(appointmentType?.duration_minutes || 0) || suggestedDurationMinutes;
+  const resolutionWarning =
+    !appointmentType && preferredTypeNames.length > 0
+      ? "Could not find a matching appointment type for this booking. Please choose one manually."
+      : !appointmentType && wizardForm.otherRoute === "Custom appointment"
+        ? "Could not find a matching appointment type for this booking. Please choose one manually."
+        : "";
+
+  return {
+    appointmentType,
+    suggestedDurationMinutes: resolvedSuggestedDurationMinutes,
+    appointmentTypeLabel: appointmentType?.name || summaryLabel,
+    routeLabel,
+    summaryLabel,
+    guidance,
+    durationBreakdown,
+    resolutionWarning,
+  };
+}
+
+function wizardStepLabel(step) {
+  const labels = [
+    "Main category",
+    "Appointment route",
+    "Guided details",
+    "Date and time",
+    "Customer details",
+    "Summary",
+  ];
+  return labels[step] || "New appointment";
+}
+
 function buildDetailForm(appointment, siteId) {
   return {
     siteId: siteId || "",
@@ -711,6 +1099,12 @@ export default function Appointments() {
   const [form, setForm] = React.useState(() => buildInitialForm({}));
   const [createSendConfirmationTouched, setCreateSendConfirmationTouched] =
     React.useState(false);
+  const [drawerMode, setDrawerMode] = React.useState("empty");
+  const [drawerReturnMode, setDrawerReturnMode] = React.useState("empty");
+  const [wizardStep, setWizardStep] = React.useState(0);
+  const [wizardForm, setWizardForm] = React.useState(() =>
+    buildInitialWizardForm(),
+  );
 
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [detailEditing, setDetailEditing] = React.useState(false);
@@ -771,6 +1165,7 @@ export default function Appointments() {
   const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
   const canOpenBlock = canManageBlocks && selectedSiteIsBookable;
   const canAutoSendConfirmationOnCreate = isLikelyEmail(form.customerEmail);
+  const createWizardOpen = modalOpen && drawerMode === "newWizard";
 
   const baseInputStyle = React.useMemo(
     () => ({
@@ -1332,16 +1727,9 @@ export default function Appointments() {
     () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
     [],
   );
-  const selectedType =
-    appointmentTypes.find((item) => item.id === form.appointmentTypeId) || null;
   const detailSelectedType =
     appointmentTypes.find((item) => item.id === detailForm.appointmentTypeId) ||
     null;
-
-  const calculatedEndTimeLabel =
-    form.startTime && selectedType
-      ? addMinutesToTimeValue(form.startTime, selectedType.duration_minutes)
-      : "";
 
   const detailEndTimeLabel =
     detailForm.startTime && detailSelectedType
@@ -1414,12 +1802,101 @@ export default function Appointments() {
     return role === "admin" || role === "manager";
   }, [detailBlock, profile, role]);
 
+  const wizardResolution = React.useMemo(
+    () => resolveWizardAppointmentType(appointmentTypes, wizardForm),
+    [appointmentTypes, wizardForm],
+  );
+  const wizardSelectedType = wizardResolution.appointmentType;
+  const wizardSuggestedDurationMinutes =
+    wizardResolution.suggestedDurationMinutes;
+  const wizardSummaryLabel =
+    wizardResolution.summaryLabel ||
+    wizardResolution.appointmentTypeLabel ||
+    "Appointment";
+  const wizardTypeAccent = appointmentTypeAccent(
+    wizardSelectedType?.name || wizardSummaryLabel,
+  );
+  const wizardDurationBreakdown = wizardResolution.durationBreakdown;
+  const wizardResolutionWarning = wizardResolution.resolutionWarning;
+
+  const wizardCountsSummary = React.useMemo(() => {
+    const adults = parseCount(wizardForm.adults);
+    const children = parseCount(wizardForm.children);
+    const items = [];
+    if (adults > 0) items.push(`${adults} adult${adults === 1 ? "" : "s"}`);
+    if (children > 0)
+      items.push(`${children} child${children === 1 ? "" : "ren"}`);
+    return items.join(", ");
+  }, [wizardForm.adults, wizardForm.children]);
+
+  const wizardSelectedArea = React.useMemo(
+    () => modalAreas.find((item) => item.id === form.areaId) || null,
+    [form.areaId, modalAreas],
+  );
+
+  React.useEffect(() => {
+    if (!createWizardOpen) return;
+
+    const nextTypeId = wizardSelectedType?.id || wizardForm.manualAppointmentTypeId;
+
+    if (nextTypeId && nextTypeId !== form.appointmentTypeId) {
+      setForm((prev) => {
+        const nextType =
+          appointmentTypes.find((item) => item.id === nextTypeId) || null;
+        const nextEndTime =
+          nextType && prev.startTime
+            ? addMinutesToTimeValue(prev.startTime, nextType.duration_minutes)
+            : prev.endTime;
+
+        return {
+          ...prev,
+          appointmentTypeId: nextTypeId,
+          endTime: nextEndTime,
+        };
+      });
+      return;
+    }
+
+    if (
+      !nextTypeId &&
+      form.appointmentTypeId &&
+      form.appointmentTypeId !== wizardForm.manualAppointmentTypeId
+    ) {
+      setForm((prev) => ({ ...prev, appointmentTypeId: "" }));
+    }
+
+    if (form.startTime && wizardSuggestedDurationMinutes > 0) {
+      const suggestedEndTime = addMinutesToTimeValueRoundedUp(
+        form.startTime,
+        wizardSuggestedDurationMinutes,
+      );
+      if (suggestedEndTime && suggestedEndTime !== form.endTime) {
+        setForm((prev) => ({ ...prev, endTime: suggestedEndTime }));
+      }
+    }
+  }, [
+    appointmentTypes,
+    createWizardOpen,
+    form.appointmentTypeId,
+    form.endTime,
+    form.startTime,
+    wizardForm.manualAppointmentTypeId,
+    wizardSelectedType,
+    wizardSuggestedDurationMinutes,
+  ]);
+
   function openCreateModal() {
     setForm(buildInitialForm({ siteId: selectedSiteId, date: selectedDate }));
     setFormError("");
     setCreateSendConfirmationTouched(false);
     setSavePhase("");
     setModalAreas(areas);
+    setWizardForm(buildInitialWizardForm());
+    setWizardStep(0);
+    setDrawerReturnMode(
+      detailOpen && detailAppointment ? "detail" : "empty",
+    );
+    setDrawerMode("newWizard");
     setModalOpen(true);
   }
 
@@ -1428,6 +1905,12 @@ export default function Appointments() {
     setSaving(false);
     setSavePhase("");
     setFormError("");
+    setWizardStep(0);
+    setDrawerMode(
+      drawerReturnMode === "detail" && detailOpen && detailAppointment
+        ? "detail"
+        : "empty",
+    );
   }
 
   function openBlockModal() {
@@ -1447,11 +1930,13 @@ export default function Appointments() {
 
   function openDetailModal(item) {
     const nextSiteId = appointmentBranchToSiteId(item.branch) || selectedSiteId;
+    setModalOpen(false);
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
     setDetailError("");
     setDetailEditing(false);
     setDetailOpen(true);
+    setDrawerMode("detail");
     loadActivity(item.id);
     loadEmailLog(item.id);
   }
@@ -1478,6 +1963,7 @@ export default function Appointments() {
     setEmailLogError("");
     setSendingConfirmation(false);
     setSendingReminder(false);
+    setDrawerMode("empty");
   }
 
   function closeBlockDetailModal() {
@@ -1570,8 +2056,213 @@ export default function Appointments() {
     setBlockForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateWizardForm(key, value) {
+    setWizardForm((prev) => {
+      const next = { ...prev, [key]: value };
+
+      if (key === "category") {
+        return {
+          ...next,
+          hireRoute: "",
+          purchasePath: "",
+          purchaseItem: "",
+          otherRoute: "",
+          customLabel: "",
+          customDurationMinutes: "",
+          manualAppointmentTypeId: "",
+          fullTryOnAcknowledged: false,
+          adults: "1",
+          children: "0",
+          measurementVariant: "new",
+        };
+      }
+
+      if (key === "hireRoute") {
+        return {
+          ...next,
+          manualAppointmentTypeId: "",
+          fullTryOnAcknowledged: false,
+          adults:
+            value === "Measurement" || value === "Collection" ? prev.adults : "0",
+          children:
+            value === "Measurement" || value === "Collection"
+              ? prev.children
+              : "0",
+          measurementVariant:
+            value === "Measurement" ? prev.measurementVariant : "new",
+        };
+      }
+
+      if (key === "purchasePath") {
+        return {
+          ...next,
+          purchaseItem: "",
+          manualAppointmentTypeId: "",
+        };
+      }
+
+      if (key === "otherRoute") {
+        return {
+          ...next,
+          customLabel: "",
+          customDurationMinutes: "",
+          manualAppointmentTypeId: "",
+        };
+      }
+
+      return next;
+    });
+  }
+
   function updateDetailBlockForm(key, value) {
     setDetailBlockForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function validateWizardStep(step) {
+    if (step === 0) {
+      if (!wizardForm.category) return "Choose what the appointment is for.";
+      return "";
+    }
+
+    if (step === 1) {
+      if (wizardForm.category === "hire" && !wizardForm.hireRoute) {
+        return "Choose the hire appointment route.";
+      }
+      if (wizardForm.category === "purchase") {
+        if (!wizardForm.purchasePath) {
+          return "Choose whether this purchase is a new order or a collection.";
+        }
+        if (!wizardForm.purchaseItem) {
+          return "Choose the purchase item.";
+        }
+      }
+      if (wizardForm.category === "other" && !wizardForm.otherRoute) {
+        return "Choose the other appointment route.";
+      }
+      return "";
+    }
+
+    if (step === 2) {
+      if (
+        wizardForm.category === "hire" &&
+        (wizardForm.hireRoute === "Measurement" ||
+          wizardForm.hireRoute === "Collection") &&
+        parseCount(wizardForm.adults) + parseCount(wizardForm.children) <= 0
+      ) {
+        return "Add at least one person for this appointment.";
+      }
+
+      if (
+        wizardForm.category === "hire" &&
+        wizardForm.hireRoute === "Full Try On" &&
+        !wizardForm.fullTryOnAcknowledged
+      ) {
+        return "Confirm the outfit has been booked in the hire database.";
+      }
+
+      if (
+        wizardForm.category === "other" &&
+        wizardForm.otherRoute === "Alteration" &&
+        !wizardForm.customLabel
+      ) {
+        return "Choose whether the alteration is for a kilt or trews/trousers.";
+      }
+
+      if (
+        wizardForm.category === "other" &&
+        wizardForm.otherRoute === "Custom appointment"
+      ) {
+        if (!wizardForm.customLabel.trim()) {
+          return "Enter a custom appointment label.";
+        }
+        if (!Number(wizardForm.customDurationMinutes)) {
+          return "Enter a custom duration in minutes.";
+        }
+      }
+
+      if (!wizardSelectedType && !wizardForm.manualAppointmentTypeId) {
+        return "Choose an appointment type to continue.";
+      }
+
+      return "";
+    }
+
+    if (step === 3) {
+      if (!isBookableAppointmentSite(form.siteId)) {
+        return "Choose a valid appointment site.";
+      }
+      if (!form.date) return "Choose a date.";
+      if (!form.areaId) return "Choose an appointment area.";
+      if (!form.startTime) return "Choose a start time.";
+      if (!form.endTime) return "Choose an end time.";
+
+      const times = validateAppointmentTimes({
+        date: form.date,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        setErrorMessage: () => {},
+      });
+      if (!times) return "Check that the appointment end time is after the start time.";
+      return "";
+    }
+
+    if (step === 4) {
+      if (!form.customerName.trim()) return "Customer name is required.";
+      if (!form.customerEmail.trim()) {
+        return "Customer email is required in the current create flow.";
+      }
+      if (
+        wizardForm.category === "other" &&
+        wizardForm.otherRoute === "Custom appointment" &&
+        !form.internalNotes.trim()
+      ) {
+        return "Internal notes are required for a custom appointment.";
+      }
+      return "";
+    }
+
+    return "";
+  }
+
+  function goToWizardStep(nextStep) {
+    if (nextStep > wizardStep) {
+      const validationMessage = validateWizardStep(wizardStep);
+      if (validationMessage) {
+        setFormError(validationMessage);
+        return;
+      }
+    }
+
+    setFormError("");
+    setWizardStep(clamp(nextStep, 0, 5));
+  }
+
+  function chooseHireRoute(route) {
+    updateWizardForm("hireRoute", route);
+    setFormError("");
+    setWizardStep(route === "Style & Fit" ? 3 : 2);
+  }
+
+  function choosePurchasePath(path) {
+    updateWizardForm("purchasePath", path);
+    setFormError("");
+  }
+
+  function choosePurchaseItem(item) {
+    if (!wizardForm.purchasePath) {
+      setFormError("Choose whether this purchase is a new order or a collection first.");
+      return;
+    }
+
+    updateWizardForm("purchaseItem", item);
+    setFormError("");
+    setWizardStep(3);
+  }
+
+  function chooseOtherRoute(route) {
+    updateWizardForm("otherRoute", route);
+    setFormError("");
+    setWizardStep(2);
   }
 
   function validateAppointmentTimes({
@@ -1622,8 +2313,10 @@ export default function Appointments() {
     nextEndAt,
     excludedAppointmentId = "",
   ) {
-    const compareSiteId = detailOpen ? detailSiteId : form.siteId;
-    const compareDate = detailOpen ? detailForm.date : form.date;
+    const compareSiteId =
+      drawerMode === "detail" && detailOpen ? detailSiteId : form.siteId;
+    const compareDate =
+      drawerMode === "detail" && detailOpen ? detailForm.date : form.date;
     if (compareSiteId !== selectedSiteId || compareDate !== selectedDate)
       return "";
 
@@ -3139,8 +3832,834 @@ export default function Appointments() {
       </>
     ) : null;
 
+  const appointmentWizardDrawer = createWizardOpen ? (
+    <>
+      {!isDesktopToolsLayout ? (
+        <button
+          type="button"
+          className="appointment-drawer-backdrop"
+          onClick={closeCreateModal}
+          aria-label="Close new appointment wizard"
+        />
+      ) : null}
+
+      <aside
+        className={`appointment-drawer ${
+          isDesktopToolsLayout
+            ? "appointment-drawer--desktop"
+            : "appointment-drawer--mobile"
+        }`}
+        aria-label="New appointment wizard"
+      >
+        <div className="appointment-drawer-panel">
+          <div className="appointment-drawer-header appointment-wizard-header">
+            <div className="appointment-wizard-progress">
+              Step {wizardStep + 1} of 6
+            </div>
+            <div className="appointment-wizard-title-row">
+              <div>
+                <div className="appointment-wizard-title">New appointment</div>
+                <div className="appointment-wizard-subtitle">
+                  {wizardStepLabel(wizardStep)}
+                </div>
+              </div>
+              {wizardSelectedType ? (
+                <div
+                  className="appointment-wizard-type"
+                  style={{ color: wizardTypeAccent.accent }}
+                >
+                  {wizardSelectedType.name}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="appointment-drawer-scroll">
+            <div
+              className="appointment-drawer-body appointment-wizard"
+              style={{ padding: 20, paddingBottom: 16 }}
+            >
+              {wizardStep === 0 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    What is the appointment for?
+                  </div>
+                  <div className="appointment-wizard-options">
+                    {WIZARD_CATEGORY_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`appointment-wizard-option ${
+                          wizardForm.category === option.value
+                            ? "appointment-wizard-option--selected"
+                            : ""
+                        }`}
+                        onClick={() => {
+                          updateWizardForm("category", option.value);
+                          setFormError("");
+                          setWizardStep(1);
+                        }}
+                      >
+                        <span>{option.label}</span>
+                        <small>{option.description}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {wizardStep === 1 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    {wizardForm.category === "hire"
+                      ? "Which hire appointment do you need?"
+                      : wizardForm.category === "purchase"
+                        ? "Which purchase route should we book?"
+                        : "Which other appointment route should we use?"}
+                  </div>
+
+                  {wizardForm.category === "hire" ? (
+                    <div className="appointment-wizard-options">
+                      {HIRE_ROUTE_OPTIONS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`appointment-wizard-option ${
+                            wizardForm.hireRoute === option
+                              ? "appointment-wizard-option--selected"
+                              : ""
+                          }`}
+                          onClick={() => chooseHireRoute(option)}
+                        >
+                          <span>{option}</span>
+                          <small>
+                            {option === "Measurement"
+                              ? "New measure or remeasure"
+                              : option === "Collection"
+                                ? "Trying-on numbers drive the duration"
+                                : option === "Style & Fit"
+                                  ? "Standard 30 minute styling slot"
+                                  : "Standard 30 minute try-on with staff check"}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "purchase" ? (
+                    <div className="appointment-wizard-stack">
+                      <div className="appointment-wizard-inline-label">
+                        Is this a new order or a collection?
+                      </div>
+                      <div className="appointment-wizard-pill-row">
+                        {["New order", "Collection"].map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`appointment-wizard-pill ${
+                              wizardForm.purchasePath === option
+                                ? "appointment-wizard-pill--selected"
+                                : ""
+                            }`}
+                            onClick={() => choosePurchasePath(option)}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="appointment-wizard-options">
+                        {PURCHASE_ITEM_OPTIONS.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`appointment-wizard-option ${
+                              wizardForm.purchaseItem === option
+                                ? "appointment-wizard-option--selected"
+                                : ""
+                            }`}
+                            onClick={() => choosePurchaseItem(option)}
+                          >
+                            <span>{option}</span>
+                            <small>
+                              {wizardForm.purchasePath || "Select the route above first"}
+                            </small>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "other" ? (
+                    <div className="appointment-wizard-options">
+                      {OTHER_ROUTE_OPTIONS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`appointment-wizard-option ${
+                            wizardForm.otherRoute === option
+                              ? "appointment-wizard-option--selected"
+                              : ""
+                          }`}
+                          onClick={() => chooseOtherRoute(option)}
+                        >
+                          <span>{option}</span>
+                          <small>
+                            {option === "Alteration"
+                              ? "Map to the existing alteration type where possible"
+                              : "For custom staff-led appointments"}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {wizardStep === 2 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    Gather the key details for this booking
+                  </div>
+
+                  {wizardForm.category === "hire" &&
+                  wizardForm.hireRoute === "Measurement" ? (
+                    <div className="appointment-wizard-fields">
+                      <label className="appointment-wizard-field">
+                        <span>Is this a new measure or a remeasure?</span>
+                        <select
+                          value={wizardForm.measurementVariant}
+                          onChange={(e) =>
+                            updateWizardForm(
+                              "measurementVariant",
+                              e.target.value,
+                            )
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="new">New measure</option>
+                          <option value="remeasure">Remeasure</option>
+                        </select>
+                      </label>
+                      <div className="appointment-wizard-metric-grid">
+                        <label className="appointment-wizard-field">
+                          <span>Adults being measured</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={wizardForm.adults}
+                            onChange={(e) =>
+                              updateWizardForm("adults", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+                        <label className="appointment-wizard-field">
+                          <span>Children being measured</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={wizardForm.children}
+                            onChange={(e) =>
+                              updateWizardForm("children", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "hire" &&
+                  wizardForm.hireRoute === "Collection" ? (
+                    <div className="appointment-wizard-fields">
+                      <div className="appointment-wizard-note">
+                        Duration is based on how many people are trying on,
+                        rather than how many outfits are being collected.
+                      </div>
+                      <div className="appointment-wizard-metric-grid">
+                        <label className="appointment-wizard-field">
+                          <span>Adults trying on</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={wizardForm.adults}
+                            onChange={(e) =>
+                              updateWizardForm("adults", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+                        <label className="appointment-wizard-field">
+                          <span>Children trying on</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={wizardForm.children}
+                            onChange={(e) =>
+                              updateWizardForm("children", e.target.value)
+                            }
+                            style={{ ...baseInputStyle, marginTop: 6 }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "hire" &&
+                  wizardForm.hireRoute === "Full Try On" ? (
+                    <div className="appointment-wizard-fields">
+                      <div className="appointment-wizard-note">
+                        Please make sure an outfit has been booked in the hire
+                        database for this full try-on appointment.
+                      </div>
+                      <label className="appointment-wizard-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={wizardForm.fullTryOnAcknowledged}
+                          onChange={(e) =>
+                            updateWizardForm(
+                              "fullTryOnAcknowledged",
+                              e.target.checked,
+                            )
+                          }
+                        />
+                        <span>
+                          I have checked the outfit is booked in the hire
+                          database.
+                        </span>
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "other" &&
+                  wizardForm.otherRoute === "Alteration" ? (
+                    <div className="appointment-wizard-fields">
+                      <div className="appointment-wizard-inline-label">
+                        Which garment is being altered?
+                      </div>
+                      <div className="appointment-wizard-pill-row">
+                        {["Kilt", "Trews/Trousers"].map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`appointment-wizard-pill ${
+                              wizardForm.customLabel === option
+                                ? "appointment-wizard-pill--selected"
+                                : ""
+                            }`}
+                            onClick={() => updateWizardForm("customLabel", option)}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {wizardForm.category === "other" &&
+                  wizardForm.otherRoute === "Custom appointment" ? (
+                    <div className="appointment-wizard-fields">
+                      <label className="appointment-wizard-field">
+                        <span>Custom appointment label</span>
+                        <input
+                          value={wizardForm.customLabel}
+                          onChange={(e) =>
+                            updateWizardForm("customLabel", e.target.value)
+                          }
+                          placeholder="Example: VIP fitting review"
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+                      <label className="appointment-wizard-field">
+                        <span>Suggested duration (minutes)</span>
+                        <input
+                          type="number"
+                          min="15"
+                          step="5"
+                          value={wizardForm.customDurationMinutes}
+                          onChange={(e) =>
+                            updateWizardForm(
+                              "customDurationMinutes",
+                              e.target.value,
+                            )
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                    <div className="appointment-wizard-summary-card">
+                      <div className="appointment-wizard-summary-row">
+                        <span>Suggested appointment type</span>
+                        <strong style={{ color: wizardTypeAccent.accent }}>
+                          {wizardSelectedType?.name || "Choose below"}
+                        </strong>
+                      </div>
+                      {wizardDurationBreakdown ? (
+                        <div className="appointment-wizard-breakdown">
+                          <div className="appointment-wizard-breakdown-title">
+                            Breakdown
+                          </div>
+                          {wizardDurationBreakdown.kind === "measurement" ? (
+                            <>
+                              {wizardDurationBreakdown.adultCount > 0 ? (
+                                <div className="appointment-wizard-breakdown-line">
+                                  <span>
+                                    {wizardDurationBreakdown.adultCount} adult
+                                    {wizardDurationBreakdown.adultCount === 1
+                                      ? ""
+                                      : "s"}
+                                  </span>
+                                  <strong>
+                                    {wizardDurationBreakdown.adultMinutes} mins
+                                  </strong>
+                                </div>
+                              ) : null}
+                              {wizardDurationBreakdown.childCount > 0 ? (
+                                <div className="appointment-wizard-breakdown-line">
+                                  <span>
+                                    {wizardDurationBreakdown.childCount} child
+                                    {wizardDurationBreakdown.childCount === 1
+                                      ? ""
+                                      : "ren"}
+                                  </span>
+                                  <strong>
+                                    {wizardDurationBreakdown.childMinutes} mins
+                                  </strong>
+                                </div>
+                              ) : null}
+                              {wizardDurationBreakdown.adultCount === 0 &&
+                              wizardDurationBreakdown.childCount === 0 ? (
+                                <div className="appointment-wizard-breakdown-empty">
+                                  Add adults or children to calculate the duration.
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              {wizardDurationBreakdown.totalPeople > 0 ? (
+                                <div className="appointment-wizard-breakdown-line">
+                                  <span>People trying on</span>
+                                  <strong>
+                                    {wizardDurationBreakdown.totalPeople}
+                                  </strong>
+                                </div>
+                              ) : (
+                                <div className="appointment-wizard-breakdown-empty">
+                                  Add people trying on to calculate the duration.
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ) : null}
+                      <div className="appointment-wizard-summary-row">
+                        <span>Total duration</span>
+                        <strong>
+                          {wizardSuggestedDurationMinutes
+                            ? `${wizardSuggestedDurationMinutes} mins`
+                            : "0 mins"}
+                        </strong>
+                      </div>
+                    {wizardResolution.guidance ? (
+                      <div className="appointment-wizard-note">
+                        {wizardResolution.guidance}
+                      </div>
+                    ) : null}
+                    {wizardResolutionWarning ? (
+                      <div className="appointment-wizard-warning-inline">
+                        {wizardResolutionWarning}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {!wizardSelectedType ? (
+                    <label className="appointment-wizard-field">
+                      <span>Appointment type fallback</span>
+                      <select
+                        value={wizardForm.manualAppointmentTypeId}
+                        onChange={(e) =>
+                          updateWizardForm(
+                            "manualAppointmentTypeId",
+                            e.target.value,
+                          )
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select an appointment type...</option>
+                        {appointmentTypes.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} ({item.duration_minutes} mins)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {wizardStep === 3 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    When and where should this appointment happen?
+                  </div>
+                  <div className="appointment-wizard-fields">
+                    {showSiteSelector ? (
+                      <label className="appointment-wizard-field">
+                        <span>Site</span>
+                        <select
+                          value={form.siteId}
+                          onChange={(e) => updateForm("siteId", e.target.value)}
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          {bookableSites.map((site) => (
+                            <option key={site.id} value={site.id}>
+                              {site.name || prettySiteName(site.id)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <label className="appointment-wizard-field">
+                        <span>Site</span>
+                        <input
+                          value={prettySiteName(form.siteId)}
+                          readOnly
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            background: "rgba(2, 6, 23, 0.03)",
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    <label className="appointment-wizard-field">
+                      <span>Date</span>
+                      <input
+                        type="date"
+                        value={form.date}
+                        onChange={(e) => updateForm("date", e.target.value)}
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label className="appointment-wizard-field">
+                      <span>Appointment area</span>
+                      <select
+                        value={form.areaId}
+                        onChange={(e) => updateForm("areaId", e.target.value)}
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                        disabled={modalAreasLoading || modalAreas.length === 0}
+                      >
+                        <option value="">
+                          {modalAreasLoading
+                            ? "Loading areas..."
+                            : "Select an area..."}
+                        </option>
+                        {modalAreas.map((area) => (
+                          <option key={area.id} value={area.id}>
+                            {canonicalAreaLabel(area)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="appointment-wizard-metric-grid">
+                      <label className="appointment-wizard-field">
+                        <span>Start time</span>
+                        <select
+                          value={form.startTime}
+                          onChange={(e) =>
+                            updateForm("startTime", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Select a time...</option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="appointment-wizard-field">
+                        <span>End time</span>
+                        <select
+                          value={form.endTime}
+                          onChange={(e) => updateForm("endTime", e.target.value)}
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">
+                            {wizardSuggestedDurationMinutes && form.startTime
+                              ? `Suggested: ${addMinutesToTimeValueRoundedUp(
+                                  form.startTime,
+                                  wizardSuggestedDurationMinutes,
+                                )}`
+                              : "Select an end time..."}
+                          </option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {wizardStep === 4 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    Who is this appointment for?
+                  </div>
+                  <div className="appointment-wizard-fields">
+                    <label className="appointment-wizard-field">
+                      <span>Customer name</span>
+                      <input
+                        value={form.customerName}
+                        onChange={(e) =>
+                          updateForm("customerName", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-field">
+                      <span>Customer email</span>
+                      <input
+                        type="email"
+                        value={form.customerEmail}
+                        onChange={(e) =>
+                          updateForm("customerEmail", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-field">
+                      <span>Phone</span>
+                      <input
+                        value={form.customerPhone}
+                        onChange={(e) =>
+                          updateForm("customerPhone", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-field">
+                      <span>Internal notes</span>
+                      <textarea
+                        rows={4}
+                        value={form.internalNotes}
+                        onChange={(e) =>
+                          updateForm("internalNotes", e.target.value)
+                        }
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                    <label className="appointment-wizard-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={
+                          !!form.sendConfirmationAfterSave &&
+                          canAutoSendConfirmationOnCreate
+                        }
+                        disabled={!canAutoSendConfirmationOnCreate || saving}
+                        onChange={(e) => {
+                          setCreateSendConfirmationTouched(true);
+                          updateForm(
+                            "sendConfirmationAfterSave",
+                            e.target.checked,
+                          );
+                        }}
+                      />
+                      <span>Send confirmation email after saving</span>
+                    </label>
+                    {!canAutoSendConfirmationOnCreate ? (
+                      <div className="appointment-wizard-note">
+                        Add a valid customer email to send the confirmation.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {wizardStep === 5 ? (
+                <div className="appointment-wizard-section">
+                  <div className="appointment-wizard-question">
+                    You are booking {form.customerName || "this customer"} for
+                    a {wizardSummaryLabel} appointment.
+                  </div>
+                  <div className="appointment-wizard-summary-grid">
+                    <div className="appointment-wizard-summary-row">
+                      <span>Customer</span>
+                      <strong>{form.customerName || "Not provided"}</strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Appointment category</span>
+                      <strong>
+                        {WIZARD_CATEGORY_OPTIONS.find(
+                          (item) => item.value === wizardForm.category,
+                        )?.label || wizardForm.category}
+                        {wizardResolution.routeLabel
+                          ? ` - ${wizardResolution.routeLabel}`
+                          : ""}
+                      </strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Appointment type</span>
+                      <strong style={{ color: wizardTypeAccent.accent }}>
+                        {wizardSelectedType?.name || "Not selected"}
+                      </strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Date</span>
+                      <strong>{formatDateHeading(form.date)}</strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Time</span>
+                      <strong>
+                        {form.startTime && form.endTime
+                          ? `${form.startTime} - ${form.endTime}`
+                          : "Not set"}
+                      </strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Site</span>
+                      <strong>{prettySiteName(form.siteId)}</strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Area</span>
+                      <strong>
+                        {wizardSelectedArea
+                          ? canonicalAreaLabel(wizardSelectedArea)
+                          : "Not selected"}
+                      </strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Booked duration</span>
+                      <strong>
+                        {wizardSuggestedDurationMinutes
+                          ? `${wizardSuggestedDurationMinutes} mins`
+                          : "Not set"}
+                      </strong>
+                    </div>
+                    {wizardCountsSummary ? (
+                      <div className="appointment-wizard-summary-row">
+                        <span>People</span>
+                        <strong>{wizardCountsSummary}</strong>
+                      </div>
+                    ) : null}
+                    {form.internalNotes.trim() ? (
+                      <div className="appointment-wizard-summary-row">
+                        <span>Notes</span>
+                        <strong>{form.internalNotes}</strong>
+                      </div>
+                    ) : null}
+                    <div className="appointment-wizard-summary-row">
+                      <span>Confirmation email</span>
+                      <strong>
+                        {form.sendConfirmationAfterSave &&
+                        isLikelyEmail(form.customerEmail)
+                          ? "Will be sent after save"
+                          : "Not sending automatically"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {formError ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {formError}
+                </div>
+              ) : null}
+
+              <div className="appointment-drawer-footer appointment-wizard-footer">
+                <button
+                  className="appointment-drawer-action-button"
+                  type="button"
+                  onClick={closeCreateModal}
+                >
+                  Cancel
+                </button>
+
+                {wizardStep > 0 ? (
+                  <button
+                    className="appointment-drawer-action-button"
+                    type="button"
+                    onClick={() => goToWizardStep(wizardStep - 1)}
+                  >
+                    Back
+                  </button>
+                ) : null}
+
+                {wizardStep < 5 ? (
+                  <button
+                    className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                    type="button"
+                    onClick={() => goToWizardStep(wizardStep + 1)}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                    type="button"
+                    disabled={saving}
+                    onClick={async () => {
+                      const validationMessage = validateWizardStep(4);
+                      if (validationMessage) {
+                        setFormError(validationMessage);
+                        return;
+                      }
+                      await submitCreateAppointment({
+                        preventDefault() {},
+                      });
+                    }}
+                  >
+                    {savePhase === "sending_confirmation"
+                      ? "Sending confirmation..."
+                      : savePhase === "saving"
+                        ? "Saving appointment..."
+                        : "Confirm booking"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  ) : null;
+
   const desktopDetailPanel = isDesktopToolsLayout ? (
-    detailOpen && detailAppointment ? (
+    createWizardOpen ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {appointmentWizardDrawer}
+      </div>
+    ) : detailOpen && detailAppointment ? (
       <div
         className="appointments-layout-side"
         style={{ height: desktopWorkspaceHeight }}
@@ -3236,7 +4755,11 @@ export default function Appointments() {
         {desktopDetailPanel}
       </div>
 
-      {!isDesktopToolsLayout ? appointmentDetailDrawer : null}
+      {!isDesktopToolsLayout
+        ? createWizardOpen
+          ? appointmentWizardDrawer
+          : appointmentDetailDrawer
+        : null}
 
       {toast ? (
         <div
@@ -3246,303 +4769,6 @@ export default function Appointments() {
         >
           {toast.message}
         </div>
-      ) : null}
-
-      {modalOpen ? (
-        <ModalShell
-          title="New appointment"
-          subtitle="Create a booked appointment and confirm the customer details before saving."
-          onClose={closeCreateModal}
-          maxWidth={640}
-        >
-          <form onSubmit={submitCreateAppointment} style={{ padding: 16 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-              }}
-            >
-              <div style={{ gridColumn: "1 / -1" }}>
-                <div style={{ fontSize: 13, fontWeight: 900 }}>
-                  Appointment details
-                </div>
-                <div
-                  style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
-                >
-                  Choose the site, slot, resource, and appointment type first.
-                </div>
-              </div>
-
-              {showSiteSelector ? (
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <select
-                    value={form.siteId}
-                    onChange={(e) => updateForm("siteId", e.target.value)}
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    {bookableSites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name || prettySiteName(site.id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <input
-                    value={prettySiteName(form.siteId)}
-                    readOnly
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      background: "rgba(2, 6, 23, 0.03)",
-                    }}
-                  />
-                </label>
-              )}
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Date
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => updateForm("date", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                />
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Appointment area
-                <select
-                  value={form.areaId}
-                  onChange={(e) => updateForm("areaId", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                  disabled={modalAreasLoading || modalAreas.length === 0}
-                >
-                  <option value="">
-                    {modalAreasLoading
-                      ? "Loading areas..."
-                      : "Select an area..."}
-                  </option>
-                  {modalAreas.map((area) => (
-                    <option key={area.id} value={area.id}>
-                      {canonicalAreaLabel(area)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Appointment type
-                <select
-                  value={form.appointmentTypeId}
-                  onChange={(e) =>
-                    updateForm("appointmentTypeId", e.target.value)
-                  }
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                >
-                  <option value="">Select a type...</option>
-                  {appointmentTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.duration_minutes} mins)
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Start time
-                <select
-                  value={form.startTime}
-                  onChange={(e) => updateForm("startTime", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                >
-                  <option value="">Select a time...</option>
-                  {timeOptions.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                End time
-                <select
-                  value={form.endTime}
-                  onChange={(e) => updateForm("endTime", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                >
-                  <option value="">
-                    {calculatedEndTimeLabel
-                      ? `Suggested: ${calculatedEndTimeLabel}`
-                      : "Select an end time..."}
-                  </option>
-                  {timeOptions.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label
-                style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
-              >
-                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
-                  Customer details
-                </div>
-                Customer name
-                <input
-                  value={form.customerName}
-                  onChange={(e) => updateForm("customerName", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                />
-              </label>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Customer email
-                <input
-                  type="email"
-                  value={form.customerEmail}
-                  onChange={(e) => updateForm("customerEmail", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                />
-              </label>
-
-              <label
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  gridColumn: "1 / -1",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginTop: 4,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={
-                    !!form.sendConfirmationAfterSave &&
-                    canAutoSendConfirmationOnCreate
-                  }
-                  disabled={!canAutoSendConfirmationOnCreate || saving}
-                  onChange={(e) => {
-                    setCreateSendConfirmationTouched(true);
-                    updateForm("sendConfirmationAfterSave", e.target.checked);
-                  }}
-                />
-                <span>Send confirmation email after saving</span>
-              </label>
-
-              {!canAutoSendConfirmationOnCreate ? (
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    marginTop: -4,
-                    fontSize: 13,
-                    color: ui.colors.muted,
-                  }}
-                >
-                  Add a customer email to send confirmation.
-                </div>
-              ) : null}
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Customer phone
-                <input
-                  value={form.customerPhone}
-                  onChange={(e) => updateForm("customerPhone", e.target.value)}
-                  style={{ ...baseInputStyle, marginTop: 6 }}
-                />
-              </label>
-
-              <label
-                style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
-              >
-                <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
-                  Internal notes
-                </div>
-                Internal notes
-                <textarea
-                  rows={4}
-                  value={form.internalNotes}
-                  onChange={(e) => updateForm("internalNotes", e.target.value)}
-                  style={{
-                    ...baseInputStyle,
-                    marginTop: 6,
-                    resize: "vertical",
-                  }}
-                />
-              </label>
-            </div>
-
-            {formError ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.35)",
-                }}
-              >
-                {formError}
-              </div>
-            ) : null}
-
-            <div
-              style={{
-                marginTop: 16,
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                onClick={closeCreateModal}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: ui.colors.cardBg,
-                  color: ui.colors.text,
-                  cursor: "pointer",
-                  fontWeight: 800,
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: `1px solid rgba(168,85,247,0.35)`,
-                  background: ui.colors.brandSoft,
-                  color: ui.colors.text,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  fontWeight: 900,
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {savePhase === "sending_confirmation"
-                  ? "Sending confirmation..."
-                  : savePhase === "saving"
-                    ? "Saving appointment..."
-                    : "Save appointment"}
-              </button>
-            </div>
-          </form>
-        </ModalShell>
       ) : null}
 
       {blockModalOpen ? (
