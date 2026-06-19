@@ -22,6 +22,24 @@ const CALENDAR_SLOT_INTERVAL_MINUTES = 15;
 const TIME_OPTION_INTERVAL_MINUTES = 5;
 const QUICK_CREATE_DEFAULT_DURATION_MINUTES = 30;
 const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 198px)";
+// TODO: Mirror these bookable-hour rules in backend appointment create/update
+// validation so suggestions and final conflict enforcement cannot drift.
+const BOOKABLE_WINDOW_FALLBACKS = {
+  DUK: {
+    openDays: [1, 2, 3, 4, 5, 6],
+    startMinutes: CALENDAR_START_MINUTES,
+    endMinutes: 16 * 60 + 30,
+    source:
+      "Centralised frontend fallback config in Appointments.jsx for Stage 11F (Duke Street closes 16:30 and is closed on Sundays).",
+  },
+  STE: {
+    openDays: [0, 1, 2, 3, 4, 5, 6],
+    startMinutes: CALENDAR_START_MINUTES,
+    endMinutes: CALENDAR_END_MINUTES,
+    source:
+      "Current calendar day range fallback in Appointments.jsx for Stage 11F because exact St Enoch bookable hours are not yet configured.",
+  },
+};
 
 function todayInputValue() {
   const now = new Date();
@@ -162,6 +180,161 @@ function timeLabelFromMinutes(totalMinutes) {
   const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
   const mm = String(totalMinutes % 60).padStart(2, "0");
   return `${hh}:${mm}`;
+}
+
+function minutesFromTimeValue(value) {
+  const [hh, mm] = String(value || "").split(":");
+  const hours = Number(hh);
+  const minutes = Number(mm);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function weekdayFromInputDate(dateValue) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getDay();
+}
+
+function getBookableWindowForSiteDate(siteId, dateValue) {
+  const branchCode = siteIdToAppointmentBranch(siteId);
+  const fallback =
+    BOOKABLE_WINDOW_FALLBACKS[branchCode] || BOOKABLE_WINDOW_FALLBACKS.STE;
+  const weekday = weekdayFromInputDate(dateValue);
+
+  if (!branchCode) {
+    return {
+      isOpen: false,
+      reason: "Appointments are not available for this site.",
+      source: "",
+    };
+  }
+
+  if (weekday === null) {
+    return {
+      isOpen: false,
+      reason: "Choose a valid date to see available time suggestions.",
+      source: fallback.source,
+    };
+  }
+
+  if (!fallback.openDays.includes(weekday)) {
+    return {
+      isOpen: false,
+      reason: `${prettySiteName(siteId)} is closed on this date.`,
+      source: fallback.source,
+    };
+  }
+
+  return {
+    isOpen: true,
+    startMinutes: fallback.startMinutes,
+    endMinutes: fallback.endMinutes,
+    source: fallback.source,
+  };
+}
+
+function itemMatchesWizardDate(item, dateValue) {
+  return inputDateValueFromIso(item?.start_at) === dateValue;
+}
+
+function buildBusyIntervalsForResource({
+  appointments,
+  blocks,
+  areaId,
+  dateValue,
+}) {
+  const busy = [];
+
+  for (const item of appointments || []) {
+    if (item?.status === "cancelled") continue;
+    if (item?.area_id !== areaId) continue;
+    if (!itemMatchesWizardDate(item, dateValue)) continue;
+    busy.push({
+      startMinutes: minutesFromIso(item.start_at),
+      endMinutes: minutesFromIso(item.end_at),
+    });
+  }
+
+  for (const item of blocks || []) {
+    const isAreaMatch = item?.area_id === areaId;
+    const isBranchWide = !item?.area_id;
+    if (!isAreaMatch && !isBranchWide) continue;
+    if (!itemMatchesWizardDate(item, dateValue)) continue;
+    busy.push({
+      startMinutes: minutesFromIso(item.start_at),
+      endMinutes: minutesFromIso(item.end_at),
+    });
+  }
+
+  return busy.sort((a, b) => a.startMinutes - b.startMinutes);
+}
+
+function doIntervalsOverlap(startA, endA, startB, endB) {
+  return startA < endB && endA > startB;
+}
+
+function findAvailableSlots({
+  dateValue,
+  durationMinutes,
+  resources,
+  appointments,
+  blocks,
+  bookableWindow,
+  maxSlots = Infinity,
+}) {
+  if (!bookableWindow?.isOpen) return [];
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return [];
+  if (!Array.isArray(resources) || resources.length === 0) return [];
+
+  const latestStartMinutes = bookableWindow.endMinutes - durationMinutes;
+  if (latestStartMinutes < bookableWindow.startMinutes) return [];
+
+  const suggestions = [];
+
+  for (
+    let startMinutes = bookableWindow.startMinutes;
+    startMinutes <= latestStartMinutes;
+    startMinutes += CALENDAR_SLOT_INTERVAL_MINUTES
+  ) {
+    const endMinutes = startMinutes + durationMinutes;
+    const startTime = timeLabelFromMinutes(startMinutes);
+    const endTime = timeLabelFromMinutes(endMinutes);
+
+    for (const area of resources) {
+      const busyIntervals = buildBusyIntervalsForResource({
+        appointments,
+        blocks,
+        areaId: area.id,
+        dateValue,
+      });
+      const hasConflict = busyIntervals.some((interval) =>
+        doIntervalsOverlap(
+          startMinutes,
+          endMinutes,
+          interval.startMinutes,
+          interval.endMinutes,
+        ),
+      );
+
+      if (hasConflict) continue;
+
+      suggestions.push({
+        areaId: area.id,
+        areaLabel: canonicalAreaLabel(area),
+        startTime,
+        endTime,
+        startAt: toDateTimeIso(dateValue, startTime),
+        endAt: toDateTimeIso(dateValue, endTime),
+      });
+
+      if (suggestions.length >= maxSlots) {
+        return suggestions;
+      }
+    }
+  }
+
+  return suggestions;
 }
 
 function buildTimeOptions(
@@ -1060,6 +1233,10 @@ export default function Appointments() {
   const [formError, setFormError] = React.useState("");
   const [modalAreas, setModalAreas] = React.useState([]);
   const [modalAreasLoading, setModalAreasLoading] = React.useState(false);
+  const [wizardDayAppointments, setWizardDayAppointments] = React.useState([]);
+  const [wizardDayBlocks, setWizardDayBlocks] = React.useState([]);
+  const [wizardDayLoading, setWizardDayLoading] = React.useState(false);
+  const [wizardDayError, setWizardDayError] = React.useState("");
   const [form, setForm] = React.useState(() => buildInitialForm({}));
   const [quickCreateEndTimeTouched, setQuickCreateEndTimeTouched] =
     React.useState(false);
@@ -1739,6 +1916,89 @@ export default function Appointments() {
     selectedSiteId,
   ]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadWizardDayData() {
+      if (!createWizardOpen) {
+        setWizardDayAppointments([]);
+        setWizardDayBlocks([]);
+        setWizardDayError("");
+        setWizardDayLoading(false);
+        return;
+      }
+      if (!form.siteId || !form.date || !isBookableAppointmentSite(form.siteId)) {
+        setWizardDayAppointments([]);
+        setWizardDayBlocks([]);
+        setWizardDayError("");
+        return;
+      }
+
+      if (form.siteId === selectedSiteId && form.date === selectedDate) {
+        setWizardDayAppointments(appointments);
+        setWizardDayBlocks(blocks);
+        setWizardDayError("");
+        setWizardDayLoading(false);
+        return;
+      }
+
+      const branchCode = siteIdToAppointmentBranch(form.siteId);
+      if (!branchCode) {
+        setWizardDayAppointments([]);
+        setWizardDayBlocks([]);
+        setWizardDayError("");
+        return;
+      }
+
+      setWizardDayLoading(true);
+      setWizardDayError("");
+      setWizardDayAppointments([]);
+      setWizardDayBlocks([]);
+
+      try {
+        const [appointmentsRes, blocksRes] = await Promise.all([
+          supabase.rpc("get_calendar_day_agent", {
+            p_branch: branchCode,
+            p_day: form.date,
+          }),
+          supabase.rpc("get_blocks_day_agent", {
+            p_branch: branchCode,
+            p_day: form.date,
+          }),
+        ]);
+
+        if (appointmentsRes.error) throw appointmentsRes.error;
+        if (blocksRes.error) throw blocksRes.error;
+        if (cancelled) return;
+
+        setWizardDayAppointments(appointmentsRes.data || []);
+        setWizardDayBlocks(blocksRes.data || []);
+      } catch (err) {
+        console.error("appointments: wizard day data load failed", err);
+        if (cancelled) return;
+        setWizardDayAppointments([]);
+        setWizardDayBlocks([]);
+        setWizardDayError("Available slots could not be loaded for this day.");
+      } finally {
+        if (!cancelled) setWizardDayLoading(false);
+      }
+    }
+
+    loadWizardDayData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    appointments,
+    blocks,
+    createWizardOpen,
+    form.date,
+    form.siteId,
+    selectedDate,
+    selectedSiteId,
+  ]);
+
   const timelineStartMinutes = CALENDAR_START_MINUTES;
   const timelineEndMinutes = CALENDAR_END_MINUTES;
   const timelineHeight = React.useMemo(() => {
@@ -1962,6 +2222,102 @@ export default function Appointments() {
       null,
     [areas, form.areaId, modalAreas],
   );
+  const wizardBookableWindow = React.useMemo(
+    () => getBookableWindowForSiteDate(form.siteId, form.date),
+    [form.date, form.siteId],
+  );
+  const wizardSuggestionAppointmentsSource = React.useMemo(
+    () =>
+      form.siteId === selectedSiteId && form.date === selectedDate
+        ? appointments
+        : wizardDayAppointments,
+    [
+      appointments,
+      form.date,
+      form.siteId,
+      selectedDate,
+      selectedSiteId,
+      wizardDayAppointments,
+    ],
+  );
+  const wizardSuggestionBlocksSource = React.useMemo(
+    () =>
+      form.siteId === selectedSiteId && form.date === selectedDate
+        ? blocks
+        : wizardDayBlocks,
+    [blocks, form.date, form.siteId, selectedDate, selectedSiteId, wizardDayBlocks],
+  );
+  const wizardSuggestedSlots = React.useMemo(
+    () =>
+      findAvailableSlots({
+        dateValue: form.date,
+        durationMinutes: wizardSuggestedDurationMinutes,
+        resources: modalAreas,
+        appointments: wizardSuggestionAppointmentsSource,
+        blocks: wizardSuggestionBlocksSource,
+        bookableWindow: wizardBookableWindow,
+      }),
+    [
+      form.date,
+      modalAreas,
+      wizardSuggestedDurationMinutes,
+      wizardSuggestionAppointmentsSource,
+      wizardSuggestionBlocksSource,
+      wizardBookableWindow,
+    ],
+  );
+  const wizardAvailableAreaSlots = React.useMemo(
+    () =>
+      wizardSelectedArea
+        ? wizardSuggestedSlots.filter((slot) => slot.areaId === wizardSelectedArea.id)
+        : [],
+    [wizardSelectedArea, wizardSuggestedSlots],
+  );
+  const wizardAvailableStartTimes = React.useMemo(
+    () => wizardAvailableAreaSlots.map((slot) => slot.startTime),
+    [wizardAvailableAreaSlots],
+  );
+  const wizardSuggestedSlotsMessage = React.useMemo(() => {
+    if (wizardSuggestedDurationMinutes <= 0) {
+      return "Select appointment details first.";
+    }
+    if (!form.date) {
+      return "Choose a date first.";
+    }
+    if (!form.siteId || !isBookableAppointmentSite(form.siteId)) {
+      return "Choose a valid appointment site first.";
+    }
+    if (!form.areaId) {
+      return "Select an area first.";
+    }
+    if (!wizardBookableWindow.isOpen) {
+      return wizardBookableWindow.reason;
+    }
+    if (modalAreasLoading || wizardDayLoading) {
+      return "Checking available slots...";
+    }
+    if (wizardDayError) {
+      return wizardDayError;
+    }
+    if (modalAreas.length === 0) {
+      return "No appointment areas are available for this site.";
+    }
+    if (wizardSuggestedSlots.length === 0) {
+      return "No available slots found for this duration on this date.";
+    }
+    return "";
+  }, [
+    form.areaId,
+    form.date,
+    form.siteId,
+    modalAreas.length,
+    modalAreasLoading,
+    wizardBookableWindow,
+    wizardDayError,
+    wizardDayLoading,
+    wizardSuggestedDurationMinutes,
+    wizardSuggestedSlots.length,
+  ]);
   const quickCreateUsesPartyCounts = usesPartyCountsAppointmentTypeCode(
     wizardSelectedTypeCode,
   );
@@ -2040,6 +2396,45 @@ export default function Appointments() {
     wizardForm.selectedTypeId,
     wizardSelectedType,
     wizardSelectedTypeCode,
+    wizardSuggestedDurationMinutes,
+  ]);
+
+  React.useEffect(() => {
+    if (!createWizardOpen) return;
+
+    const shouldDisableStartTimes =
+      wizardSuggestedDurationMinutes <= 0 ||
+      !form.siteId ||
+      !form.date ||
+      !form.areaId ||
+      !wizardBookableWindow.isOpen ||
+      modalAreasLoading ||
+      wizardDayLoading;
+
+    if (shouldDisableStartTimes) {
+      if (form.startTime || form.endTime) {
+        setForm((prev) => ({ ...prev, startTime: "", endTime: "" }));
+      }
+      return;
+    }
+
+    if (
+      form.startTime &&
+      !wizardAvailableStartTimes.includes(form.startTime)
+    ) {
+      setForm((prev) => ({ ...prev, startTime: "", endTime: "" }));
+    }
+  }, [
+    createWizardOpen,
+    form.areaId,
+    form.date,
+    form.endTime,
+    form.siteId,
+    form.startTime,
+    modalAreasLoading,
+    wizardAvailableStartTimes,
+    wizardBookableWindow,
+    wizardDayLoading,
     wizardSuggestedDurationMinutes,
   ]);
 
@@ -5152,14 +5547,42 @@ export default function Appointments() {
                             updateForm("startTime", e.target.value)
                           }
                           style={{ ...baseInputStyle, marginTop: 6 }}
+                          disabled={
+                            modalAreasLoading ||
+                            wizardDayLoading ||
+                            wizardSuggestedDurationMinutes <= 0 ||
+                            !form.siteId ||
+                            !form.date ||
+                            !form.areaId ||
+                            !wizardBookableWindow.isOpen ||
+                            wizardAvailableStartTimes.length === 0
+                          }
                         >
-                          <option value="">Select a time...</option>
-                          {timeOptions.map((time) => (
+                          <option value="">
+                            {!form.areaId
+                              ? "Select an area first"
+                              : wizardSuggestedDurationMinutes <= 0
+                                ? "Select appointment details first"
+                                : modalAreasLoading || wizardDayLoading
+                                  ? "Loading times..."
+                                  : wizardAvailableStartTimes.length === 0
+                                    ? "No available times"
+                                    : "Select a time..."}
+                          </option>
+                          {wizardAvailableStartTimes.map((time) => (
                             <option key={time} value={time}>
                               {time}
                             </option>
                           ))}
                         </select>
+                        {wizardSuggestedSlotsMessage &&
+                        (form.areaId ||
+                          wizardSuggestedDurationMinutes <= 0 ||
+                          !wizardBookableWindow.isOpen) ? (
+                          <div className="appointment-wizard-inline-help">
+                            {wizardSuggestedSlotsMessage}
+                          </div>
+                        ) : null}
                       </label>
                       <label className="appointment-wizard-field">
                         <span>End time</span>

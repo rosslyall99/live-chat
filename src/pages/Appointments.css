@@ -913,6 +913,14 @@
   color: var(--appointments-text);
 }
 
+.appointment-wizard-inline-help {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--appointments-muted);
+}
+
 .appointment-wizard-warning-inline {
   padding: 11px 12px;
   border-radius: 13px;
