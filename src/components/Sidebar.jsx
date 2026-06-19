@@ -2,173 +2,168 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { ui } from "../ui/tokens";
-import PhilLogo from "../images/PHiL.png";
+import HubLogo from "../images/iconTransparent.png";
 
 function SectionTitle({ children }) {
-    return (
-        <div
-            style={{
-                marginTop: 14,
-                marginBottom: 8,
-                padding: "0 14px",
-                fontSize: 11,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: ui.colors.sidebarMuted,
-                opacity: 0.9,
-            }}
-        >
-            {children}
-        </div>
-    );
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        marginBottom: 8,
+        padding: "0 14px",
+        fontSize: 11,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        color: ui.colors.sidebarMuted,
+        opacity: 0.9,
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Item({ to, label }) {
-    return (
-        <NavLink
-            to={to}
-            style={({ isActive }) => ({
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 14px",
-                margin: "2px 10px",
-                borderRadius: 12,
-                textDecoration: "none",
-                color: ui.colors.sidebarText,
-                background: isActive ? ui.colors.sidebarActiveBg : "transparent",
-                position: "relative",
-                fontWeight: isActive ? 700 : 500,
-            })}
-        >
-            {({ isActive }) => (
-                <>
-                    <span
-                        style={{
-                            width: 6,
-                            height: 18,
-                            borderRadius: 999,
-                            background: isActive ? ui.colors.brand : "transparent",
-                            boxShadow: isActive ? `0 0 0 4px ${ui.colors.brandSoft}` : "none",
-                            flex: "0 0 auto",
-                        }}
-                    />
-                    <span>{label}</span>
-                </>
-            )}
-        </NavLink>
-    );
+  return (
+    <NavLink
+      to={to}
+      style={({ isActive }) => ({
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        margin: "2px 10px",
+        borderRadius: 12,
+        textDecoration: "none",
+        color: ui.colors.sidebarText,
+        background: isActive ? ui.colors.sidebarActiveBg : "transparent",
+        position: "relative",
+        fontWeight: isActive ? 700 : 500,
+      })}
+    >
+      {({ isActive }) => (
+        <>
+          <span
+            style={{
+              width: 6,
+              height: 18,
+              borderRadius: 999,
+              background: isActive ? ui.colors.brand : "transparent",
+              boxShadow: isActive ? `0 0 0 4px ${ui.colors.brandSoft}` : "none",
+              flex: "0 0 auto",
+            }}
+          />
+          <span>{label}</span>
+        </>
+      )}
+    </NavLink>
+  );
 }
 
 export default function Sidebar({ role = "agent" }) {
-    const normalizedRole = String(role).toLowerCase();
-    const isAdmin = normalizedRole === "admin";
-    const isManager = normalizedRole === "manager";
-    const canViewAppointmentEmails = isAdmin || isManager;
+  const normalizedRole = String(role).toLowerCase();
+  const isAdmin = normalizedRole === "admin";
+  const isManager = normalizedRole === "manager";
+  const canViewAppointmentEmails = isAdmin || isManager;
 
-    return (
-        <aside
+  return (
+    <aside
+      style={{
+        width: 260,
+        minWidth: 260,
+        height: "100vh",
+        position: "sticky",
+        top: 0,
+        background: `linear-gradient(180deg, ${ui.colors.sidebarBg} 0%, ${ui.colors.sidebarBg2} 100%)`,
+        borderRight: `1px solid ${ui.colors.sidebarBorder}`,
+        color: ui.colors.sidebarText,
+        fontFamily: ui.font.ui,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Brand */}
+      <div
+        style={{
+          padding: "18px 16px 14px 16px",
+          borderBottom: `1px solid ${ui.colors.sidebarBorder}`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
             style={{
-                width: 260,
-                minWidth: 260,
-                height: "100vh",
-                position: "sticky",
-                top: 0,
-                background: `linear-gradient(180deg, ${ui.colors.sidebarBg} 0%, ${ui.colors.sidebarBg2} 100%)`,
-                borderRight: `1px solid ${ui.colors.sidebarBorder}`,
-                color: ui.colors.sidebarText,
-                fontFamily: ui.font.ui,
-                display: "flex",
-                flexDirection: "column",
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.06)",
+              //border: `1px solid ${ui.colors.sidebarBorder}`,
+              display: "grid",
+              placeItems: "center",
+              overflow: "hidden",
+              flex: "0 0 auto",
             }}
-        >
-            {/* Brand */}
-            <div
-                style={{
-                    padding: "18px 16px 14px 16px",
-                    borderBottom: `1px solid ${ui.colors.sidebarBorder}`,
-                }}
-            >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                        style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 10,
-                            background: "rgba(255,255,255,0.06)",
-                            //border: `1px solid ${ui.colors.sidebarBorder}`,
-                            display: "grid",
-                            placeItems: "center",
-                            overflow: "hidden",
-                            flex: "0 0 auto",
-                        }}
-                    >
-                        <img
-                            src={PhilLogo}
-                            alt="PHiL"
-                            style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "contain",
-                                display: "block",
-                            }}
-                            draggable={false}
-                        />
-                    </div>
+          >
+            <img
+              src={HubLogo}
+              alt="Hub"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
+              }}
+              draggable={false}
+            />
+          </div>
 
-                    <div style={{ lineHeight: 1.1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 800 }}>Slanj Kilts</div>
-                        <div style={{ fontSize: 12, color: ui.colors.sidebarMuted }}>
-                            Personal Hub: Live
-                        </div>
-                    </div>
+          <div style={{ lineHeight: 1, color: ui.colors.sidebarText }}>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>HUB</div>
+          </div>
+        </div>
+      </div>
 
-                    {/* ✅ removed Agent/Admin pill from header */}
-                </div>
-            </div>
+      {/* Nav */}
+      <div style={{ paddingTop: 10, overflow: "auto" }}>
+        <SectionTitle>Apps</SectionTitle>
+        <Item to="/rota" label="Rota" />
+        <Item to="/appointments" label="Appointments" />
+        <Item to="/inbox" label="Inbox" />
 
-            {/* Nav */}
-            <div style={{ paddingTop: 10, overflow: "auto" }}>
-                <SectionTitle>Apps</SectionTitle>
-                <Item to="/rota" label="Rota" />
-                <Item to="/appointments" label="Appointments" />
-                <Item to="/inbox" label="Inbox" />
+        <SectionTitle>User</SectionTitle>
+        <Item to="/change-pin" label="Change PIN" />
 
-                <SectionTitle>User</SectionTitle>
-                <Item to="/change-pin" label="Change PIN" />
+        {canViewAppointmentEmails && (
+          <>
+            <SectionTitle>Admin</SectionTitle>
+            <Item to="/admin/appointment-emails" label="Appointment Emails" />
+          </>
+        )}
 
-                {canViewAppointmentEmails && (
-                    <>
-                        <SectionTitle>Admin</SectionTitle>
-                        <Item to="/admin/appointment-emails" label="Appointment Emails" />
-                    </>
-                )}
+        {isAdmin && (
+          <>
+            <Item to="/admin/appointment-types" label="Appointment Types" />
+            <Item to="/admin/live" label="Active Chats" />
+            <Item to="/admin/insights" label="Insights" />
+            <Item to="/admin/users" label="Users" />
+            <Item to="/admin/canned" label="Canned Replies" />
+          </>
+        )}
+      </div>
 
-                {isAdmin && (
-                    <>
-                        <Item to="/admin/appointment-types" label="Appointment Types" />
-                        <Item to="/admin/live" label="Active Chats" />
-                        <Item to="/admin/insights" label="Insights" />
-                        <Item to="/admin/users" label="Users" />
-                        <Item to="/admin/canned" label="Canned Replies" />
-                    </>
-                )}
-            </div>
-
-            {/* Bottom */}
-            <div
-                style={{
-                    marginTop: "auto",
-                    padding: 14,
-                    borderTop: `1px solid ${ui.colors.sidebarBorder}`,
-                    color: ui.colors.sidebarMuted,
-                    fontSize: 12,
-                }}
-            >
-                <div style={{ opacity: 0.9 }}>
-                    Ross Lyall © {new Date().getFullYear()}
-                </div>
-            </div>
-        </aside>
-    );
+      {/* Bottom */}
+      <div
+        style={{
+          marginTop: "auto",
+          padding: 14,
+          borderTop: `1px solid ${ui.colors.sidebarBorder}`,
+          color: ui.colors.sidebarMuted,
+          fontSize: 12,
+        }}
+      >
+        <div style={{ opacity: 0.9 }}>
+          Ross Lyall © {new Date().getFullYear()}
+        </div>
+      </div>
+    </aside>
+  );
 }

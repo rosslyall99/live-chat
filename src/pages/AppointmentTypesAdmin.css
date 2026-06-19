@@ -1,0 +1,170 @@
+.appointment-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.33fr) minmax(520px, 0.67fr);
+  gap: 20px;
+  align-items: start;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.appointment-admin-column {
+  min-width: 0;
+  min-height: 0;
+}
+
+.appointment-admin-main-card {
+  display: grid;
+  gap: 16px;
+  align-content: stretch;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.appointment-admin-main-card--categories {
+  grid-template-rows: auto minmax(180px, auto) minmax(0, 1fr);
+}
+
+.appointment-admin-main-card--categories-empty {
+  grid-template-rows: auto minmax(0, auto);
+}
+
+.appointment-admin-main-card--types {
+  grid-template-rows: auto minmax(180px, 0.9fr) minmax(0, 1.1fr);
+  min-height: 0;
+  height: calc(100vh - 190px);
+}
+
+.appointment-admin-main-card--types-empty {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: calc(100vh - 190px);
+}
+
+.appointment-admin-header {
+  min-width: 0;
+}
+
+.appointment-admin-selector-card,
+.appointment-admin-detail-card {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(226, 232, 240, 1);
+  border-radius: 12px;
+  background: #fff;
+  overflow-x: hidden;
+  padding: 16px;
+}
+
+.appointment-admin-selector-card {
+  max-height: 320px;
+}
+
+.appointment-admin-main-card--categories .appointment-admin-detail-card,
+.appointment-admin-main-card--types .appointment-admin-selector-card {
+  max-height: none;
+}
+
+.appointment-admin-detail-shell {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.appointment-admin-detail-card {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.appointment-admin-main-card--categories .appointment-admin-detail-card,
+.appointment-admin-main-card--types .appointment-admin-detail-card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.appointment-admin-sticky-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 14px 0px 0px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.appointment-admin-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #cfd6df #ffffff;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-track {
+  background: #ffffff;
+  border-radius: 999px;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-thumb {
+  background: #cfd6df;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-thumb:hover {
+  background: #aeb8c4;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+@media (max-width: 1080px) {
+  .appointment-admin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .appointment-admin-main-card--types {
+    height: auto;
+  }
+
+  .appointment-admin-main-card--types-empty {
+    height: auto;
+  }
+}
+
+/* Appointment Types admin: remove ugly native number arrows */
+.appointment-types-page input[type="number"]::-webkit-inner-spin-button,
+.appointment-types-page input[type="number"]::-webkit-outer-spin-button,
+.appointment-types-admin input[type="number"]::-webkit-inner-spin-button,
+.appointment-types-admin input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.appointment-types-page input[type="number"],
+.appointment-types-admin input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

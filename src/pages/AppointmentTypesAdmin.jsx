@@ -2,41 +2,151 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
+import "./AppointmentTypesAdmin.css";
 
 const DEFAULT_DURATION_MINUTES = 30;
 const FALLBACK_COLOR = "#94a3b8";
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const CATEGORY_CODES = {
+  hire: "hire",
+  purchase: "purchase",
+  retailCollection: "retail_collection",
+  other: "other",
+};
 
 // Keep this aligned with the current booking wizard in Appointments.jsx until the
 // wizard is fully migrated to database-driven categories/types.
 const WIZARD_TYPE_RULES = [
-  { rawNames: ["Hire Measurement"], categoryName: "Hire", editorName: "Hire Measurement" },
-  { rawNames: ["Hire Remeasure", "Remeasure"], categoryName: "Hire", editorName: "Hire Remeasure" },
-  { rawNames: ["Collection", "Party Collection Try On", "Hire Collection"], categoryName: "Hire", editorName: "Collection" },
-  { rawNames: ["Style & Fit"], categoryName: "Hire", editorName: "Style & Fit" },
-  { rawNames: ["Full Try On"], categoryName: "Hire", editorName: "Full Try On" },
-  { rawNames: ["Retail Purchase - Full Kilt Package"], categoryName: "Purchase", editorName: "Full Kilt Package" },
-  { rawNames: ["Retail Purchase - Kilt Only"], categoryName: "Purchase", editorName: "Kilt Only" },
-  { rawNames: ["Retail Purchase - Trousers"], categoryName: "Purchase", editorName: "Trousers" },
-  { rawNames: ["Retail Purchase - Jacket & Waistcoat"], categoryName: "Purchase", editorName: "Jacket & Waistcoat" },
-  { rawNames: ["Retail Purchase - Accessories"], categoryName: "Purchase", editorName: "Accessories" },
-  { rawNames: ["Retail Collection - Full Kilt Outfit"], categoryName: "Retail Collection", editorName: "Full Kilt Outfit" },
-  { rawNames: ["Retail Collection - Kilt Only"], categoryName: "Retail Collection", editorName: "Kilt Only" },
-  { rawNames: ["Retail Collection - Trousers"], categoryName: "Retail Collection", editorName: "Trousers" },
-  { rawNames: ["Retail Collection - Jacket & Waistcoat"], categoryName: "Retail Collection", editorName: "Jacket & Waistcoat" },
-  { rawNames: ["Retail Collection - Accessories"], categoryName: "Retail Collection", editorName: "Accessories" },
-  { rawNames: ["Alteration - Kilt"], categoryName: "Other", editorName: "Alteration Kilt" },
-  { rawNames: ["Alteration - Trews"], categoryName: "Other", editorName: "Alteration Trews" },
+  {
+    code: "hire_measurement",
+    rawNames: ["Hire Measurement"],
+    categoryName: "Hire",
+    editorName: "Hire Measurement",
+  },
+  {
+    code: "hire_remeasure",
+    rawNames: ["Hire Remeasure", "Remeasure"],
+    categoryName: "Hire",
+    editorName: "Hire Remeasure",
+  },
+  {
+    code: "hire_collection",
+    rawNames: ["Collection", "Party Collection Try On", "Hire Collection"],
+    categoryName: "Hire",
+    editorName: "Collection",
+  },
+  {
+    code: "hire_style_fit",
+    rawNames: ["Style & Fit"],
+    categoryName: "Hire",
+    editorName: "Style & Fit",
+  },
+  {
+    code: "hire_full_try_on",
+    rawNames: ["Full Try On"],
+    categoryName: "Hire",
+    editorName: "Full Try On",
+  },
+  {
+    code: "retail_purchase_full_kilt_package",
+    rawNames: ["Retail Purchase - Full Kilt Package"],
+    categoryName: "Purchase",
+    editorName: "Full Kilt Package",
+  },
+  {
+    code: "retail_purchase_kilt_only",
+    rawNames: ["Retail Purchase - Kilt Only"],
+    categoryName: "Purchase",
+    editorName: "Kilt Only",
+  },
+  {
+    code: "retail_purchase_trousers",
+    rawNames: ["Retail Purchase - Trousers"],
+    categoryName: "Purchase",
+    editorName: "Trousers",
+  },
+  {
+    code: "retail_purchase_jacket_waistcoat",
+    rawNames: ["Retail Purchase - Jacket & Waistcoat"],
+    categoryName: "Purchase",
+    editorName: "Jacket & Waistcoat",
+  },
+  {
+    code: "retail_purchase_accessories",
+    rawNames: ["Retail Purchase - Accessories"],
+    categoryName: "Purchase",
+    editorName: "Accessories",
+  },
+  {
+    code: "retail_collection_full_kilt_outfit",
+    rawNames: ["Retail Collection - Full Kilt Outfit"],
+    categoryName: "Retail Collection",
+    editorName: "Full Kilt Outfit",
+  },
+  {
+    code: "retail_collection_kilt_only",
+    rawNames: ["Retail Collection - Kilt Only"],
+    categoryName: "Retail Collection",
+    editorName: "Kilt Only",
+  },
+  {
+    code: "retail_collection_trousers",
+    rawNames: ["Retail Collection - Trousers"],
+    categoryName: "Retail Collection",
+    editorName: "Trousers",
+  },
+  {
+    code: "retail_collection_jacket_waistcoat",
+    rawNames: ["Retail Collection - Jacket & Waistcoat"],
+    categoryName: "Retail Collection",
+    editorName: "Jacket & Waistcoat",
+  },
+  {
+    code: "retail_collection_accessories",
+    rawNames: ["Retail Collection - Accessories"],
+    categoryName: "Retail Collection",
+    editorName: "Accessories",
+  },
+  {
+    code: "alteration_kilt",
+    rawNames: ["Alteration - Kilt"],
+    categoryName: "Other",
+    editorName: "Alteration Kilt",
+  },
+  {
+    code: "alteration_trews",
+    rawNames: ["Alteration - Trews"],
+    categoryName: "Other",
+    editorName: "Alteration Trews",
+  },
+  {
+    code: "custom_appointment",
+    rawNames: ["Custom Appointment"],
+    categoryName: "Other",
+    editorName: "Custom Appointment",
+  },
 ];
 
 const RULE_BY_RAW_NAME = new Map(
   WIZARD_TYPE_RULES.flatMap((rule) =>
-    rule.rawNames.map((rawName) => [rawName.trim().toLowerCase(), rule])
-  )
+    rule.rawNames.map((rawName) => [rawName.trim().toLowerCase(), rule]),
+  ),
+);
+
+const RULE_BY_CODE = new Map(
+  WIZARD_TYPE_RULES.map((rule) => [String(rule.code || "").trim().toLowerCase(), rule]),
 );
 
 function normalizeText(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeCode(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeColor(value) {
@@ -75,6 +185,7 @@ function blankTypeDraft(sortOrder = 100, categoryId = "") {
     name: "",
     duration_minutes: DEFAULT_DURATION_MINUTES,
     color: "",
+    text_color: "",
     is_active: true,
     sort_order: sortOrder,
     description: "",
@@ -99,36 +210,51 @@ function toTypeDraft(type) {
     name: type.editor_name || type.name || "",
     duration_minutes: Number(type.duration_minutes || DEFAULT_DURATION_MINUTES),
     color: type.color || "",
+    text_color: type.text_color || "",
     is_active: Boolean(type.is_active),
     sort_order: Number(type.sort_order || 100),
     description: type.description || "",
   };
 }
 
-function composeStoredTypeName(editorName, categoryName) {
+function composeStoredTypeName(editorName, category) {
   const trimmed = String(editorName || "").trim();
   if (!trimmed) return "";
 
-  if (categoryName === "Purchase") {
+  const categoryCode = normalizeCode(category?.code);
+  const categoryName = String(category?.name || "").trim();
+
+  if (
+    categoryCode === CATEGORY_CODES.purchase ||
+    categoryName === "Purchase"
+  ) {
     return `Retail Purchase - ${trimmed}`;
   }
 
-  if (categoryName === "Retail Collection") {
+  if (
+    categoryCode === CATEGORY_CODES.retailCollection ||
+    categoryName === "Retail Collection" ||
+    categoryName === "Collection"
+  ) {
     return `Retail Collection - ${trimmed}`;
   }
 
-  if (categoryName === "Other") {
+  if (categoryCode === CATEGORY_CODES.other || categoryName === "Other") {
     const normalized = normalizeText(trimmed);
     if (normalized === "alteration kilt") return "Alteration - Kilt";
-    if (normalized === "alteration trews" || normalized === "alteration trews/trousers") {
+    if (
+      normalized === "alteration trews" ||
+      normalized === "alteration trews/trousers"
+    ) {
       return "Alteration - Trews";
     }
     return trimmed;
   }
 
-  if (categoryName === "Hire") {
+  if (categoryCode === CATEGORY_CODES.hire || categoryName === "Hire") {
     const normalized = normalizeText(trimmed);
-    if (normalized === "hire remeasure" || normalized === "remeasure") return "Hire Remeasure";
+    if (normalized === "hire remeasure" || normalized === "remeasure")
+      return "Hire Remeasure";
     if (normalized === "collection") return "Collection";
     return trimmed;
   }
@@ -136,20 +262,39 @@ function composeStoredTypeName(editorName, categoryName) {
   return trimmed;
 }
 
+function resolveWizardTypeRule(category, editorName, existingCode) {
+  const codeRule = RULE_BY_CODE.get(normalizeCode(existingCode));
+  if (codeRule) return codeRule;
+
+  const storedName = composeStoredTypeName(editorName, category);
+  return (
+    RULE_BY_RAW_NAME.get(normalizeText(storedName)) ||
+    RULE_BY_RAW_NAME.get(normalizeText(editorName)) ||
+    null
+  );
+}
+
+function deriveTypeCode(category, editorName, existingCode) {
+  const rule = resolveWizardTypeRule(category, editorName, existingCode);
+  if (rule?.code) return rule.code;
+
+  const normalizedExistingCode = normalizeCode(existingCode);
+  return normalizedExistingCode || null;
+}
+
 function buildUiType(row, categoriesById) {
-  const rule = RULE_BY_RAW_NAME.get(normalizeText(row.name)) || null;
-  const categoryName = categoriesById.get(row.category_id) || rule?.categoryName || "";
+  const rule =
+    RULE_BY_CODE.get(normalizeCode(row.code)) ||
+    RULE_BY_RAW_NAME.get(normalizeText(row.name)) ||
+    null;
+  const category = categoriesById.get(row.category_id) || null;
+  const categoryName = category?.name || rule?.categoryName || "";
 
   return {
     ...row,
     category_name: categoryName,
     editor_name: rule?.editorName || row.name,
-    is_wizard_known: Boolean(rule),
   };
-}
-
-function isWizardKnownType(row) {
-  return RULE_BY_RAW_NAME.has(normalizeText(row?.name));
 }
 
 function reorderItems(items, sourceId, targetId) {
@@ -201,7 +346,9 @@ function RowCard({
       onClick={onClick}
       style={{
         padding: "9px 12px",
-        border: isSelected ? "1px solid rgba(168,85,247,0.34)" : `1px solid ${ui.colors.border}`,
+        border: isSelected
+          ? "1px solid rgba(168,85,247,0.34)"
+          : `1px solid ${ui.colors.border}`,
         borderRadius: 12,
         textAlign: "left",
         background: isSelected ? "rgba(168,85,247,0.06)" : ui.colors.cardBg,
@@ -211,9 +358,9 @@ function RowCard({
           ? "0 12px 24px rgba(15, 23, 42, 0.16)"
           : isDropTarget
             ? "0 8px 18px rgba(15, 23, 42, 0.08)"
-          : isSelected
-            ? "0 0 0 3px rgba(168,85,247,0.08)"
-            : "none",
+            : isSelected
+              ? "0 0 0 3px rgba(168,85,247,0.08)"
+              : "none",
         outline: "none",
         transform,
         opacity: isDragging ? 0.96 : 1,
@@ -238,7 +385,8 @@ export default function AppointmentTypesAdmin() {
   const [appointmentTypes, setAppointmentTypes] = React.useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = React.useState("");
   const [selectedTypeId, setSelectedTypeId] = React.useState("");
-  const [categoryDraft, setCategoryDraft] = React.useState(blankCategoryDraft());
+  const [categoryDraft, setCategoryDraft] =
+    React.useState(blankCategoryDraft());
   const [typeDraft, setTypeDraft] = React.useState(blankTypeDraft());
   const [dragCategoryId, setDragCategoryId] = React.useState("");
   const [dragTypeId, setDragTypeId] = React.useState("");
@@ -262,7 +410,7 @@ export default function AppointmentTypesAdmin() {
       boxSizing: "border-box",
       fontFamily: ui.font.ui,
     }),
-    []
+    [],
   );
 
   const cardStyle = React.useMemo(
@@ -272,7 +420,7 @@ export default function AppointmentTypesAdmin() {
       background: ui.colors.cardBg,
       overflow: "hidden",
     }),
-    []
+    [],
   );
 
   const showToast = React.useCallback((type, message, timeoutMs) => {
@@ -308,32 +456,30 @@ export default function AppointmentTypesAdmin() {
   const categoriesById = React.useMemo(() => {
     const map = new Map();
     for (const category of categories) {
-      map.set(category.id, category.name);
+      map.set(category.id, category);
     }
     return map;
   }, [categories]);
 
-  const wizardKnownTypes = React.useMemo(
-    () =>
-      appointmentTypes
-        .map((type) => buildUiType(type, categoriesById))
-        .filter((type) => type.is_wizard_known),
-    [appointmentTypes, categoriesById]
+  const uiTypes = React.useMemo(
+    () => appointmentTypes.map((type) => buildUiType(type, categoriesById)),
+    [appointmentTypes, categoriesById],
   );
 
   const selectedCategory = React.useMemo(
-    () => visibleCategories.find((item) => item.id === selectedCategoryId) || null,
-    [selectedCategoryId, visibleCategories]
+    () =>
+      visibleCategories.find((item) => item.id === selectedCategoryId) || null,
+    [selectedCategoryId, visibleCategories],
   );
 
   const visibleTypes = React.useMemo(() => {
     if (!selectedCategory) return [];
-    return wizardKnownTypes.filter((type) => type.category_id === selectedCategory.id);
-  }, [selectedCategory, wizardKnownTypes]);
+    return uiTypes.filter((type) => type.category_id === selectedCategory.id);
+  }, [selectedCategory, uiTypes]);
 
   const selectedType = React.useMemo(
     () => visibleTypes.find((item) => item.id === selectedTypeId) || null,
-    [selectedTypeId, visibleTypes]
+    [selectedTypeId, visibleTypes],
   );
 
   const loadAll = React.useCallback(async () => {
@@ -355,7 +501,8 @@ export default function AppointmentTypesAdmin() {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      if (!profile?.is_active) throw new Error("Your staff profile is inactive or missing.");
+      if (!profile?.is_active)
+        throw new Error("Your staff profile is inactive or missing.");
 
       const nextRole = String(profile.role || "").toLowerCase();
       setRole(nextRole);
@@ -371,12 +518,14 @@ export default function AppointmentTypesAdmin() {
       const [categoriesRes, typesRes] = await Promise.all([
         supabase
           .from("appointment_categories")
-          .select("id, name, sort_order, is_active, created_at, updated_at")
+          .select("id, name, code, sort_order, is_active, created_at, updated_at")
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true }),
         supabase
           .from("appointment_types")
-          .select("id, name, category_id, duration_minutes, color, sort_order, is_active, description, created_at, updated_at")
+          .select(
+            "id, name, code, category_id, duration_minutes, color, text_color, sort_order, is_active, description, created_at, updated_at",
+          )
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true }),
       ]);
@@ -388,7 +537,10 @@ export default function AppointmentTypesAdmin() {
       setAppointmentTypes(typesRes.data || []);
     } catch (err) {
       console.error("appointment types admin: load failed", err);
-      showToast("error", err?.message || "Could not load appointment type settings.");
+      showToast(
+        "error",
+        err?.message || "Could not load appointment type settings.",
+      );
       setCategories([]);
       setAppointmentTypes([]);
       setSelectedCategoryId("");
@@ -402,58 +554,60 @@ export default function AppointmentTypesAdmin() {
     loadAll();
   }, [loadAll]);
 
-  React.useEffect(() => {
-    if (selectedCategoryId === "__new__") {
-      setCategoryDraft(blankCategoryDraft(nextSortOrder(visibleCategories)));
-      return;
-    }
-
-    if (!visibleCategories.length) {
-      setCategoryDraft(blankCategoryDraft());
-      return;
+  function getCategoryDraftForSelection(
+    nextSelectedCategoryId = selectedCategoryId,
+  ) {
+    if (nextSelectedCategoryId === "__new__") {
+      return blankCategoryDraft(nextSortOrder(visibleCategories));
     }
 
     const nextSelectedCategory =
-      visibleCategories.find((item) => item.id === selectedCategoryId) || null;
+      visibleCategories.find((item) => item.id === nextSelectedCategoryId) ||
+      null;
 
-    if (!nextSelectedCategory) {
-      setCategoryDraft(blankCategoryDraft());
-      return;
-    }
+    return nextSelectedCategory
+      ? toCategoryDraft(nextSelectedCategory)
+      : blankCategoryDraft();
+  }
 
-    setCategoryDraft(toCategoryDraft(nextSelectedCategory));
-  }, [selectedCategoryId, visibleCategories]);
-
-  React.useEffect(() => {
-    if (selectedTypeId === "__new__") {
-      setTypeDraft(blankTypeDraft(nextSortOrder(visibleTypes), selectedCategory?.id || ""));
-      return;
-    }
-
-    if (!visibleTypes.length) {
-      setTypeDraft(blankTypeDraft(nextSortOrder(appointmentTypes), selectedCategory?.id || ""));
-      return;
+  function getTypeDraftForSelection(nextSelectedTypeId = selectedTypeId) {
+    if (nextSelectedTypeId === "__new__") {
+      return blankTypeDraft(
+        nextSortOrder(visibleTypes),
+        selectedCategory?.id || "",
+      );
     }
 
     const nextSelectedType =
-      visibleTypes.find((item) => item.id === selectedTypeId) || null;
+      visibleTypes.find((item) => item.id === nextSelectedTypeId) || null;
 
-    if (!nextSelectedType) {
-      setTypeDraft(blankTypeDraft(nextSortOrder(visibleTypes), selectedCategory?.id || ""));
-      return;
+    if (nextSelectedType) {
+      return toTypeDraft(nextSelectedType);
     }
 
-    setTypeDraft(toTypeDraft(nextSelectedType));
+    const fallbackSortOrder = visibleTypes.length
+      ? nextSortOrder(visibleTypes)
+      : nextSortOrder(appointmentTypes);
+
+    return blankTypeDraft(fallbackSortOrder, selectedCategory?.id || "");
+  }
+
+  React.useEffect(() => {
+    setCategoryDraft(getCategoryDraftForSelection());
+  }, [selectedCategoryId, visibleCategories]);
+
+  React.useEffect(() => {
+    setTypeDraft(getTypeDraftForSelection());
   }, [appointmentTypes, selectedCategory, selectedTypeId, visibleTypes]);
 
   function beginNewCategory() {
     setSelectedCategoryId("__new__");
-    setCategoryDraft(blankCategoryDraft(nextSortOrder(visibleCategories)));
+    setCategoryDraft(getCategoryDraftForSelection("__new__"));
   }
 
   function beginNewType() {
     setSelectedTypeId("__new__");
-    setTypeDraft(blankTypeDraft(nextSortOrder(visibleTypes), selectedCategory?.id || ""));
+    setTypeDraft(getTypeDraftForSelection("__new__"));
   }
 
   function startDrag(setDragId, setDragOverId, id, event) {
@@ -481,9 +635,14 @@ export default function AppointmentTypesAdmin() {
         current,
         sourceId,
         targetId,
-        (item) => isWizardKnownType(item) && item.category_id === selectedCategory.id
-      )
+        (item) => item.category_id === selectedCategory.id,
+      ),
     );
+  }
+
+  function reorderCategoriesDuringDrag(sourceId, targetId) {
+    if (!sourceId || sourceId === targetId) return;
+    setCategories((current) => reorderItems(current, sourceId, targetId));
   }
 
   async function persistCategoryOrder(nextCategories) {
@@ -502,7 +661,10 @@ export default function AppointmentTypesAdmin() {
 
     try {
       const updates = normalized.map((item) =>
-        supabase.from("appointment_categories").update({ sort_order: item.sort_order }).eq("id", item.id)
+        supabase
+          .from("appointment_categories")
+          .update({ sort_order: item.sort_order })
+          .eq("id", item.id),
       );
 
       const results = await Promise.all(updates);
@@ -519,7 +681,10 @@ export default function AppointmentTypesAdmin() {
   async function persistTypeOrder(nextVisibleTypes) {
     const visibleIds = new Set(nextVisibleTypes.map((item) => item.id));
     const nextVisibleMap = new Map(
-      nextVisibleTypes.map((item, index) => [item.id, { ...item, sort_order: (index + 1) * 10 }])
+      nextVisibleTypes.map((item, index) => [
+        item.id,
+        { ...item, sort_order: (index + 1) * 10 },
+      ]),
     );
 
     const previousTypes = appointmentTypes;
@@ -543,7 +708,10 @@ export default function AppointmentTypesAdmin() {
 
     try {
       const updates = Array.from(nextVisibleMap.values()).map((item) =>
-        supabase.from("appointment_types").update({ sort_order: item.sort_order }).eq("id", item.id)
+        supabase
+          .from("appointment_types")
+          .update({ sort_order: item.sort_order })
+          .eq("id", item.id),
       );
 
       const results = await Promise.all(updates);
@@ -552,25 +720,20 @@ export default function AppointmentTypesAdmin() {
     } catch (err) {
       console.error("appointment types admin: type reorder failed", err);
       setAppointmentTypes(previousTypes);
-      showToast("error", err?.message || "Could not save the appointment type order.");
+      showToast(
+        "error",
+        err?.message || "Could not save the appointment type order.",
+      );
       await loadAll();
     }
   }
 
   function resetCategoryDraft() {
-    setCategoryDraft(
-      selectedCategoryId === "__new__"
-        ? blankCategoryDraft(nextSortOrder(visibleCategories))
-        : toCategoryDraft(selectedCategory)
-    );
+    setCategoryDraft(getCategoryDraftForSelection());
   }
 
   function resetTypeDraft() {
-    setTypeDraft(
-      selectedTypeId === "__new__"
-        ? blankTypeDraft(nextSortOrder(visibleTypes), selectedCategory?.id || "")
-        : toTypeDraft(selectedType)
-    );
+    setTypeDraft(getTypeDraftForSelection());
   }
 
   async function saveCategory(event) {
@@ -592,12 +755,18 @@ export default function AppointmentTypesAdmin() {
     try {
       const payload = {
         name,
-        sort_order: Number(categoryDraft.sort_order || nextSortOrder(visibleCategories)),
+        sort_order: Number(
+          categoryDraft.sort_order || nextSortOrder(visibleCategories),
+        ),
         is_active: Boolean(categoryDraft.is_active),
       };
 
       const response = isNewCategory
-        ? await supabase.from("appointment_categories").insert(payload).select("id").single()
+        ? await supabase
+            .from("appointment_categories")
+            .insert(payload)
+            .select("id")
+            .single()
         : await supabase
             .from("appointment_categories")
             .update(payload)
@@ -611,7 +780,10 @@ export default function AppointmentTypesAdmin() {
       if (response.data?.id) {
         setSelectedCategoryId(response.data.id);
       }
-      showToast("success", isNewCategory ? "Category created." : "Category saved.");
+      showToast(
+        "success",
+        isNewCategory ? "Category created." : "Category saved.",
+      );
     } catch (err) {
       console.error("appointment types admin: category save failed", err);
       showToast("error", err?.message || "Could not save the category.");
@@ -631,9 +803,17 @@ export default function AppointmentTypesAdmin() {
     const editorName = typeDraft.name.trim();
     const categoryId = String(typeDraft.category_id || "").trim();
     const durationMinutes = Number(typeDraft.duration_minutes);
-    const categoryName = categoriesById.get(categoryId) || "";
-    const storedName = composeStoredTypeName(editorName, categoryName);
+    const category = categoriesById.get(categoryId) || null;
+    const storedName = composeStoredTypeName(editorName, category);
+    const selectedTypeRow =
+      appointmentTypes.find((item) => item.id === typeDraft.id) || null;
+    const typeCode = deriveTypeCode(
+      category,
+      editorName,
+      selectedTypeRow?.code || "",
+    );
     const color = normalizeColor(typeDraft.color);
+    const textColor = normalizeColor(typeDraft.text_color);
 
     if (!editorName) {
       showToast("error", "Appointment type name is required.");
@@ -645,8 +825,15 @@ export default function AppointmentTypesAdmin() {
       return;
     }
 
-    if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 480) {
-      showToast("error", "Default duration must be a whole number between 5 and 480 minutes.");
+    if (
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes < 5 ||
+      durationMinutes > 480
+    ) {
+      showToast(
+        "error",
+        "Default duration must be a whole number between 5 and 480 minutes.",
+      );
       return;
     }
 
@@ -655,21 +842,32 @@ export default function AppointmentTypesAdmin() {
       return;
     }
 
+    if (textColor && !HEX_COLOR_RE.test(textColor)) {
+      showToast("error", "Choose a valid text colour.");
+      return;
+    }
+
     setSavingType(true);
 
     try {
       const payload = {
+        code: typeCode,
         name: storedName,
         category_id: categoryId,
         duration_minutes: durationMinutes,
         color: color || null,
+        text_color: textColor || null,
         sort_order: Number(typeDraft.sort_order || nextSortOrder(visibleTypes)),
         is_active: Boolean(typeDraft.is_active),
         description: typeDraft.description.trim() || null,
       };
 
       const response = isNewType
-        ? await supabase.from("appointment_types").insert(payload).select("id").single()
+        ? await supabase
+            .from("appointment_types")
+            .insert(payload)
+            .select("id")
+            .single()
         : await supabase
             .from("appointment_types")
             .update(payload)
@@ -683,10 +881,16 @@ export default function AppointmentTypesAdmin() {
       if (response.data?.id) {
         setSelectedTypeId(response.data.id);
       }
-      showToast("success", isNewType ? "Appointment type created." : "Appointment type saved.");
+      showToast(
+        "success",
+        isNewType ? "Appointment type created." : "Appointment type saved.",
+      );
     } catch (err) {
       console.error("appointment types admin: type save failed", err);
-      showToast("error", err?.message || "Could not save the appointment type.");
+      showToast(
+        "error",
+        err?.message || "Could not save the appointment type.",
+      );
     } finally {
       setSavingType(false);
     }
@@ -706,10 +910,19 @@ export default function AppointmentTypesAdmin() {
       if (updateError) throw updateError;
 
       await loadAll();
-      showToast("success", nextIsActive ? "Category reactivated." : "Category deactivated.");
+      showToast(
+        "success",
+        nextIsActive ? "Category reactivated." : "Category deactivated.",
+      );
     } catch (err) {
-      console.error("appointment types admin: category active toggle failed", err);
-      showToast("error", err?.message || "Could not update the category status.");
+      console.error(
+        "appointment types admin: category active toggle failed",
+        err,
+      );
+      showToast(
+        "error",
+        err?.message || "Could not update the category status.",
+      );
     } finally {
       setSavingCategory(false);
     }
@@ -729,28 +942,48 @@ export default function AppointmentTypesAdmin() {
       if (updateError) throw updateError;
 
       await loadAll();
-      showToast("success", nextIsActive ? "Appointment type reactivated." : "Appointment type deactivated.");
+      showToast(
+        "success",
+        nextIsActive
+          ? "Appointment type reactivated."
+          : "Appointment type deactivated.",
+      );
     } catch (err) {
       console.error("appointment types admin: type active toggle failed", err);
-      showToast("error", err?.message || "Could not update the appointment type status.");
+      showToast(
+        "error",
+        err?.message || "Could not update the appointment type status.",
+      );
     } finally {
       setSavingType(false);
     }
   }
 
   if (loading) {
-    return <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>Loading appointment types...</div>;
+    return (
+      <div
+        style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}
+      >
+        Loading appointment types...
+      </div>
+    );
   }
 
   if (!isAdmin) {
     return (
-      <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
-        <Link to="/inbox" style={{ textDecoration: "none", color: ui.colors.brand }}>
+      <div
+        style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}
+      >
+        <Link
+          to="/inbox"
+          style={{ textDecoration: "none", color: ui.colors.brand }}
+        >
           Back to Inbox
         </Link>
         <h2 style={{ marginTop: 8, marginBottom: 0 }}>Admins only</h2>
         <div style={{ ...ui.text.subtitle, maxWidth: 560 }}>
-          You do not have permission to manage appointment categories and appointment types.
+          You do not have permission to manage appointment categories and
+          appointment types.
         </div>
       </div>
     );
@@ -766,24 +999,35 @@ export default function AppointmentTypesAdmin() {
         flexDirection: "column",
         color: ui.colors.text,
         fontFamily: ui.font.ui,
-        overflow: "hidden",
+        overflowY: "auto",
+        overflowX: "hidden",
       }}
     >
       <h2 style={{ margin: 0 }}>Appointment Types</h2>
 
-      <div
-        style={{
-          marginTop: 18,
-          display: "grid",
-          gridTemplateColumns: "minmax(280px, 0.33fr) minmax(520px, 0.67fr)",
-          gap: 20,
-          overflow: "hidden",
-          alignItems: "start",
-        }}
-      >
-        <section style={{ display: "grid", gridTemplateRows: "auto auto auto", gap: 16, alignContent: "start" }}>
-          <div style={{ ...cardStyle, padding: 16, display: "grid", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="appointment-admin-layout" style={{ marginTop: 18 }}>
+        <section className="appointment-admin-column appointment-admin-column--categories">
+          <div
+            className={`appointment-admin-main-card ${
+              selectedCategoryId === "__new__" || selectedCategory
+                ? "appointment-admin-main-card--categories"
+                : "appointment-admin-main-card--categories-empty"
+            }`}
+            style={{
+              ...cardStyle,
+              padding: 16,
+            }}
+          >
+            <div
+              className="appointment-admin-header"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ fontSize: 18, fontWeight: 900 }}>Categories</div>
               <button
                 type="button"
@@ -803,7 +1047,13 @@ export default function AppointmentTypesAdmin() {
             </div>
 
             <div
-              style={{ maxHeight: 320, overflowY: "auto", overflowX: "hidden", padding: 2 }}
+              className="appointment-admin-selector-card appointment-admin-scroll"
+              style={{
+                ...cardStyle,
+                padding: 16,
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
@@ -817,7 +1067,7 @@ export default function AppointmentTypesAdmin() {
               }}
             >
               {visibleCategories.length === 0 ? (
-                <div style={{ ...cardStyle, padding: 12, color: ui.colors.muted }}>
+                <div style={{ padding: 4, color: ui.colors.muted }}>
                   No appointment categories are available.
                 </div>
               ) : (
@@ -836,23 +1086,44 @@ export default function AppointmentTypesAdmin() {
                         key={category.id}
                         isSelected={isSelected}
                         isDragging={dragCategoryId === category.id}
-                        isDropTarget={Boolean(dragCategoryId && dragCategoryId !== category.id && dragOverCategoryId === category.id)}
+                        isDropTarget={Boolean(
+                          dragCategoryId &&
+                          dragCategoryId !== category.id &&
+                          dragOverCategoryId === category.id,
+                        )}
                         draggable
-                        onDragStart={(event) => startDrag(setDragCategoryId, setDragOverCategoryId, category.id, event)}
-                        onDragEnd={() => endDrag(setDragCategoryId, setDragOverCategoryId)}
+                        onDragStart={(event) =>
+                          startDrag(
+                            setDragCategoryId,
+                            setDragOverCategoryId,
+                            category.id,
+                            event,
+                          )
+                        }
+                        onDragEnd={() =>
+                          endDrag(setDragCategoryId, setDragOverCategoryId)
+                        }
                         onDragEnter={(event) => {
                           event.preventDefault();
                           event.dataTransfer.dropEffect = "move";
-                          if (!dragCategoryId || dragCategoryId === category.id) return;
+                          if (!dragCategoryId || dragCategoryId === category.id)
+                            return;
                           setDragOverCategoryId(category.id);
-                          setCategories((current) => reorderItems(current, dragCategoryId, category.id));
+                          reorderCategoriesDuringDrag(
+                            dragCategoryId,
+                            category.id,
+                          );
                         }}
                         onDragOver={(event) => {
                           event.preventDefault();
                           event.dataTransfer.dropEffect = "move";
-                          if (!dragCategoryId || dragCategoryId === category.id) return;
+                          if (!dragCategoryId || dragCategoryId === category.id)
+                            return;
                           setDragOverCategoryId(category.id);
-                          setCategories((current) => reorderItems(current, dragCategoryId, category.id));
+                          reorderCategoriesDuringDrag(
+                            dragCategoryId,
+                            category.id,
+                          );
                         }}
                         onDrop={async (event) => {
                           event.preventDefault();
@@ -865,12 +1136,49 @@ export default function AppointmentTypesAdmin() {
                           setSelectedTypeId("");
                         }}
                       >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                            <span aria-hidden="true" style={{ width: 18, color: ui.colors.muted, fontWeight: 900, fontSize: 14, lineHeight: 1, cursor: "default", transition: "transform 180ms ease, color 140ms ease", transform: dragCategoryId === category.id ? "translateY(-1px)" : "translateY(0)" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 18,
+                                color: ui.colors.muted,
+                                fontWeight: 900,
+                                fontSize: 14,
+                                lineHeight: 1,
+                                cursor: "default",
+                                transition:
+                                  "transform 180ms ease, color 140ms ease",
+                                transform:
+                                  dragCategoryId === category.id
+                                    ? "translateY(-1px)"
+                                    : "translateY(0)",
+                              }}
+                            >
                               ≡
                             </span>
-                            <span style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span
+                              style={{
+                                fontWeight: 900,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
                               {category.name}
                             </span>
                           </div>
@@ -878,8 +1186,12 @@ export default function AppointmentTypesAdmin() {
                             style={{
                               fontSize: 11,
                               fontWeight: 800,
-                              color: category.is_active ? ui.colors.text : ui.colors.muted,
-                              background: category.is_active ? "rgba(15,23,42,0.06)" : "rgba(100,116,139,0.10)",
+                              color: category.is_active
+                                ? ui.colors.text
+                                : ui.colors.muted,
+                              background: category.is_active
+                                ? "rgba(15,23,42,0.06)"
+                                : "rgba(100,116,139,0.10)",
                               border: `1px solid ${ui.colors.border}`,
                               borderRadius: 999,
                               padding: "4px 8px",
@@ -897,35 +1209,76 @@ export default function AppointmentTypesAdmin() {
             </div>
 
             {selectedCategoryId === "__new__" || selectedCategory ? (
-              <form onSubmit={saveCategory} style={{ ...cardStyle, padding: 16, display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>
-                  {isNewCategory ? "New category" : categoryDraft.name || "Category details"}
-                </div>
+              <div className="appointment-admin-detail-shell">
+                <form
+                  id="appointment-category-detail-form"
+                  className="appointment-admin-detail-card appointment-admin-scroll"
+                  onSubmit={saveCategory}
+                  style={{
+                    ...cardStyle,
+                    padding: 16,
+                    display: "grid",
+                    gap: 16,
+                    alignContent: "start",
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>
+                    {isNewCategory
+                      ? "New category"
+                      : categoryDraft.name || "Category details"}
+                  </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 12 }}>
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Name
-                    <input
-                      value={categoryDraft.name}
-                      onChange={(event) => setCategoryDraft((prev) => ({ ...prev, name: event.target.value }))}
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    />
-                  </label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) 180px",
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Name
+                      <input
+                        value={categoryDraft.name}
+                        onChange={(event) =>
+                          setCategoryDraft((prev) => ({
+                            ...prev,
+                            name: event.target.value,
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      />
+                    </label>
 
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Status
-                    <select
-                      value={categoryDraft.is_active ? "active" : "inactive"}
-                      onChange={(event) => setCategoryDraft((prev) => ({ ...prev, is_active: event.target.value === "active" }))}
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </label>
-                </div>
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Status
+                      <select
+                        value={categoryDraft.is_active ? "active" : "inactive"}
+                        onChange={(event) =>
+                          setCategoryDraft((prev) => ({
+                            ...prev,
+                            is_active: event.target.value === "active",
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </label>
+                  </div>
+                </form>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                <div
+                  className="appointment-admin-sticky-footer"
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={resetCategoryDraft}
@@ -939,19 +1292,25 @@ export default function AppointmentTypesAdmin() {
                       fontWeight: 800,
                     }}
                   >
-                    Cancel / reset
+                    Cancel
                   </button>
 
                   {!isNewCategory ? (
                     <button
                       type="button"
-                      onClick={() => toggleCategoryActive(!categoryDraft.is_active)}
+                      onClick={() =>
+                        toggleCategoryActive(!categoryDraft.is_active)
+                      }
                       disabled={savingCategory}
                       style={{
                         padding: "9px 12px",
                         borderRadius: ui.radius.md,
-                        border: categoryDraft.is_active ? "1px solid rgba(239,68,68,0.35)" : `1px solid ${ui.colors.border}`,
-                        background: categoryDraft.is_active ? "rgba(239,68,68,0.12)" : ui.colors.cardBg,
+                        border: categoryDraft.is_active
+                          ? "1px solid rgba(239,68,68,0.35)"
+                          : `1px solid ${ui.colors.border}`,
+                        background: categoryDraft.is_active
+                          ? "rgba(239,68,68,0.12)"
+                          : ui.colors.cardBg,
                         color: ui.colors.text,
                         cursor: savingCategory ? "not-allowed" : "pointer",
                         fontWeight: 900,
@@ -964,6 +1323,7 @@ export default function AppointmentTypesAdmin() {
 
                   <button
                     type="submit"
+                    form="appointment-category-detail-form"
                     disabled={savingCategory}
                     style={{
                       padding: "9px 12px",
@@ -976,17 +1336,40 @@ export default function AppointmentTypesAdmin() {
                       opacity: savingCategory ? 0.6 : 1,
                     }}
                   >
-                    {savingCategory ? "Saving..." : isNewCategory ? "Create category" : "Save category"}
+                    {savingCategory
+                      ? "Saving..."
+                      : isNewCategory
+                        ? "Create"
+                        : "Save"}
                   </button>
                 </div>
-              </form>
+              </div>
             ) : null}
           </div>
         </section>
 
-        <section style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: 16, minHeight: 0 }}>
-          <div style={{ ...cardStyle, padding: 16, display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: 16, minHeight: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <section className="appointment-admin-column appointment-admin-column--types">
+          <div
+            className={`appointment-admin-main-card ${
+              selectedTypeId === "__new__" || selectedType
+                ? "appointment-admin-main-card--types"
+                : "appointment-admin-main-card--types-empty"
+            }`}
+            style={{
+              ...cardStyle,
+              padding: 16,
+            }}
+          >
+            <div
+              className="appointment-admin-header"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ fontSize: 18, fontWeight: 900 }}>Types</div>
               <button
                 type="button"
@@ -1008,7 +1391,13 @@ export default function AppointmentTypesAdmin() {
             </div>
 
             <div
-              style={{ minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: 2 }}
+              className="appointment-admin-selector-card appointment-admin-scroll"
+              style={{
+                ...cardStyle,
+                padding: 16,
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
@@ -1022,11 +1411,11 @@ export default function AppointmentTypesAdmin() {
               }}
             >
               {!selectedCategory ? (
-                <div style={{ ...cardStyle, padding: 12, color: ui.colors.muted }}>
+                <div style={{ padding: 4, color: ui.colors.muted }}>
                   Select a category to view appointment types.
                 </div>
               ) : visibleTypes.length === 0 ? (
-                <div style={{ ...cardStyle, padding: 12, color: ui.colors.muted }}>
+                <div style={{ padding: 4, color: ui.colors.muted }}>
                   No current booking types are mapped to this category.
                 </div>
               ) : (
@@ -1045,10 +1434,23 @@ export default function AppointmentTypesAdmin() {
                         key={type.id}
                         isSelected={isSelected}
                         isDragging={dragTypeId === type.id}
-                        isDropTarget={Boolean(dragTypeId && dragTypeId !== type.id && dragOverTypeId === type.id)}
+                        isDropTarget={Boolean(
+                          dragTypeId &&
+                          dragTypeId !== type.id &&
+                          dragOverTypeId === type.id,
+                        )}
                         draggable
-                        onDragStart={(event) => startDrag(setDragTypeId, setDragOverTypeId, type.id, event)}
-                        onDragEnd={() => endDrag(setDragTypeId, setDragOverTypeId)}
+                        onDragStart={(event) =>
+                          startDrag(
+                            setDragTypeId,
+                            setDragOverTypeId,
+                            type.id,
+                            event,
+                          )
+                        }
+                        onDragEnd={() =>
+                          endDrag(setDragTypeId, setDragOverTypeId)
+                        }
                         onDragEnter={(event) => {
                           event.preventDefault();
                           event.dataTransfer.dropEffect = "move";
@@ -1073,17 +1475,62 @@ export default function AppointmentTypesAdmin() {
                         }}
                         onClick={() => setSelectedTypeId(type.id)}
                       >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                            <span aria-hidden="true" style={{ width: 18, color: ui.colors.muted, fontWeight: 900, fontSize: 14, lineHeight: 1, cursor: "default", transition: "transform 180ms ease, color 140ms ease", transform: dragTypeId === type.id ? "translateY(-1px)" : "translateY(0)" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: 18,
+                                color: ui.colors.muted,
+                                fontWeight: 900,
+                                fontSize: 14,
+                                lineHeight: 1,
+                                cursor: "default",
+                                transition:
+                                  "transform 180ms ease, color 140ms ease",
+                                transform:
+                                  dragTypeId === type.id
+                                    ? "translateY(-1px)"
+                                    : "translateY(0)",
+                              }}
+                            >
                               ≡
                             </span>
-                            <div style={{ minWidth: 0, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <div
+                              style={{
+                                minWidth: 0,
+                                fontWeight: 900,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
                               {type.editor_name}
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flex: "0 0 auto",
+                            }}
+                          >
                             <span
                               style={{
                                 width: 12,
@@ -1097,8 +1544,12 @@ export default function AppointmentTypesAdmin() {
                               style={{
                                 fontSize: 11,
                                 fontWeight: 800,
-                                color: type.is_active ? ui.colors.text : ui.colors.muted,
-                                background: type.is_active ? "rgba(15,23,42,0.06)" : "rgba(100,116,139,0.10)",
+                                color: type.is_active
+                                  ? ui.colors.text
+                                  : ui.colors.muted,
+                                background: type.is_active
+                                  ? "rgba(15,23,42,0.06)"
+                                  : "rgba(100,116,139,0.10)",
                                 border: `1px solid ${ui.colors.border}`,
                                 borderRadius: 999,
                                 padding: "4px 8px",
@@ -1116,94 +1567,189 @@ export default function AppointmentTypesAdmin() {
             </div>
 
             {selectedTypeId === "__new__" || selectedType ? (
-              <form onSubmit={saveType} style={{ ...cardStyle, padding: 16, display: "grid", gap: 16 }}>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>
-                  {isNewType ? "New appointment type" : typeDraft.name || "Type details"}
-                </div>
+              <div className="appointment-admin-detail-shell">
+                <form
+                  id="appointment-type-detail-form"
+                  onSubmit={saveType}
+                  className="appointment-admin-detail-card appointment-admin-scroll"
+                  style={{
+                    ...cardStyle,
+                    padding: 16,
+                    display: "grid",
+                    gap: 16,
+                    paddingRight: 4,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                  }}
+                >
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>
+                    {isNewType
+                      ? "New appointment type"
+                      : typeDraft.name || "Type details"}
+                  </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Name
-                    <input
-                      value={typeDraft.name}
-                      onChange={(event) => setTypeDraft((prev) => ({ ...prev, name: event.target.value }))}
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    />
-                  </label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Name
+                      <input
+                        value={typeDraft.name}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            name: event.target.value,
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Category
+                      <select
+                        value={typeDraft.category_id}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            category_id: event.target.value,
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select category...</option>
+                        {visibleCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Default duration
+                      <input
+                        type="number"
+                        min="5"
+                        max="480"
+                        value={typeDraft.duration_minutes}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            duration_minutes: Number(event.target.value || 0),
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Status
+                      <select
+                        value={typeDraft.is_active ? "active" : "inactive"}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            is_active: event.target.value === "active",
+                          }))
+                        }
+                        style={{ ...inputStyle, marginTop: 6 }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      <span style={{ display: "block", marginBottom: 6 }}>
+                        Background
+                      </span>
+                      <input
+                        type="color"
+                        value={resolvePickerColor(typeDraft.color)}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            color: event.target.value,
+                          }))
+                        }
+                        style={{
+                          width: "100%",
+                          minWidth: 0,
+                          height: 42,
+                          padding: 4,
+                          borderRadius: ui.radius.md,
+                          border: `1px solid ${ui.colors.border}`,
+                          background: ui.colors.cardBg,
+                          boxSizing: "border-box",
+                          display: "block",
+                          cursor: "pointer",
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      <span style={{ display: "block", marginBottom: 6 }}>
+                        Text colour
+                      </span>
+                      <input
+                        type="color"
+                        value={resolvePickerColor(typeDraft.text_color)}
+                        onChange={(event) =>
+                          setTypeDraft((prev) => ({
+                            ...prev,
+                            text_color: event.target.value,
+                          }))
+                        }
+                        style={{
+                          width: "100%",
+                          minWidth: 0,
+                          height: 42,
+                          padding: 4,
+                          borderRadius: ui.radius.md,
+                          border: `1px solid ${ui.colors.border}`,
+                          background: ui.colors.cardBg,
+                          boxSizing: "border-box",
+                          display: "block",
+                          cursor: "pointer",
+                        }}
+                      />
+                    </label>
+                  </div>
 
                   <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Category
-                    <select
-                      value={typeDraft.category_id}
-                      onChange={(event) => setTypeDraft((prev) => ({ ...prev, category_id: event.target.value }))}
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    >
-                      <option value="">Select category...</option>
-                      {visibleCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Default duration
-                    <input
-                      type="number"
-                      min="5"
-                      max="480"
-                      value={typeDraft.duration_minutes}
+                    Notes / description
+                    <textarea
+                      rows={4}
+                      value={typeDraft.description}
                       onChange={(event) =>
-                        setTypeDraft((prev) => ({ ...prev, duration_minutes: Number(event.target.value || 0) }))
+                        setTypeDraft((prev) => ({
+                          ...prev,
+                          description: event.target.value,
+                        }))
                       }
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    />
-                  </label>
-
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Status
-                    <select
-                      value={typeDraft.is_active ? "active" : "inactive"}
-                      onChange={(event) => setTypeDraft((prev) => ({ ...prev, is_active: event.target.value === "active" }))}
-                      style={{ ...inputStyle, marginTop: 6 }}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </label>
-
-                  <label style={{ fontSize: 13, fontWeight: 700 }}>
-                    Colour
-                    <input
-                      type="color"
-                      value={resolvePickerColor(typeDraft.color)}
-                      onChange={(event) => setTypeDraft((prev) => ({ ...prev, color: event.target.value }))}
                       style={{
-                        width: 72,
-                        height: 42,
+                        ...inputStyle,
                         marginTop: 6,
-                        padding: 4,
-                        borderRadius: ui.radius.md,
-                        border: `1px solid ${ui.colors.border}`,
-                        background: ui.colors.cardBg,
-                        boxSizing: "border-box",
+                        resize: "vertical",
                       }}
                     />
                   </label>
-                </div>
+                </form>
 
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Notes / description
-                  <textarea
-                    rows={4}
-                    value={typeDraft.description}
-                    onChange={(event) => setTypeDraft((prev) => ({ ...prev, description: event.target.value }))}
-                    style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
-                  />
-                </label>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                <div
+                  className="appointment-admin-sticky-footer"
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={resetTypeDraft}
@@ -1217,7 +1763,7 @@ export default function AppointmentTypesAdmin() {
                       fontWeight: 800,
                     }}
                   >
-                    Cancel / reset
+                    Cancel
                   </button>
 
                   {!isNewType ? (
@@ -1228,8 +1774,12 @@ export default function AppointmentTypesAdmin() {
                       style={{
                         padding: "9px 12px",
                         borderRadius: ui.radius.md,
-                        border: typeDraft.is_active ? "1px solid rgba(239,68,68,0.35)" : `1px solid ${ui.colors.border}`,
-                        background: typeDraft.is_active ? "rgba(239,68,68,0.12)" : ui.colors.cardBg,
+                        border: typeDraft.is_active
+                          ? "1px solid rgba(239,68,68,0.35)"
+                          : `1px solid ${ui.colors.border}`,
+                        background: typeDraft.is_active
+                          ? "rgba(239,68,68,0.12)"
+                          : ui.colors.cardBg,
                         color: ui.colors.text,
                         cursor: savingType ? "not-allowed" : "pointer",
                         fontWeight: 900,
@@ -1242,6 +1792,7 @@ export default function AppointmentTypesAdmin() {
 
                   <button
                     type="submit"
+                    form="appointment-type-detail-form"
                     disabled={savingType}
                     style={{
                       padding: "9px 12px",
@@ -1254,10 +1805,10 @@ export default function AppointmentTypesAdmin() {
                       opacity: savingType ? 0.6 : 1,
                     }}
                   >
-                    {savingType ? "Saving..." : isNewType ? "Create appointment type" : "Save appointment type"}
+                    {savingType ? "Saving..." : isNewType ? "Create" : "Save"}
                   </button>
                 </div>
-              </form>
+              </div>
             ) : null}
           </div>
         </section>
