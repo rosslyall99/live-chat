@@ -33,7 +33,8 @@ export default function Shell() {
     const loc = useLocation();
     const nav = useNavigate();
     const [displayName, setDisplayName] = React.useState("");
-    const isWideAppointmentsRoute = loc.pathname === "/appointments";
+    const isWideAppointmentsRoute =
+        loc.pathname === "/appointments" || loc.pathname === "/admin/appointment-types";
 
     // Kill switch state
     const [siteId, setSiteId] = React.useState(null);

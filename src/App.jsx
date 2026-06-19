@@ -13,6 +13,7 @@ import AdminInsights from "./pages/AdminInsights";
 import Rota from "./pages/Rota";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
+import AppointmentTypesAdmin from "./pages/AppointmentTypesAdmin.jsx";
 import Shell from "./components/Shell";
 import StaffView from "./pages/StaffView.jsx";
 
@@ -188,6 +189,7 @@ function DesktopApp() {
         <Route path="admin/live" element={<AdminLive />} />
         <Route path="admin/insights" element={<AdminInsights />} />
         <Route path="admin/appointment-emails" element={<AppointmentEmailTemplates />} />
+        <Route path="admin/appointment-types" element={<AppointmentTypesAdmin />} />
       </Route>
 
       {/* Fallback */}
