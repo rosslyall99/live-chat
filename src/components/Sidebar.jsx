@@ -141,6 +141,7 @@ export default function Sidebar({ role = "agent" }) {
 
         {isAdmin && (
           <>
+            <Item to="/admin/appointment-hours" label="Appointment Hours" />
             <Item to="/admin/appointment-types" label="Appointment Types" />
             <Item to="/admin/live" label="Active Chats" />
             <Item to="/admin/insights" label="Insights" />

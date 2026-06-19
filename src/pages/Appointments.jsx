@@ -11,6 +11,7 @@ import {
   prettySiteName,
   siteIdToAppointmentBranch,
 } from "../lib/branches";
+import { getBookableWindowForSiteDate } from "../lib/appointmentHours";
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
@@ -22,24 +23,6 @@ const CALENDAR_SLOT_INTERVAL_MINUTES = 15;
 const TIME_OPTION_INTERVAL_MINUTES = 5;
 const QUICK_CREATE_DEFAULT_DURATION_MINUTES = 30;
 const CALENDAR_VIEWPORT_HEIGHT = "calc(100vh - 198px)";
-// TODO: Mirror these bookable-hour rules in backend appointment create/update
-// validation so suggestions and final conflict enforcement cannot drift.
-const BOOKABLE_WINDOW_FALLBACKS = {
-  DUK: {
-    openDays: [1, 2, 3, 4, 5, 6],
-    startMinutes: CALENDAR_START_MINUTES,
-    endMinutes: 16 * 60 + 30,
-    source:
-      "Centralised frontend fallback config in Appointments.jsx for Stage 11F (Duke Street closes 16:30 and is closed on Sundays).",
-  },
-  STE: {
-    openDays: [0, 1, 2, 3, 4, 5, 6],
-    startMinutes: CALENDAR_START_MINUTES,
-    endMinutes: CALENDAR_END_MINUTES,
-    source:
-      "Current calendar day range fallback in Appointments.jsx for Stage 11F because exact St Enoch bookable hours are not yet configured.",
-  },
-};
 
 function todayInputValue() {
   const now = new Date();
@@ -182,56 +165,12 @@ function timeLabelFromMinutes(totalMinutes) {
   return `${hh}:${mm}`;
 }
 
-function minutesFromTimeValue(value) {
+function timeValueToMinutes(value) {
   const [hh, mm] = String(value || "").split(":");
   const hours = Number(hh);
   const minutes = Number(mm);
   if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
   return hours * 60 + minutes;
-}
-
-function weekdayFromInputDate(dateValue) {
-  const date = new Date(`${dateValue}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.getDay();
-}
-
-function getBookableWindowForSiteDate(siteId, dateValue) {
-  const branchCode = siteIdToAppointmentBranch(siteId);
-  const fallback =
-    BOOKABLE_WINDOW_FALLBACKS[branchCode] || BOOKABLE_WINDOW_FALLBACKS.STE;
-  const weekday = weekdayFromInputDate(dateValue);
-
-  if (!branchCode) {
-    return {
-      isOpen: false,
-      reason: "Appointments are not available for this site.",
-      source: "",
-    };
-  }
-
-  if (weekday === null) {
-    return {
-      isOpen: false,
-      reason: "Choose a valid date to see available time suggestions.",
-      source: fallback.source,
-    };
-  }
-
-  if (!fallback.openDays.includes(weekday)) {
-    return {
-      isOpen: false,
-      reason: `${prettySiteName(siteId)} is closed on this date.`,
-      source: fallback.source,
-    };
-  }
-
-  return {
-    isOpen: true,
-    startMinutes: fallback.startMinutes,
-    endMinutes: fallback.endMinutes,
-    source: fallback.source,
-  };
 }
 
 function itemMatchesWizardDate(item, dateValue) {
@@ -335,6 +274,33 @@ function findAvailableSlots({
   }
 
   return suggestions;
+}
+
+function validateTimeRangeWithinBookableWindow({
+  bookableWindow,
+  startTime,
+  endTime,
+}) {
+  if (!bookableWindow?.isOpen) {
+    return bookableWindow?.reason || "This branch is closed on this date.";
+  }
+
+  const startMinutes = timeValueToMinutes(startTime);
+  const endMinutes = timeValueToMinutes(endTime);
+
+  if (startMinutes === null || endMinutes === null) {
+    return "Choose a valid appointment time.";
+  }
+
+  if (startMinutes < bookableWindow.startMinutes) {
+    return "Appointments cannot start before the branch opens.";
+  }
+
+  if (endMinutes > bookableWindow.endMinutes) {
+    return "Appointments cannot end after the branch closes.";
+  }
+
+  return "";
 }
 
 function buildTimeOptions(
@@ -887,13 +853,16 @@ function buildDetailForm(appointment, siteId) {
 }
 
 function buildInitialBlockForm({ siteId, date }) {
+  const initialDate = date || todayInputValue();
   return {
     siteId: siteId || "",
-    date: date || todayInputValue(),
+    date: initialDate,
     areaId: "",
     startTime: "",
     endTime: "",
     reason: "",
+    recurrencePattern: "none",
+    recurrenceUntilDate: initialDate,
   };
 }
 
@@ -1223,6 +1192,7 @@ export default function Appointments() {
   const [areas, setAreas] = React.useState([]);
   const [appointments, setAppointments] = React.useState([]);
   const [blocks, setBlocks] = React.useState([]);
+  const [siteOpeningHoursBySite, setSiteOpeningHoursBySite] = React.useState({});
   const [appointmentCategories, setAppointmentCategories] = React.useState([]);
   const [appointmentTypes, setAppointmentTypes] = React.useState([]);
   const [typesById, setTypesById] = React.useState({});
@@ -1825,6 +1795,45 @@ export default function Appointments() {
   React.useEffect(() => {
     let cancelled = false;
 
+    async function loadSiteOpeningHours() {
+      const siteIds = getBookableAppointmentSites(sites).map((site) => site.id);
+      if (siteIds.length === 0) {
+        setSiteOpeningHoursBySite({});
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("site_settings")
+          .select("site_id, opening_hours")
+          .in("site_id", siteIds);
+
+        if (error) throw error;
+        if (cancelled) return;
+
+        const next = {};
+        for (const row of data || []) {
+          next[row.site_id] = row.opening_hours || null;
+        }
+        setSiteOpeningHoursBySite(next);
+      } catch (err) {
+        console.error("appointments: site opening hours load failed", err);
+        if (!cancelled) {
+          setSiteOpeningHoursBySite({});
+        }
+      }
+    }
+
+    loadSiteOpeningHours();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sites]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
     async function loadModalAreas() {
       if (!modalOpen) return;
       if (!form.siteId) {
@@ -2113,6 +2122,15 @@ export default function Appointments() {
   const detailSiteId = detailAppointment
     ? appointmentBranchToSiteId(detailAppointment.branch) || selectedSiteId
     : selectedSiteId;
+  const detailBookableWindow = React.useMemo(
+    () =>
+      getBookableWindowForSiteDate(
+        detailSiteId,
+        detailForm.date,
+        siteOpeningHoursBySite,
+      ),
+    [detailForm.date, detailSiteId, siteOpeningHoursBySite],
+  );
 
   const detailArea = React.useMemo(
     () => areas.find((item) => item.id === detailAppointment?.area_id) || null,
@@ -2152,6 +2170,13 @@ export default function Appointments() {
       ) || null,
     [blockActivityRows],
   );
+  const detailBlockIsRecurring = Boolean(detailBlock?.recurrence_group_id);
+  const detailBlockRecurrenceLabel =
+    detailBlock?.recurrence_pattern === "daily"
+      ? "Every day"
+      : detailBlock?.recurrence_pattern === "weekly"
+        ? "Every week"
+        : "Does not repeat";
 
   const canManageSelectedAppointment = React.useMemo(() => {
     if (!detailAppointment || !profile) return false;
@@ -2223,8 +2248,13 @@ export default function Appointments() {
     [areas, form.areaId, modalAreas],
   );
   const wizardBookableWindow = React.useMemo(
-    () => getBookableWindowForSiteDate(form.siteId, form.date),
-    [form.date, form.siteId],
+    () =>
+      getBookableWindowForSiteDate(
+        form.siteId,
+        form.date,
+        siteOpeningHoursBySite,
+      ),
+    [form.date, form.siteId, siteOpeningHoursBySite],
   );
   const wizardSuggestionAppointmentsSource = React.useMemo(
     () =>
@@ -2274,7 +2304,7 @@ export default function Appointments() {
     [wizardSelectedArea, wizardSuggestedSlots],
   );
   const wizardAvailableStartTimes = React.useMemo(
-    () => wizardAvailableAreaSlots.map((slot) => slot.startTime),
+    () => [...new Set(wizardAvailableAreaSlots.map((slot) => slot.startTime))],
     [wizardAvailableAreaSlots],
   );
   const wizardSuggestedSlotsMessage = React.useMemo(() => {
@@ -2334,7 +2364,6 @@ export default function Appointments() {
     wizardSelectedType,
     wizardSuggestedDurationMinutes,
   ]);
-
   React.useEffect(() => {
     if (!createWizardOpen && !quickCreateOpen) return;
 
@@ -2653,7 +2682,21 @@ export default function Appointments() {
   }
 
   function updateBlockForm(key, value) {
-    setBlockForm((prev) => ({ ...prev, [key]: value }));
+    setBlockForm((prev) => {
+      const next = { ...prev, [key]: value };
+
+      if (key === "date") {
+        if (!prev.recurrenceUntilDate || prev.recurrenceUntilDate === prev.date) {
+          next.recurrenceUntilDate = value;
+        }
+      }
+
+      if (key === "recurrencePattern" && value === "none") {
+        next.recurrenceUntilDate = next.date;
+      }
+
+      return next;
+    });
   }
 
   function updateWizardForm(key, value) {
@@ -3024,6 +3067,20 @@ export default function Appointments() {
       };
     }
 
+    const bookableHoursMessage = validateTimeRangeWithinBookableWindow({
+      bookableWindow: wizardBookableWindow,
+      startTime: form.startTime,
+      endTime: suggestedEndTime,
+    });
+
+    if (bookableHoursMessage) {
+      return {
+        isPossible: false,
+        tone: "warning",
+        message: bookableHoursMessage,
+      };
+    }
+
     const availableAreas = modalAreas.filter(
       (area) => !findLocalConflict(area.id, times.startAt, times.endAt),
     );
@@ -3128,6 +3185,17 @@ export default function Appointments() {
       return;
     }
     const { startAt, endAt } = appointmentTimes;
+
+    const bookableHoursMessage = validateTimeRangeWithinBookableWindow({
+      bookableWindow: wizardBookableWindow,
+      startTime: form.startTime,
+      endTime: endTimeValue,
+    });
+    if (bookableHoursMessage) {
+      setFormError(bookableHoursMessage);
+      showToast("error", bookableHoursMessage);
+      return;
+    }
 
     const localConflict = findLocalConflict(form.areaId, startAt, endAt);
     if (localConflict) {
@@ -3235,6 +3303,22 @@ export default function Appointments() {
       setBlockFormError("Block reason is required.");
       return;
     }
+    if (
+      blockForm.recurrencePattern !== "none" &&
+      !blockForm.recurrenceUntilDate
+    ) {
+      setBlockFormError("Choose the last date for this recurring block.");
+      return;
+    }
+    if (
+      blockForm.recurrencePattern !== "none" &&
+      blockForm.recurrenceUntilDate < blockForm.date
+    ) {
+      setBlockFormError(
+        "The recurring block end date must be on or after the first block date.",
+      );
+      return;
+    }
 
     const startAt = toDateTimeIso(blockForm.date, blockForm.startTime);
     const endAt = toDateTimeIso(blockForm.date, blockForm.endTime);
@@ -3271,16 +3355,30 @@ export default function Appointments() {
     setBlockSaving(true);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc(
-        "create_appointment_block_staff",
-        {
-          p_site_id: blockForm.siteId,
-          p_area_id: blockForm.areaId || null,
-          p_start_at: startAt,
-          p_end_at: endAt,
-          p_reason: blockForm.reason.trim(),
-        },
-      );
+      const rpcName =
+        blockForm.recurrencePattern === "none"
+          ? "create_appointment_block_staff"
+          : "create_recurring_appointment_blocks_staff";
+      const rpcParams =
+        blockForm.recurrencePattern === "none"
+          ? {
+              p_site_id: blockForm.siteId,
+              p_area_id: blockForm.areaId || null,
+              p_start_at: startAt,
+              p_end_at: endAt,
+              p_reason: blockForm.reason.trim(),
+            }
+          : {
+              p_site_id: blockForm.siteId,
+              p_area_id: blockForm.areaId || null,
+              p_start_at: startAt,
+              p_end_at: endAt,
+              p_reason: blockForm.reason.trim(),
+              p_recurrence: blockForm.recurrencePattern,
+              p_until_date: blockForm.recurrenceUntilDate,
+            };
+
+      const { data, error: rpcError } = await supabase.rpc(rpcName, rpcParams);
 
       if (rpcError) throw rpcError;
       if (!data || data.length === 0) {
@@ -3291,7 +3389,13 @@ export default function Appointments() {
       setSelectedDate(blockForm.date);
       closeBlockModal();
       await loadCalendar(blockForm.siteId, blockForm.date);
-      showToast("success", "Block saved.");
+      const blockCount = Array.isArray(data) ? data.length : 1;
+      showToast(
+        "success",
+        blockForm.recurrencePattern === "none"
+          ? "Block saved."
+          : `${blockCount} recurring block${blockCount === 1 ? "" : "s"} saved.`,
+      );
     } catch (err) {
       console.error("appointments: create block failed", err);
       const message = readErrorMessage(err, "Could not create the block.");
@@ -3361,6 +3465,17 @@ export default function Appointments() {
       return;
     }
     const { startAt, endAt } = appointmentTimes;
+
+    const bookableHoursMessage = validateTimeRangeWithinBookableWindow({
+      bookableWindow: detailBookableWindow,
+      startTime: detailForm.startTime,
+      endTime: detailForm.endTime,
+    });
+    if (bookableHoursMessage) {
+      setDetailError(bookableHoursMessage);
+      showToast("error", bookableHoursMessage);
+      return;
+    }
 
     const localConflict = findLocalConflict(
       detailForm.areaId,
@@ -3642,6 +3757,48 @@ export default function Appointments() {
     } catch (err) {
       console.error("appointments: cancel block failed", err);
       const message = readErrorMessage(err, "Could not remove the block.");
+      setBlockDetailError(message);
+      showToast("error", message);
+    } finally {
+      setBlockDetailSaving(false);
+    }
+  }
+
+  async function cancelRecurringBlockSeries() {
+    if (!detailBlock?.recurrence_group_id) return;
+    if (!window.confirm("Remove the entire recurring block series?")) return;
+
+    setBlockDetailSaving(true);
+    setBlockDetailError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        "cancel_recurring_appointment_block_series_staff",
+        {
+          p_block_id: detailBlock.id,
+        },
+      );
+
+      if (rpcError) throw rpcError;
+
+      const deletedCount = Array.isArray(data)
+        ? Number(data[0]?.deleted_count || 0)
+        : Number(data?.deleted_count || 0);
+
+      closeBlockDetailModal();
+      await loadCalendar(detailBlockSiteId, selectedDate);
+      showToast(
+        "success",
+        deletedCount > 0
+          ? `${deletedCount} recurring block${deletedCount === 1 ? "" : "s"} removed.`
+          : "Recurring block series removed.",
+      );
+    } catch (err) {
+      console.error("appointments: cancel recurring block series failed", err);
+      const message = readErrorMessage(
+        err,
+        "Could not remove the recurring block series.",
+      );
       setBlockDetailError(message);
       showToast("error", message);
     } finally {
@@ -4972,6 +5129,21 @@ export default function Appointments() {
                   />
                 </label>
 
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Repeat
+                  <select
+                    value={blockForm.recurrencePattern}
+                    onChange={(e) =>
+                      updateBlockForm("recurrencePattern", e.target.value)
+                    }
+                    style={{ ...baseInputStyle, marginTop: 6 }}
+                  >
+                    <option value="none">Does not repeat</option>
+                    <option value="daily">Every day</option>
+                    <option value="weekly">Every week</option>
+                  </select>
+                </label>
+
                 <label
                   style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
                 >
@@ -4997,6 +5169,35 @@ export default function Appointments() {
                       : "This block applies to the whole site across every area."}
                   </div>
                 </label>
+
+                {blockForm.recurrencePattern !== "none" ? (
+                  <label style={{ fontSize: 13, fontWeight: 700 }}>
+                    Repeat until
+                    <input
+                      type="date"
+                      value={blockForm.recurrenceUntilDate}
+                      min={blockForm.date}
+                      onChange={(e) =>
+                        updateBlockForm("recurrenceUntilDate", e.target.value)
+                      }
+                      style={{ ...baseInputStyle, marginTop: 6 }}
+                    />
+                  </label>
+                ) : null}
+
+                {blockForm.recurrencePattern !== "none" ? (
+                  <div
+                    style={{
+                      alignSelf: "end",
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
+                  >
+                    {blockForm.recurrencePattern === "daily"
+                      ? "Creates this block every day from the first date up to the final date."
+                      : "Creates this block every week on the same weekday until the final date."}
+                  </div>
+                ) : null}
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Start time
@@ -5830,6 +6031,486 @@ export default function Appointments() {
     </>
   ) : null;
 
+  const blockDetailDrawer =
+    blockDetailOpen && detailBlock ? (
+      <>
+        {!isDesktopToolsLayout ? (
+          <button
+            type="button"
+            className="appointment-drawer-backdrop"
+            onClick={closeBlockDetailModal}
+            aria-label="Close block details"
+          />
+        ) : null}
+
+        <aside
+          className={`appointment-drawer ${
+            isDesktopToolsLayout
+              ? "appointment-drawer--desktop"
+              : "appointment-drawer--mobile"
+          }`}
+          aria-label={blockDetailEditing ? "Edit block" : "Block details"}
+        >
+          <div className="appointment-drawer-panel">
+            <div className="appointment-drawer-header">
+              <div className="appointment-wizard-title-row">
+                <div>
+                  <div className="appointment-wizard-title">
+                    {blockDetailEditing ? "Edit block" : "Block details"}
+                  </div>
+                  <div className="appointment-wizard-subtitle">
+                    {blockDetailEditing
+                      ? "Update this blocked-out time."
+                      : "View block details and accountability."}
+                  </div>
+                </div>
+                {detailBlockIsRecurring ? (
+                  <div
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(190,24,93,0.28)",
+                      background: "rgba(190,24,93,0.12)",
+                      color: ui.colors.text,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Recurring series
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="appointment-drawer-scroll">
+              {blockDetailEditing ? (
+                <form
+                  className="appointment-drawer-body"
+                  onSubmit={submitBlockUpdate}
+                  style={{ padding: 20, paddingBottom: 16 }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <div style={{ fontSize: 13, fontWeight: 900 }}>
+                        Block details
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: ui.colors.muted,
+                        }}
+                      >
+                        Adjust the date, scope, and reason for this blocked-out
+                        time.
+                      </div>
+                    </div>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Site
+                      <input
+                        value={prettySiteName(detailBlockSiteId)}
+                        readOnly
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          background: "rgba(2, 6, 23, 0.03)",
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Date
+                      <input
+                        type="date"
+                        value={detailBlockForm.date}
+                        onChange={(e) =>
+                          updateDetailBlockForm("date", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      />
+                    </label>
+
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      Area / resource
+                      <select
+                        value={detailBlockForm.areaId}
+                        onChange={(e) =>
+                          updateDetailBlockForm("areaId", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Whole site</option>
+                        {areas.map((area) => (
+                          <option key={area.id} value={area.id}>
+                            {canonicalAreaLabel(area)}
+                          </option>
+                        ))}
+                      </select>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: ui.colors.muted,
+                        }}
+                      >
+                        {detailBlockForm.areaId
+                          ? "This block affects only the selected area/resource."
+                          : "This block affects the whole site."}
+                      </div>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Start time
+                      <select
+                        value={detailBlockForm.startTime}
+                        onChange={(e) =>
+                          updateDetailBlockForm("startTime", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select a time...</option>
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>
+                            {time}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      End time
+                      <select
+                        value={detailBlockForm.endTime}
+                        onChange={(e) =>
+                          updateDetailBlockForm("endTime", e.target.value)
+                        }
+                        style={{ ...baseInputStyle, marginTop: 6 }}
+                      >
+                        <option value="">Select a time...</option>
+                        {timeOptions.map((time) => (
+                          <option key={time} value={time}>
+                            {time}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      <div
+                        style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
+                      >
+                        Reason
+                      </div>
+                      <textarea
+                        rows={4}
+                        value={detailBlockForm.reason}
+                        onChange={(e) =>
+                          updateDetailBlockForm("reason", e.target.value)
+                        }
+                        style={{
+                          ...baseInputStyle,
+                          marginTop: 6,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {blockDetailError ? (
+                    <div className="appointment-wizard-warning-inline">
+                      {blockDetailError}
+                    </div>
+                  ) : null}
+
+                  <div className="appointment-drawer-footer appointment-drawer-footer--contained">
+                    <button
+                      className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                      type="button"
+                      onClick={() => {
+                        setBlockDetailEditing(false);
+                        setDetailBlockForm(
+                          buildBlockDetailForm(detailBlock, detailBlockSiteId),
+                        );
+                        setBlockDetailError("");
+                      }}
+                    >
+                      Cancel edit
+                    </button>
+
+                    <button
+                      className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                      type="submit"
+                      disabled={blockDetailSaving}
+                    >
+                      {blockDetailSaving ? "Saving..." : "Save changes"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div
+                  className="appointment-drawer-body"
+                  style={{ padding: 20, paddingBottom: 16 }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {detailBlockIsRecurring ? (
+                      <div
+                        style={{
+                          gridColumn: "1 / -1",
+                          padding: 12,
+                          borderRadius: 12,
+                          border: "1px solid rgba(190,24,93,0.24)",
+                          background: "rgba(190,24,93,0.08)",
+                          fontSize: 13,
+                          color: ui.colors.text,
+                        }}
+                      >
+                        This block is part of a recurring series.
+                        {detailBlock.recurrence_until_date
+                          ? ` It repeats ${detailBlockRecurrenceLabel.toLowerCase()} until ${formatDateHeading(detailBlock.recurrence_until_date)}.`
+                          : ""}
+                      </div>
+                    ) : null}
+                    <FieldValue
+                      label="Scope"
+                      value={
+                        detailBlock.area_id ? "One area / resource" : "Whole site"
+                      }
+                    />
+                    <FieldValue
+                      label="Area / resource"
+                      value={
+                        detailBlock.area_id
+                          ? canonicalAreaLabel(detailBlockArea)
+                          : "Whole site"
+                      }
+                    />
+                    <FieldValue
+                      label="Date"
+                      value={formatDateLabel(detailBlock.start_at)}
+                    />
+                    <FieldValue
+                      label="Time"
+                      value={formatTimeRange(
+                        detailBlock.start_at,
+                        detailBlock.end_at,
+                      )}
+                    />
+                    <FieldValue
+                      label="Site"
+                      value={prettySiteName(detailBlockSiteId)}
+                    />
+                    <FieldValue label="Reason" value={detailBlock.reason} />
+                    <FieldValue
+                      label="Recurrence"
+                      value={detailBlockRecurrenceLabel}
+                    />
+                    <FieldValue
+                      label="Repeats until"
+                      value={
+                        detailBlock.recurrence_until_date
+                          ? formatDateHeading(detailBlock.recurrence_until_date)
+                          : "Single block"
+                      }
+                    />
+                    <FieldValue
+                      label="Created by"
+                      value={detailBlock.created_by_name}
+                    />
+                    <FieldValue
+                      label="Created at"
+                      value={formatDateTimeLabel(detailBlock.created_at)}
+                    />
+                    <FieldValue
+                      label="Last updated by"
+                      value={
+                        detailBlockLastChange?.changed_by_name ||
+                        detailBlock.updated_by_name ||
+                        "Not available"
+                      }
+                    />
+                    <FieldValue
+                      label="Last updated"
+                      value={
+                        detailBlockLastChange
+                          ? formatDateTimeLabel(detailBlockLastChange.created_at)
+                          : formatDateTimeLabel(detailBlock.updated_at)
+                      }
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: `1px solid ${ui.colors.border}`,
+                      background: "rgba(2, 6, 23, 0.02)",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
+
+                    {blockActivityLoading ? (
+                      <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                        Loading activity...
+                      </div>
+                    ) : blockActivityError ? (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: 10,
+                          borderRadius: 10,
+                          background: "rgba(245,158,11,0.12)",
+                          border: "1px solid rgba(245,158,11,0.35)",
+                        }}
+                      >
+                        {blockActivityError}
+                      </div>
+                    ) : blockActivityRows.length === 0 ? (
+                      <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                        No activity has been recorded yet.
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        {blockActivityRows.map((row) => (
+                          <div
+                            key={row.id}
+                            style={{
+                              padding: 10,
+                              borderRadius: 10,
+                              background: ui.colors.cardBg,
+                              border: `1px solid ${ui.colors.border}`,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontWeight: 800,
+                                textTransform: "capitalize",
+                              }}
+                            >
+                              {activityActionLabel(row.action)}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 13,
+                                color: ui.colors.muted,
+                              }}
+                            >
+                              {formatDateTimeLabel(row.created_at)}
+                              {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 13,
+                                color: ui.colors.text,
+                              }}
+                            >
+                              {describeBlockActivity(row)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {blockDetailError ? (
+                    <div className="appointment-wizard-warning-inline">
+                      {blockDetailError}
+                    </div>
+                  ) : null}
+
+                  <div className="appointment-drawer-footer appointment-drawer-footer--contained">
+                    {canManageSelectedBlock ? (
+                      <button
+                        className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                        type="button"
+                        onClick={() => {
+                          setBlockDetailEditing(true);
+                          setDetailBlockForm(
+                            buildBlockDetailForm(detailBlock, detailBlockSiteId),
+                          );
+                          setBlockDetailError("");
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+
+                    {canManageSelectedBlock ? (
+                      <button
+                        className="appointment-drawer-action-button"
+                        type="button"
+                        onClick={cancelBlock}
+                        disabled={blockDetailSaving}
+                        style={{
+                          borderColor: "rgba(239,68,68,0.35)",
+                          background: "rgba(239,68,68,0.12)",
+                          opacity: blockDetailSaving ? 0.6 : 1,
+                        }}
+                      >
+                        Remove this block
+                      </button>
+                    ) : null}
+
+                    {canManageSelectedBlock && detailBlockIsRecurring ? (
+                      <button
+                        className="appointment-drawer-action-button"
+                        type="button"
+                        onClick={cancelRecurringBlockSeries}
+                        disabled={blockDetailSaving}
+                        style={{
+                          borderColor: "rgba(190,24,93,0.35)",
+                          background: "rgba(190,24,93,0.12)",
+                          opacity: blockDetailSaving ? 0.6 : 1,
+                        }}
+                      >
+                        Remove entire series
+                      </button>
+                    ) : null}
+
+                    <button
+                      className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                      type="button"
+                      onClick={closeBlockDetailModal}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      </>
+    ) : null;
+
   const sideCardCreateActions = (
     <div className="appointment-drawer-empty-actions">
       <button
@@ -5914,6 +6595,13 @@ export default function Appointments() {
       >
         {blockCreateDrawer}
       </div>
+    ) : blockDetailOpen && detailBlock ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {blockDetailDrawer}
+      </div>
     ) : detailOpen && detailAppointment ? (
       <div
         className="appointments-layout-side"
@@ -5956,6 +6644,8 @@ export default function Appointments() {
             ? quickCreateDrawer
             : blockModalOpen
               ? blockCreateDrawer
+            : blockDetailOpen && detailBlock
+              ? blockDetailDrawer
             : detailOpen && detailAppointment
               ? appointmentDetailDrawer
               : appointmentPlaceholderDrawer
@@ -5969,460 +6659,6 @@ export default function Appointments() {
         >
           {toast.message}
         </div>
-      ) : null}
-
-      {blockDetailOpen && detailBlock ? (
-        <ModalShell
-          title={blockDetailEditing ? "Edit block" : "Block details"}
-          subtitle={
-            blockDetailEditing
-              ? "Update this block through the controlled manager/admin RPC."
-              : "View block details and accountability."
-          }
-          onClose={closeBlockDetailModal}
-          maxWidth={760}
-        >
-          {blockDetailEditing ? (
-            <form onSubmit={submitBlockUpdate} style={{ padding: 16 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ fontSize: 13, fontWeight: 900 }}>
-                    Block details
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: ui.colors.muted,
-                    }}
-                  >
-                    Adjust the date, scope, and reason for this blocked-out
-                    time.
-                  </div>
-                </div>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Site
-                  <input
-                    value={prettySiteName(detailBlockSiteId)}
-                    readOnly
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      background: "rgba(2, 6, 23, 0.03)",
-                    }}
-                  />
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Date
-                  <input
-                    type="date"
-                    value={detailBlockForm.date}
-                    onChange={(e) =>
-                      updateDetailBlockForm("date", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    gridColumn: "1 / -1",
-                  }}
-                >
-                  Area / resource
-                  <select
-                    value={detailBlockForm.areaId}
-                    onChange={(e) =>
-                      updateDetailBlockForm("areaId", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Whole site</option>
-                    {areas.map((area) => (
-                      <option key={area.id} value={area.id}>
-                        {canonicalAreaLabel(area)}
-                      </option>
-                    ))}
-                  </select>
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 12,
-                      color: ui.colors.muted,
-                    }}
-                  >
-                    {detailBlockForm.areaId
-                      ? "This block affects only the selected area/resource."
-                      : "This block affects the whole site."}
-                  </div>
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Start time
-                  <select
-                    value={detailBlockForm.startTime}
-                    onChange={(e) =>
-                      updateDetailBlockForm("startTime", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Select a time...</option>
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  End time
-                  <select
-                    value={detailBlockForm.endTime}
-                    onChange={(e) =>
-                      updateDetailBlockForm("endTime", e.target.value)
-                    }
-                    style={{ ...baseInputStyle, marginTop: 6 }}
-                  >
-                    <option value="">Select a time...</option>
-                    {timeOptions.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    gridColumn: "1 / -1",
-                  }}
-                >
-                  <div
-                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
-                  >
-                    Reason
-                  </div>
-                  Reason
-                  <textarea
-                    rows={4}
-                    value={detailBlockForm.reason}
-                    onChange={(e) =>
-                      updateDetailBlockForm("reason", e.target.value)
-                    }
-                    style={{
-                      ...baseInputStyle,
-                      marginTop: 6,
-                      resize: "vertical",
-                    }}
-                  />
-                </label>
-              </div>
-
-              {blockDetailError ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                  }}
-                >
-                  {blockDetailError}
-                </div>
-              ) : null}
-
-              <div
-                style={{
-                  marginTop: 16,
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBlockDetailEditing(false);
-                    setDetailBlockForm(
-                      buildBlockDetailForm(detailBlock, detailBlockSiteId),
-                    );
-                    setBlockDetailError("");
-                  }}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: `1px solid ${ui.colors.border}`,
-                    background: ui.colors.cardBg,
-                    color: ui.colors.text,
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  Cancel edit
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={blockDetailSaving}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: "1px solid rgba(100,116,139,0.35)",
-                    background: "rgba(100,116,139,0.12)",
-                    color: ui.colors.text,
-                    cursor: blockDetailSaving ? "not-allowed" : "pointer",
-                    fontWeight: 900,
-                    opacity: blockDetailSaving ? 0.6 : 1,
-                  }}
-                >
-                  {blockDetailSaving ? "Saving..." : "Save changes"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div style={{ padding: 16 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
-                }}
-              >
-                <FieldValue
-                  label="Scope"
-                  value={
-                    detailBlock.area_id ? "One area / resource" : "Whole site"
-                  }
-                />
-                <FieldValue
-                  label="Area / resource"
-                  value={
-                    detailBlock.area_id
-                      ? canonicalAreaLabel(detailBlockArea)
-                      : "Whole site"
-                  }
-                />
-                <FieldValue
-                  label="Date"
-                  value={formatDateLabel(detailBlock.start_at)}
-                />
-                <FieldValue
-                  label="Time"
-                  value={formatTimeRange(
-                    detailBlock.start_at,
-                    detailBlock.end_at,
-                  )}
-                />
-                <FieldValue
-                  label="Site"
-                  value={prettySiteName(detailBlockSiteId)}
-                />
-                <FieldValue label="Reason" value={detailBlock.reason} />
-                <FieldValue
-                  label="Created by"
-                  value={detailBlock.created_by_name}
-                />
-                <FieldValue
-                  label="Created at"
-                  value={formatDateTimeLabel(detailBlock.created_at)}
-                />
-                <FieldValue
-                  label="Last updated by"
-                  value={
-                    detailBlockLastChange?.changed_by_name ||
-                    detailBlock.updated_by_name ||
-                    "Not available"
-                  }
-                />
-                <FieldValue
-                  label="Last updated"
-                  value={
-                    detailBlockLastChange
-                      ? formatDateTimeLabel(detailBlockLastChange.created_at)
-                      : formatDateTimeLabel(detailBlock.updated_at)
-                  }
-                />
-              </div>
-
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
-
-                {blockActivityLoading ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    Loading activity...
-                  </div>
-                ) : blockActivityError ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 10,
-                      background: "rgba(245,158,11,0.12)",
-                      border: "1px solid rgba(245,158,11,0.35)",
-                    }}
-                  >
-                    {blockActivityError}
-                  </div>
-                ) : blockActivityRows.length === 0 ? (
-                  <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                    No activity has been recorded yet.
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                    {blockActivityRows.map((row) => (
-                      <div
-                        key={row.id}
-                        style={{
-                          padding: 10,
-                          borderRadius: 10,
-                          background: ui.colors.cardBg,
-                          border: `1px solid ${ui.colors.border}`,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {activityActionLabel(row.action)}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 13,
-                            color: ui.colors.muted,
-                          }}
-                        >
-                          {formatDateTimeLabel(row.created_at)}
-                          {row.changed_by_name
-                            ? ` by ${row.changed_by_name}`
-                            : ""}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            fontSize: 13,
-                            color: ui.colors.text,
-                          }}
-                        >
-                          {describeBlockActivity(row)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {blockDetailError ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(239,68,68,0.08)",
-                    border: "1px solid rgba(239,68,68,0.35)",
-                  }}
-                >
-                  {blockDetailError}
-                </div>
-              ) : null}
-
-              <div
-                style={{
-                  marginTop: 16,
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                {canManageSelectedBlock ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBlockDetailEditing(true);
-                      setDetailBlockForm(
-                        buildBlockDetailForm(detailBlock, detailBlockSiteId),
-                      );
-                      setBlockDetailError("");
-                    }}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: "1px solid rgba(100,116,139,0.35)",
-                      background: "rgba(100,116,139,0.12)",
-                      color: ui.colors.text,
-                      cursor: "pointer",
-                      fontWeight: 900,
-                    }}
-                  >
-                    Edit
-                  </button>
-                ) : null}
-
-                {canManageSelectedBlock ? (
-                  <button
-                    type="button"
-                    onClick={cancelBlock}
-                    disabled={blockDetailSaving}
-                    style={{
-                      padding: "9px 12px",
-                      borderRadius: ui.radius.md,
-                      border: "1px solid rgba(239,68,68,0.35)",
-                      background: "rgba(239,68,68,0.12)",
-                      color: ui.colors.text,
-                      cursor: blockDetailSaving ? "not-allowed" : "pointer",
-                      fontWeight: 900,
-                      opacity: blockDetailSaving ? 0.6 : 1,
-                    }}
-                  >
-                    Cancel block
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={closeBlockDetailModal}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: ui.radius.md,
-                    border: `1px solid ${ui.colors.border}`,
-                    background: ui.colors.cardBg,
-                    color: ui.colors.text,
-                    cursor: "pointer",
-                    fontWeight: 800,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
-        </ModalShell>
       ) : null}
     </div>
   );
