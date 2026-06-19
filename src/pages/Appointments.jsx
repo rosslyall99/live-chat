@@ -11,7 +11,10 @@ import {
   prettySiteName,
   siteIdToAppointmentBranch,
 } from "../lib/branches";
-import { getBookableWindowForSiteDate } from "../lib/appointmentHours";
+import {
+  getBookableWindowForSiteDate,
+  isTimeRangeBookable,
+} from "../lib/appointmentHours";
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
@@ -2040,6 +2043,15 @@ export default function Appointments() {
     }
     return items;
   }, [timelineEndMinutes, timelineStartMinutes]);
+  const selectedCalendarBookableWindow = React.useMemo(
+    () =>
+      getBookableWindowForSiteDate(
+        selectedSiteId,
+        selectedDate,
+        siteOpeningHoursBySite,
+      ),
+    [selectedDate, selectedSiteId, siteOpeningHoursBySite],
+  );
 
   const appointmentsByArea = React.useMemo(() => {
     const map = {};
@@ -2592,9 +2604,19 @@ export default function Appointments() {
       CALENDAR_START_MINUTES,
       CALENDAR_END_MINUTES,
     );
+    const startTime = timeLabelFromMinutes(roundedMinutes);
+    const endTime = timeLabelFromMinutes(
+      roundedMinutes + CALENDAR_SLOT_INTERVAL_MINUTES,
+    );
+    if (
+      !isTimeRangeBookable(selectedCalendarBookableWindow, startTime, endTime)
+    ) {
+      showToast("info", "This time is outside bookable hours.");
+      return;
+    }
     openQuickCreateDrawer({
       areaId,
-      startTime: timeLabelFromMinutes(roundedMinutes),
+      startTime,
     });
   }
 
@@ -4013,15 +4035,34 @@ export default function Appointments() {
                       (CALENDAR_SLOT_INTERVAL_MINUTES /
                         CALENDAR_TOTAL_MINUTES) *
                       timelineHeight;
+                    const startTime = timeLabelFromMinutes(minutes);
+                    const endTime = timeLabelFromMinutes(
+                      minutes + CALENDAR_SLOT_INTERVAL_MINUTES,
+                    );
+                    const isUnavailable = !isTimeRangeBookable(
+                      selectedCalendarBookableWindow,
+                      startTime,
+                      endTime,
+                    );
                     return (
                       <button
                         key={`slot-${area.id}-${minutes}`}
                         type="button"
-                        className="appointment-area-slot"
+                        className={`appointment-area-slot${
+                          isUnavailable
+                            ? " appointment-area-slot--unavailable"
+                            : ""
+                        }`}
                         onClick={() =>
                           handleQuickCreateSlotClick(area.id, minutes)
                         }
-                        aria-label={`Create appointment at ${timeLabelFromMinutes(minutes)} in ${canonicalAreaLabel(area)}`}
+                        aria-label={`Create appointment at ${startTime} in ${canonicalAreaLabel(area)}`}
+                        aria-disabled={isUnavailable}
+                        title={
+                          isUnavailable
+                            ? "This time is outside bookable hours."
+                            : undefined
+                        }
                         style={{
                           top,
                           height: slotHeight,

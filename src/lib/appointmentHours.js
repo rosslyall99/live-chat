@@ -41,6 +41,21 @@ function minutesFromTimeValue(value) {
   return hours * 60 + minutes;
 }
 
+export function isTimeRangeBookable(bookableWindow, startTime, endTime) {
+  if (!bookableWindow?.isOpen) return false;
+
+  const startMinutes = minutesFromTimeValue(startTime);
+  const endMinutes = minutesFromTimeValue(endTime);
+
+  if (startMinutes === null || endMinutes === null) return false;
+
+  return (
+    startMinutes >= bookableWindow.startMinutes &&
+    endMinutes <= bookableWindow.endMinutes &&
+    endMinutes > startMinutes
+  );
+}
+
 function buildFallbackOpeningHours(branchCode) {
   const fallback =
     APPOINTMENT_HOURS_FALLBACKS[branchCode] || APPOINTMENT_HOURS_FALLBACKS.STE;
