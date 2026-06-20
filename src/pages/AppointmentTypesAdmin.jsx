@@ -361,7 +361,6 @@ function RowCard({
             : isSelected
               ? "0 0 0 3px rgba(168,85,247,0.08)"
               : "none",
-        outline: "none",
         transform,
         opacity: isDragging ? 0.96 : 1,
         willChange: "transform, box-shadow",
@@ -732,8 +731,12 @@ export default function AppointmentTypesAdmin() {
     setCategoryDraft(getCategoryDraftForSelection());
   }
 
-  function resetTypeDraft() {
-    setTypeDraft(getTypeDraftForSelection());
+  function discardTypeDraft(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setSelectedTypeId("");
+    setTypeDraft(blankTypeDraft());
+    showToast("success", "Changes discarded.");
   }
 
   async function saveCategory(event) {
@@ -878,13 +881,9 @@ export default function AppointmentTypesAdmin() {
       if (response.error) throw response.error;
 
       await loadAll();
-      if (response.data?.id) {
-        setSelectedTypeId(response.data.id);
-      }
-      showToast(
-        "success",
-        isNewType ? "Appointment type created." : "Appointment type saved.",
-      );
+      setSelectedTypeId("");
+      setTypeDraft(blankTypeDraft());
+      showToast("success", "Appointment type saved.");
     } catch (err) {
       console.error("appointment types admin: type save failed", err);
       showToast(
@@ -942,6 +941,8 @@ export default function AppointmentTypesAdmin() {
       if (updateError) throw updateError;
 
       await loadAll();
+      setSelectedTypeId("");
+      setTypeDraft(blankTypeDraft());
       showToast(
         "success",
         nextIsActive
@@ -991,6 +992,7 @@ export default function AppointmentTypesAdmin() {
 
   return (
     <div
+      className="appointment-types-admin"
       style={{
         width: "100%",
         height: "100%",
@@ -1420,6 +1422,7 @@ export default function AppointmentTypesAdmin() {
                 </div>
               ) : (
                 <div
+                  className="appointment-admin-row-list"
                   style={{ display: "grid", gap: 8, overflowX: "hidden" }}
                   onDragOver={(event) => {
                     event.preventDefault();
@@ -1752,7 +1755,7 @@ export default function AppointmentTypesAdmin() {
                 >
                   <button
                     type="button"
-                    onClick={resetTypeDraft}
+                    onClick={discardTypeDraft}
                     style={{
                       padding: "9px 12px",
                       borderRadius: ui.radius.md,
@@ -1763,7 +1766,7 @@ export default function AppointmentTypesAdmin() {
                       fontWeight: 800,
                     }}
                   >
-                    Cancel
+                    Discard
                   </button>
 
                   {!isNewType ? (
@@ -1805,7 +1808,7 @@ export default function AppointmentTypesAdmin() {
                       opacity: savingType ? 0.6 : 1,
                     }}
                   >
-                    {savingType ? "Saving..." : isNewType ? "Create" : "Save"}
+                    {savingType ? "Saving..." : "Save & close"}
                   </button>
                 </div>
               </div>

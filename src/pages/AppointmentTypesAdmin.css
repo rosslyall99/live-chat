@@ -63,6 +63,19 @@
   max-height: 320px;
 }
 
+.appointment-admin-row-list {
+  padding-bottom: 2px;
+}
+
+.appointment-types-admin button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.appointment-types-admin button:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.45);
+  outline-offset: 2px;
+}
+
 .appointment-admin-main-card--categories .appointment-admin-detail-card,
 .appointment-admin-main-card--types .appointment-admin-selector-card {
   max-height: none;
