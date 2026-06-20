@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import {
   APPOINTMENT_HOURS_DAY_OPTIONS,
+  buildOpeningHoursSavePayload,
   normalizeOpeningHours,
 } from "../lib/appointmentHours";
 
@@ -151,11 +152,15 @@ export default function AppointmentHoursAdmin() {
 
     setSaving(true);
     try {
+      const openingHoursPayload = buildOpeningHoursSavePayload(
+        draftHours,
+        selectedSiteId,
+      );
       const { error: saveError } = await supabase.rpc(
         "save_appointment_site_hours_admin",
         {
           p_site_id: selectedSiteId,
-          p_opening_hours: draftHours,
+          p_opening_hours: openingHoursPayload,
         },
       );
 

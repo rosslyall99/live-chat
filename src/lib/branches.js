@@ -46,6 +46,11 @@ export function appointmentBranchToSiteId(branchCode) {
   return BRANCH_SITE_MAP[String(branchCode || "").trim().toUpperCase()] || "";
 }
 
+export function canonicalAppointmentSiteId(siteId) {
+  const branchCode = siteIdToAppointmentBranch(siteId);
+  return appointmentBranchToSiteId(branchCode) || normalizeSiteId(siteId);
+}
+
 export function getBookableAppointmentSites(sites = []) {
   return (sites || []).filter((site) => isBookableAppointmentSite(site?.id));
 }

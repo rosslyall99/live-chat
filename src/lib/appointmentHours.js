@@ -1,4 +1,7 @@
-import { siteIdToAppointmentBranch } from "./branches";
+import {
+  canonicalAppointmentSiteId,
+  siteIdToAppointmentBranch,
+} from "./branches";
 
 export const APPOINTMENT_HOURS_DAY_OPTIONS = [
   { value: 0, label: "Sunday" },
@@ -9,6 +12,16 @@ export const APPOINTMENT_HOURS_DAY_OPTIONS = [
   { value: 5, label: "Friday" },
   { value: 6, label: "Saturday" },
 ];
+
+const DAY_NAME_BY_VALUE = {
+  0: "sunday",
+  1: "monday",
+  2: "tuesday",
+  3: "wednesday",
+  4: "thursday",
+  5: "friday",
+  6: "saturday",
+};
 
 export const APPOINTMENT_HOURS_FALLBACKS = {
   DUK: {
@@ -28,6 +41,7 @@ export const APPOINTMENT_HOURS_FALLBACKS = {
 };
 
 function timeValueFromMinutes(totalMinutes) {
+  if (!Number.isFinite(totalMinutes)) return "";
   const hh = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
   const mm = String(totalMinutes % 60).padStart(2, "0");
   return `${hh}:${mm}`;
@@ -88,19 +102,48 @@ export function normalizeOpeningHours(rawOpeningHours, siteId) {
 
   for (const { value } of APPOINTMENT_HOURS_DAY_OPTIONS) {
     const key = String(value);
-    const rawDay = rawOpeningHours?.[key];
+    const legacyKey = DAY_NAME_BY_VALUE[value];
+    const hasNumericDay = Object.prototype.hasOwnProperty.call(
+      rawOpeningHours || {},
+      key,
+    );
+    const hasLegacyDay = Object.prototype.hasOwnProperty.call(
+      rawOpeningHours || {},
+      legacyKey,
+    );
+    const rawDay = hasNumericDay
+      ? rawOpeningHours?.[key]
+      : hasLegacyDay
+        ? rawOpeningHours?.[legacyKey]
+        : undefined;
     const fallbackDay = fallback[key];
+    const legacyOpenTime =
+      rawDay && typeof rawDay === "object" && rawDay.open !== undefined
+        ? timeValueFromMinutes(Number(rawDay.open))
+        : "";
+    const legacyCloseTime =
+      rawDay && typeof rawDay === "object" && rawDay.close !== undefined
+        ? timeValueFromMinutes(Number(rawDay.close))
+        : "";
     const isClosed =
-      typeof rawDay?.is_closed === "boolean"
+      rawDay === null
+        ? true
+        : typeof rawDay?.is_closed === "boolean"
         ? rawDay.is_closed
-        : Boolean(fallbackDay?.is_closed);
+        : hasLegacyDay && rawDay === null
+          ? true
+          : Boolean(fallbackDay?.is_closed);
     const openTime =
       typeof rawDay?.open_time === "string" && rawDay.open_time.trim()
         ? rawDay.open_time.trim().slice(0, 5)
+        : legacyOpenTime
+          ? legacyOpenTime
         : fallbackDay?.open_time || "";
     const closeTime =
       typeof rawDay?.close_time === "string" && rawDay.close_time.trim()
         ? rawDay.close_time.trim().slice(0, 5)
+        : legacyCloseTime
+          ? legacyCloseTime
         : fallbackDay?.close_time || "";
 
     normalized[key] = {
@@ -113,8 +156,28 @@ export function normalizeOpeningHours(rawOpeningHours, siteId) {
   return { hours: normalized, source };
 }
 
+export function buildOpeningHoursSavePayload(openingHours, siteId) {
+  const normalized = normalizeOpeningHours(openingHours, siteId).hours;
+  const payload = {};
+
+  for (const { value } of APPOINTMENT_HOURS_DAY_OPTIONS) {
+    const key = String(value);
+    const day = normalized[key];
+    const isClosed = Boolean(day?.is_closed);
+
+    payload[key] = {
+      is_closed: isClosed,
+      open_time: isClosed ? null : day?.open_time || null,
+      close_time: isClosed ? null : day?.close_time || null,
+    };
+  }
+
+  return payload;
+}
+
 export function getBookableWindowForSiteDate(siteId, dateValue, openingHoursBySite = {}) {
   const branchCode = siteIdToAppointmentBranch(siteId);
+  const canonicalSiteId = canonicalAppointmentSiteId(siteId);
   const fallbackMeta =
     APPOINTMENT_HOURS_FALLBACKS[branchCode] || APPOINTMENT_HOURS_FALLBACKS.STE;
   const date = new Date(`${dateValue}T12:00:00`);
@@ -136,8 +199,10 @@ export function getBookableWindowForSiteDate(siteId, dateValue, openingHoursBySi
   }
 
   const { hours, source } = normalizeOpeningHours(
-    openingHoursBySite?.[siteId] || null,
-    siteId,
+    openingHoursBySite?.[siteId] ||
+      openingHoursBySite?.[canonicalSiteId] ||
+      null,
+    canonicalSiteId || siteId,
   );
   const dayKey = String(date.getDay());
   const dayHours = hours[dayKey];

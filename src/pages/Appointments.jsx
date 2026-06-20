@@ -5,6 +5,7 @@ import { invokeAuthed } from "../lib/invokeAuthed";
 import "./Appointments.css";
 import {
   appointmentBranchToSiteId,
+  canonicalAppointmentSiteId,
   getBookableAppointmentSites,
   getDefaultAppointmentSiteId,
   isBookableAppointmentSite,
@@ -1799,7 +1800,14 @@ export default function Appointments() {
     let cancelled = false;
 
     async function loadSiteOpeningHours() {
-      const siteIds = getBookableAppointmentSites(sites).map((site) => site.id);
+      const siteIds = [
+        ...new Set(
+          getBookableAppointmentSites(sites).flatMap((site) => [
+            site.id,
+            canonicalAppointmentSiteId(site.id),
+          ]),
+        ),
+      ].filter(Boolean);
       if (siteIds.length === 0) {
         setSiteOpeningHoursBySite({});
         return;
@@ -1817,6 +1825,7 @@ export default function Appointments() {
         const next = {};
         for (const row of data || []) {
           next[row.site_id] = row.opening_hours || null;
+          next[canonicalAppointmentSiteId(row.site_id)] = row.opening_hours || null;
         }
         setSiteOpeningHoursBySite(next);
       } catch (err) {
@@ -3228,12 +3237,13 @@ export default function Appointments() {
 
     setSaving(true);
     setSavePhase("saving");
+    const rpcSiteId = canonicalAppointmentSiteId(form.siteId);
 
     try {
       const { data, error: rpcError } = await supabase.rpc(
         "create_appointment_staff",
         {
-          p_site_id: form.siteId,
+          p_site_id: rpcSiteId,
           p_area_id: form.areaId,
           p_appointment_type_id: form.appointmentTypeId,
           p_start_at: startAt,
@@ -3375,6 +3385,7 @@ export default function Appointments() {
     }
 
     setBlockSaving(true);
+    const rpcSiteId = canonicalAppointmentSiteId(blockForm.siteId);
 
     try {
       const rpcName =
@@ -3384,14 +3395,14 @@ export default function Appointments() {
       const rpcParams =
         blockForm.recurrencePattern === "none"
           ? {
-              p_site_id: blockForm.siteId,
+              p_site_id: rpcSiteId,
               p_area_id: blockForm.areaId || null,
               p_start_at: startAt,
               p_end_at: endAt,
               p_reason: blockForm.reason.trim(),
             }
           : {
-              p_site_id: blockForm.siteId,
+              p_site_id: rpcSiteId,
               p_area_id: blockForm.areaId || null,
               p_start_at: startAt,
               p_end_at: endAt,
