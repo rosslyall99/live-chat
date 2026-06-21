@@ -164,6 +164,12 @@ function attendanceRecordedLabel(appointment) {
   return `${label} at ${time}`;
 }
 
+function feedbackEmailStatusLabel(appointment) {
+  if (appointment?.feedback_email_sent_at) return "Feedback sent";
+  if (appointment?.feedback_email_status === "failed") return "Feedback failed";
+  return "";
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1156,6 +1162,7 @@ function describeActivity(row) {
   if (row.action === "cancelled") return "Appointment cancelled.";
   if (row.action === "confirmation_sent") return "Confirmation email sent.";
   if (row.action === "reminder_sent") return "Reminder email sent.";
+  if (row.action === "feedback_sent") return "Feedback email sent.";
 
   const beforeData = row.before_data || {};
   const afterData = row.after_data || {};
@@ -2581,6 +2588,10 @@ export default function Appointments() {
 
   const attendanceStatusText = React.useMemo(
     () => attendanceRecordedLabel(detailAppointment),
+    [detailAppointment],
+  );
+  const feedbackStatusText = React.useMemo(
+    () => feedbackEmailStatusLabel(detailAppointment),
     [detailAppointment],
   );
 
@@ -5156,6 +5167,18 @@ export default function Appointments() {
                             ) : null}
                           </div>
                         </div>
+
+                        {feedbackStatusText ? (
+                          <div
+                            className={`appointment-feedback-status ${
+                              detailAppointment.feedback_email_status === "failed"
+                                ? "appointment-feedback-status--failed"
+                                : ""
+                            }`}
+                          >
+                            {feedbackStatusText}
+                          </div>
+                        ) : null}
 
                         {emailLogLoading ? (
                           <div style={{ marginTop: 10, color: ui.colors.muted }}>

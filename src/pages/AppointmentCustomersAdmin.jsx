@@ -61,6 +61,12 @@ function attendanceOutcomeLabel(status) {
   return "";
 }
 
+function feedbackEmailStatusLabel(appointment) {
+  if (appointment?.feedback_email_sent_at) return "Feedback sent";
+  if (appointment?.feedback_email_status === "failed") return "Feedback failed";
+  return "";
+}
+
 function branchLabel(branch) {
   const value = String(branch || "").toUpperCase();
   if (value === "DUK") return "Duke Street";
@@ -1046,6 +1052,8 @@ export default function AppointmentCustomersAdmin() {
                               const attendanceLabel = attendanceOutcomeLabel(
                                 appointment.attendance_status,
                               );
+                              const feedbackLabel =
+                                feedbackEmailStatusLabel(appointment);
 
                               return (
                               <div
@@ -1132,6 +1140,24 @@ export default function AppointmentCustomersAdmin() {
                                       }}
                                     >
                                       {attendanceLabel}
+                                    </span>
+                                  ) : null}
+                                  {feedbackLabel ? (
+                                    <span
+                                      style={{
+                                        marginLeft: 8,
+                                        fontSize: isCancelledAppointment
+                                          ? 11
+                                          : 12,
+                                        fontWeight: 900,
+                                        color:
+                                          appointment.feedback_email_status ===
+                                          "failed"
+                                            ? "#92400e"
+                                            : "#64748b",
+                                      }}
+                                    >
+                                      {feedbackLabel}
                                     </span>
                                   ) : null}
                                 </div>

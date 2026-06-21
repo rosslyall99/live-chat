@@ -17,6 +17,10 @@ export type AppointmentRow = {
   customer_email: string;
   appointment_type_id: string;
   booked_by_user_id: string;
+  attendance_status?: string | null;
+  feedback_email_sent_at?: string | null;
+  feedback_email_status?: string | null;
+  feedback_email_last_error?: string | null;
 };
 
 export type StaffProfile = {
@@ -48,8 +52,8 @@ type AppointmentEmailTemplateRow = {
 export type PlaceholderReplacements = Record<string, string>;
 
 export type AppointmentEmailHandlerOptions = {
-  emailType: "confirmation" | "reminder";
-  auditAction: "confirmation_sent" | "reminder_sent";
+  emailType: "confirmation" | "reminder" | "feedback";
+  auditAction: "confirmation_sent" | "reminder_sent" | "feedback_sent";
   cancelledError: string;
   successMessage: string;
   configErrorMessage: string;

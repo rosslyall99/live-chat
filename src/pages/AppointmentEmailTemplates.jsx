@@ -16,11 +16,13 @@ const TEMPLATE_KIND_OPTIONS = [
   { value: "all", label: "All" },
   { value: "confirmation", label: "Confirmation" },
   { value: "reminder", label: "Reminder" },
+  { value: "feedback", label: "Feedback" },
 ];
 
 const EDITOR_KIND_OPTIONS = [
   { value: "confirmation", label: "Confirmation" },
   { value: "reminder", label: "Reminder" },
+  { value: "feedback", label: "Feedback" },
 ];
 
 const PLACEHOLDERS = [
