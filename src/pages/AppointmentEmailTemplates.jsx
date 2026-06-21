@@ -1,6 +1,7 @@
 import React from "react";
 import { ui } from "../ui/tokens";
 import { supabase } from "../supabaseClient";
+import "./AppointmentTypesAdmin.css";
 
 const SAMPLE_VALUES = {
   customer_name: "Test Customer",
@@ -331,11 +332,25 @@ export default function AppointmentEmailTemplates() {
   }
 
   return (
-    <div style={{ width: "100%", color: ui.colors.text, fontFamily: ui.font.ui }}>
-      <div>
+    <div
+      className="appointment-types-admin appointment-email-admin-page"
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        color: ui.colors.text,
+        fontFamily: ui.font.ui,
+        overflowY: "auto",
+        overflowX: "hidden",
+      }}
+    >
+      <div className="appointment-admin-header">
         <h2 style={{ margin: 0 }}>Appointment Emails</h2>
         <div style={ui.text.subtitle}>
-          Manage reusable appointment confirmation and reminder templates.
+          Manage reusable appointment confirmation, reminder, and feedback
+          templates.
         </div>
       </div>
 
@@ -385,27 +400,15 @@ export default function AppointmentEmailTemplates() {
 
       {!loading && canView ? (
         <div
-          style={{
-            marginTop: 16,
-            display: "grid",
-            gridTemplateColumns: "320px minmax(0, 1fr)",
-            gap: 16,
-            alignItems: "start",
-          }}
+          className="appointment-admin-layout appointment-email-admin-layout"
+          style={{ marginTop: 18 }}
         >
-          <div
-            style={{
-              border: `1px solid ${ui.colors.border}`,
-              borderRadius: 12,
-              background: ui.colors.cardBg,
-              overflow: "hidden",
-            }}
-          >
+          <section className="appointment-admin-column">
+          <div className="appointment-admin-selector-card appointment-email-list-card">
             <div
               style={{
-                padding: 12,
+                padding: "0 0 12px",
                 borderBottom: `1px solid ${ui.colors.border}`,
-                background: "rgba(2, 6, 23, 0.03)",
                 display: "grid",
                 gap: 10,
               }}
@@ -446,9 +449,9 @@ export default function AppointmentEmailTemplates() {
               </button>
             </div>
 
-            <div style={{ maxHeight: "65vh", overflow: "auto", display: "grid", gap: 1, background: ui.colors.border }}>
+            <div className="appointment-admin-scroll appointment-email-template-list">
               {filteredTemplates.length === 0 ? (
-                <div style={{ padding: 12, background: ui.colors.cardBg, color: ui.colors.muted }}>
+                <div className="appointment-email-template-empty">
                   No templates match this filter.
                 </div>
               ) : (
@@ -458,38 +461,26 @@ export default function AppointmentEmailTemplates() {
                     <button
                       key={template.id}
                       type="button"
+                      className={`appointment-email-template-card ${
+                        isSelected ? "appointment-email-template-card--selected" : ""
+                      }`}
                       onClick={() => {
                         setSelectedTemplateId(template.id);
                         setError("");
                         setSuccessMessage("");
                       }}
-                      style={{
-                        textAlign: "left",
-                        padding: 12,
-                        border: 0,
-                        background: isSelected ? "rgba(168,85,247,0.12)" : ui.colors.cardBg,
-                        cursor: "pointer",
-                        display: "grid",
-                        gap: 6,
-                      }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <div style={{ fontWeight: 900, color: ui.colors.text }}>{template.name}</div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 800,
-                            color: template.is_active ? ui.colors.text : ui.colors.muted,
-                          }}
-                        >
+                      <div className="appointment-email-template-card-header">
+                        <div className="appointment-email-template-card-title">
+                          {template.name}
+                        </div>
+                        <div className="appointment-email-template-status">
                           {template.is_active ? "Active" : "Inactive"}
                         </div>
                       </div>
-                      <div style={{ fontSize: 12, color: ui.colors.muted, textTransform: "capitalize" }}>
-                        {template.template_type}
-                      </div>
-                      <div style={{ fontSize: 12, color: ui.colors.text }}>
-                        {formatTemplateScope(template)}
+                      <div className="appointment-email-template-meta">
+                        <span>{template.template_type}</span>
+                        <span>{formatTemplateScope(template)}</span>
                       </div>
                     </button>
                   );
@@ -497,17 +488,12 @@ export default function AppointmentEmailTemplates() {
               )}
             </div>
           </div>
+          </section>
 
+          <section className="appointment-admin-column">
           <form
             onSubmit={saveTemplate}
-            style={{
-              border: `1px solid ${ui.colors.border}`,
-              borderRadius: 12,
-              background: ui.colors.cardBg,
-              padding: 16,
-              display: "grid",
-              gap: 16,
-            }}
+            className="appointment-admin-detail-card appointment-email-editor-card appointment-admin-scroll"
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
@@ -575,6 +561,10 @@ export default function AppointmentEmailTemplates() {
                     </option>
                   ))}
                 </select>
+                <div className="appointment-email-field-helper">
+                  General/default templates are used unless a more specific
+                  active template exists for the appointment type.
+                </div>
               </label>
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
@@ -603,6 +593,9 @@ export default function AppointmentEmailTemplates() {
 
             <label style={{ fontSize: 13, fontWeight: 700 }}>
               Body text
+              <div className="appointment-email-field-helper">
+                Plain text version used as the fallback email body.
+              </div>
               <textarea
                 rows={12}
                 value={draft.body_text}
@@ -614,6 +607,10 @@ export default function AppointmentEmailTemplates() {
 
             <label style={{ fontSize: 13, fontWeight: 700 }}>
               Body HTML (optional)
+              <div className="appointment-email-field-helper">
+                Optional designed HTML version. If left blank, the plain text
+                body will be used.
+              </div>
               <textarea
                 rows={8}
                 value={draft.body_html}
@@ -672,7 +669,7 @@ export default function AppointmentEmailTemplates() {
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            <div className="appointment-email-editor-actions">
               <button
                 type="button"
                 onClick={resetChanges}
@@ -727,6 +724,7 @@ export default function AppointmentEmailTemplates() {
               </button>
             </div>
           </form>
+          </section>
         </div>
       ) : null}
     </div>

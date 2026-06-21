@@ -36,7 +36,8 @@ export default function Shell() {
     const isWideAppointmentsRoute =
         loc.pathname === "/appointments" ||
         loc.pathname === "/admin/appointment-types" ||
-        loc.pathname === "/admin/appointment-customers";
+        loc.pathname === "/admin/appointment-customers" ||
+        loc.pathname === "/admin/appointment-emails";
 
     // Kill switch state
     const [siteId, setSiteId] = React.useState(null);
