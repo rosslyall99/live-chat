@@ -1,6 +1,8 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
+import { normalizePhoneNumber } from "../lib/phone";
 import "./AppointmentTypesAdmin.css";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,6 +42,18 @@ function formatDateTime(value) {
   });
 }
 
+function formatShortDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "None";
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function branchLabel(branch) {
   const value = String(branch || "").toUpperCase();
   if (value === "DUK") return "Duke Street";
@@ -47,17 +61,48 @@ function branchLabel(branch) {
   return branch || "Unknown";
 }
 
+function branchToSiteId(branch) {
+  const value = String(branch || "").toUpperCase();
+  if (value === "DUK") return "duke";
+  if (value === "STE") return "sten";
+  return "";
+}
+
+function inputDateValueFromIso(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function canCancelAppointment(appointment) {
+  if (!appointment || appointment.status === "cancelled") return false;
+  const end = new Date(appointment.end_at || appointment.start_at);
+  if (Number.isNaN(end.getTime())) return false;
+  return end.getTime() >= Date.now();
+}
+
 export default function AppointmentCustomersAdmin() {
+  const navigate = useNavigate();
   const [role, setRole] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [customers, setCustomers] = React.useState([]);
   const [search, setSearch] = React.useState("");
+  const [showArchived, setShowArchived] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = React.useState("");
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
   const [historyRows, setHistoryRows] = React.useState([]);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [actionSaving, setActionSaving] = React.useState(false);
+  const [mergeOpen, setMergeOpen] = React.useState(false);
+  const [mergeQuery, setMergeQuery] = React.useState("");
+  const [mergeCandidates, setMergeCandidates] = React.useState([]);
+  const [mergeDuplicateId, setMergeDuplicateId] = React.useState("");
+  const [mergeSearching, setMergeSearching] = React.useState(false);
   const [draft, setDraft] = React.useState(blankDraft);
   const [toast, setToast] = React.useState(null);
   const toastTimerRef = React.useRef(null);
@@ -145,6 +190,7 @@ export default function AppointmentCustomersAdmin() {
           {
             p_query: query || "",
             p_limit: 50,
+            p_include_archived: showArchived,
           },
         );
 
@@ -161,7 +207,7 @@ export default function AppointmentCustomersAdmin() {
         if (!options.quiet) setSearching(false);
       }
     },
-    [canManage, showToast],
+    [canManage, showArchived, showToast],
   );
 
   const loadSelectedCustomer = React.useCallback(
@@ -275,13 +321,56 @@ export default function AppointmentCustomersAdmin() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [canManage, loadCustomers, search]);
+  }, [canManage, loadCustomers, search, showArchived]);
+
+  React.useEffect(() => {
+    if (!canManage || !mergeOpen) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setMergeSearching(true);
+      try {
+        const { data, error } = await supabase.rpc(
+          "list_appointment_customers_cms_staff",
+          {
+            p_query: mergeQuery || "",
+            p_limit: 25,
+            p_include_archived: false,
+          },
+        );
+
+        if (error) throw error;
+        if (cancelled) return;
+        setMergeCandidates(
+          (data || []).filter((item) => item.id !== selectedCustomerId),
+        );
+      } catch (err) {
+        console.error("appointment customers: merge search failed", err);
+        if (!cancelled) {
+          setMergeCandidates([]);
+          showToast(
+            "error",
+            readErrorMessage(err, "Could not search duplicate customers."),
+          );
+        }
+      } finally {
+        if (!cancelled) setMergeSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [canManage, mergeOpen, mergeQuery, selectedCustomerId, showToast]);
 
   React.useEffect(() => {
     if (selectedCustomerId === "__new__") {
       setSelectedCustomer(null);
       setDraft(blankDraft());
       setHistoryRows([]);
+      setMergeOpen(false);
+      setMergeDuplicateId("");
       return;
     }
 
@@ -289,6 +378,8 @@ export default function AppointmentCustomersAdmin() {
       setSelectedCustomer(null);
       setDraft(blankDraft());
       setHistoryRows([]);
+      setMergeOpen(false);
+      setMergeDuplicateId("");
       return;
     }
 
@@ -304,6 +395,8 @@ export default function AppointmentCustomersAdmin() {
     setSelectedCustomer(null);
     setHistoryRows([]);
     setDraft(blankDraft());
+    setMergeOpen(false);
+    setMergeDuplicateId("");
   }
 
   function discardChanges() {
@@ -311,6 +404,8 @@ export default function AppointmentCustomersAdmin() {
     setSelectedCustomer(null);
     setDraft(blankDraft());
     setHistoryRows([]);
+    setMergeOpen(false);
+    setMergeDuplicateId("");
     showToast("info", "Changes discarded.");
   }
 
@@ -336,13 +431,13 @@ export default function AppointmentCustomersAdmin() {
         ? {
             p_full_name: draft.fullName.trim(),
             p_email: draft.email.trim() || null,
-            p_phone: draft.phone.trim() || null,
+            p_phone: normalizePhoneNumber(draft.phone) || null,
           }
         : {
             p_customer_id: draft.id,
             p_full_name: draft.fullName.trim(),
             p_email: draft.email.trim() || null,
-            p_phone: draft.phone.trim() || null,
+            p_phone: normalizePhoneNumber(draft.phone) || null,
           };
 
       const { error } = await supabase.rpc(rpcName, rpcParams);
@@ -363,6 +458,106 @@ export default function AppointmentCustomersAdmin() {
       showToast("error", readErrorMessage(err, "Could not save customer."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openAppointment(appointment) {
+    const site = branchToSiteId(appointment.branch);
+    const date = inputDateValueFromIso(appointment.start_at);
+    const params = new URLSearchParams();
+    if (date) params.set("date", date);
+    if (site) params.set("site", site);
+    params.set("appointment", appointment.id);
+    navigate(`/appointments?${params.toString()}`);
+  }
+
+  async function cancelAppointment(appointment) {
+    if (!appointment) return;
+    if (!window.confirm("Cancel this appointment?")) return;
+
+    setActionSaving(true);
+    try {
+      const { error } = await supabase.rpc("cancel_customer_appointment_staff", {
+        p_appointment_id: appointment.id,
+      });
+
+      if (error) throw error;
+      await loadSelectedCustomer(selectedCustomerId);
+      await loadCustomers(search, { quiet: true });
+      showToast("success", "Appointment cancelled.");
+    } catch (err) {
+      console.error("appointment customers: cancel appointment failed", err);
+      showToast(
+        "error",
+        readErrorMessage(err, "Could not cancel appointment."),
+      );
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function archiveCustomer() {
+    if (!selectedCustomerId || selectedCustomerId === "__new__") return;
+    if (!window.confirm("Archive this customer?")) return;
+
+    setActionSaving(true);
+    try {
+      const { error } = await supabase.rpc("archive_appointment_customer_staff", {
+        p_customer_id: selectedCustomerId,
+      });
+
+      if (error) throw error;
+      setSelectedCustomerId("");
+      setSelectedCustomer(null);
+      setDraft(blankDraft());
+      setHistoryRows([]);
+      setMergeOpen(false);
+      setMergeDuplicateId("");
+      await loadCustomers(search, { quiet: true });
+      showToast("success", "Customer archived.");
+    } catch (err) {
+      console.error("appointment customers: archive failed", err);
+      showToast("error", readErrorMessage(err, "Could not archive customer."));
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function mergeCustomer() {
+    if (!selectedCustomerId || !mergeDuplicateId) {
+      showToast("error", "Choose a duplicate customer to merge.");
+      return;
+    }
+
+    const duplicate = mergeCandidates.find((item) => item.id === mergeDuplicateId);
+    const duplicateLabel = duplicate?.full_name || "the duplicate customer";
+    if (
+      !window.confirm(
+        `Merge ${duplicateLabel} into ${draft.fullName || "this customer"}? Appointment snapshots will stay unchanged.`,
+      )
+    ) {
+      return;
+    }
+
+    setActionSaving(true);
+    try {
+      const { error } = await supabase.rpc("merge_appointment_customers_staff", {
+        p_primary_customer_id: selectedCustomerId,
+        p_duplicate_customer_id: mergeDuplicateId,
+      });
+
+      if (error) throw error;
+      setMergeOpen(false);
+      setMergeDuplicateId("");
+      setMergeQuery("");
+      await loadSelectedCustomer(selectedCustomerId);
+      await loadCustomers(search, { quiet: true });
+      showToast("success", "Customers merged.");
+    } catch (err) {
+      console.error("appointment customers: merge failed", err);
+      showToast("error", readErrorMessage(err, "Could not merge customers."));
+    } finally {
+      setActionSaving(false);
     }
   }
 
@@ -389,7 +584,7 @@ export default function AppointmentCustomersAdmin() {
         flexDirection: "column",
         color: ui.colors.text,
         fontFamily: ui.font.ui,
-        overflowY: "auto",
+        overflowY: "hidden",
         overflowX: "hidden",
       }}
     >
@@ -419,15 +614,24 @@ export default function AppointmentCustomersAdmin() {
         style={{
           marginTop: 18,
           gridTemplateColumns: "minmax(340px, 0.52fr) minmax(420px, 0.48fr)",
+          flex: "1 1 auto",
+          minHeight: 0,
+          alignItems: "stretch",
+          overflow: "hidden",
         }}
       >
-        <section className="appointment-admin-column">
+        <section
+          className="appointment-admin-column"
+          style={{ minHeight: 0, display: "flex" }}
+        >
           <div
             className="appointment-admin-main-card"
             style={{
               ...cardStyle,
               padding: 16,
-              height: "calc(100vh - 190px)",
+              width: "100%",
+              height: "100%",
+              minHeight: 0,
               gridTemplateRows: "auto minmax(0, 1fr)",
             }}
           >
@@ -446,11 +650,32 @@ export default function AppointmentCustomersAdmin() {
                 placeholder="Search name, email, or phone"
                 style={inputStyle}
               />
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: ui.colors.muted,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                />
+                Show archived
+              </label>
             </label>
 
             <div
               className="appointment-admin-selector-card appointment-admin-scroll"
-              style={{ padding: 12, maxHeight: "none" }}
+              style={{
+                padding: 12,
+                maxHeight: "none",
+                minHeight: 0,
+              }}
             >
               {searching ? (
                 <div style={{ padding: 8, color: ui.colors.muted }}>
@@ -510,37 +735,69 @@ export default function AppointmentCustomersAdmin() {
                               flex: "0 0 auto",
                               fontSize: 12,
                               fontWeight: 800,
-                              color: ui.colors.muted,
+                              color: customer.is_active
+                                ? ui.colors.muted
+                                : "#991b1b",
                             }}
                           >
-                            {Number(customer.appointment_count || 0)} appts
+                            {customer.is_active === false
+                              ? "Archived"
+                              : `${Number(customer.appointment_count || 0)} appts`}
                           </span>
                         </div>
+                        {Number(customer.duplicate_email_count || 0) > 0 ? (
+                          <div
+                            style={{
+                              width: "fit-content",
+                              padding: "3px 7px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(245,158,11,0.35)",
+                              background: "rgba(245,158,11,0.10)",
+                              color: "#92400e",
+                              fontSize: 11,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Possible duplicate
+                          </div>
+                        ) : null}
                         <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 700,
-                            color: ui.colors.muted,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                            gap: 12,
+                            alignItems: "start",
                           }}
                         >
-                          {[customer.email, customer.phone]
-                            .filter(Boolean)
-                            .join(" / ") || "No email or phone"}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: ui.colors.muted,
-                          }}
-                        >
-                          Last appointment:{" "}
-                          {customer.last_appointment_at
-                            ? formatDateTime(customer.last_appointment_at)
-                            : "None"}
+                          <div
+                            style={{
+                              minWidth: 0,
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: ui.colors.muted,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {[customer.email, customer.phone]
+                              .filter(Boolean)
+                              .join(" / ") || "No email or phone"}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: ui.colors.muted,
+                              textAlign: "right",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Last app:{" "}
+                            {customer.last_appointment_at
+                              ? formatShortDateTime(customer.last_appointment_at)
+                              : "None"}
+                          </div>
                         </div>
                       </button>
                     );
@@ -551,13 +808,18 @@ export default function AppointmentCustomersAdmin() {
           </div>
         </section>
 
-        <section className="appointment-admin-column">
+        <section
+          className="appointment-admin-column"
+          style={{ minHeight: 0, display: "flex" }}
+        >
           <div
             className="appointment-admin-main-card"
             style={{
               ...cardStyle,
               padding: 16,
-              height: "calc(100vh - 190px)",
+              width: "100%",
+              height: "100%",
+              minHeight: 0,
             }}
           >
             {!selectedCustomerId ? (
@@ -580,7 +842,10 @@ export default function AppointmentCustomersAdmin() {
               >
                 <div
                   className="appointment-admin-detail-card appointment-admin-scroll"
-                  style={{ display: "grid", gap: 16 }}
+                  style={{
+                    display: "grid",
+                    gap: 16,
+                  }}
                 >
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 900 }}>
@@ -590,6 +855,9 @@ export default function AppointmentCustomersAdmin() {
                       <div style={{ marginTop: 4, color: ui.colors.muted }}>
                         {Number(selectedCustomer.appointment_count || 0)} linked
                         appointments
+                        {selectedCustomer.is_active === false
+                          ? " / archived"
+                          : ""}
                       </div>
                     ) : null}
                   </div>
@@ -629,6 +897,117 @@ export default function AppointmentCustomersAdmin() {
                           style={inputStyle}
                         />
                       </label>
+
+                      {!isNewCustomer && selectedCustomer?.is_active !== false ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            paddingTop: 8,
+                            borderTop: `1px solid ${ui.colors.border}`,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMergeOpen((value) => !value);
+                              setMergeDuplicateId("");
+                            }}
+                            disabled={actionSaving}
+                            style={buttonStyle}
+                          >
+                            Merge duplicate
+                          </button>
+                          <button
+                            type="button"
+                            onClick={archiveCustomer}
+                            disabled={actionSaving}
+                            style={{
+                              ...buttonStyle,
+                              border: "1px solid rgba(239,68,68,0.30)",
+                              background: "rgba(239,68,68,0.07)",
+                            }}
+                          >
+                            Archive customer
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {mergeOpen ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 10,
+                            padding: 12,
+                            borderRadius: ui.radius.md,
+                            border: `1px solid ${ui.colors.border}`,
+                            background: "rgba(248, 250, 252, 0.75)",
+                          }}
+                        >
+                          <div style={{ fontWeight: 900 }}>Merge customer</div>
+                          <div style={{ fontSize: 13, color: ui.colors.muted }}>
+                            Primary customer:{" "}
+                            <strong style={{ color: ui.colors.text }}>
+                              {draft.fullName || "Current customer"}
+                            </strong>
+                          </div>
+                          <input
+                            value={mergeQuery}
+                            onChange={(e) => setMergeQuery(e.target.value)}
+                            placeholder="Search duplicate customer"
+                            style={inputStyle}
+                          />
+                          <select
+                            value={mergeDuplicateId}
+                            onChange={(e) => setMergeDuplicateId(e.target.value)}
+                            style={inputStyle}
+                          >
+                            <option value="">
+                              {mergeSearching
+                                ? "Searching..."
+                                : "Select duplicate customer..."}
+                            </option>
+                            {mergeCandidates.map((customer) => (
+                              <option key={customer.id} value={customer.id}>
+                                {customer.full_name}
+                                {customer.email ? ` - ${customer.email}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMergeOpen(false);
+                                setMergeDuplicateId("");
+                              }}
+                              style={buttonStyle}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={mergeCustomer}
+                              disabled={actionSaving || !mergeDuplicateId}
+                              style={{
+                                ...primaryButtonStyle,
+                                opacity:
+                                  actionSaving || !mergeDuplicateId ? 0.65 : 1,
+                              }}
+                            >
+                              Merge
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div
                         style={{
@@ -698,6 +1077,40 @@ export default function AppointmentCustomersAdmin() {
                                     "Appointment"}{" "}
                                   - {branchLabel(appointment.branch)}
                                 </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "flex-end",
+                                    gap: 8,
+                                    flexWrap: "wrap",
+                                    marginTop: 4,
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => openAppointment(appointment)}
+                                    style={buttonStyle}
+                                  >
+                                    Open
+                                  </button>
+                                  {canCancelAppointment(appointment) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        cancelAppointment(appointment)
+                                      }
+                                      disabled={actionSaving}
+                                      style={{
+                                        ...buttonStyle,
+                                        border:
+                                          "1px solid rgba(239,68,68,0.30)",
+                                        background: "rgba(239,68,68,0.07)",
+                                      }}
+                                    >
+                                      Cancel appointment
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -707,7 +1120,12 @@ export default function AppointmentCustomersAdmin() {
                   )}
                 </div>
 
-                <div className="appointment-admin-sticky-footer">
+                <div
+                  className="appointment-admin-sticky-footer"
+                  style={{
+                    background: ui.colors.cardBg,
+                  }}
+                >
                   <button
                     type="button"
                     onClick={discardChanges}

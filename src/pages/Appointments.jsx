@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import { invokeAuthed } from "../lib/invokeAuthed";
@@ -16,6 +17,7 @@ import {
   getBookableWindowForSiteDate,
   isTimeRangeBookable,
 } from "../lib/appointmentHours";
+import { normalizePhoneNumber } from "../lib/phone";
 
 const DEFAULT_START_HOUR = 9;
 const DEFAULT_END_HOUR = 18;
@@ -547,6 +549,10 @@ function buildInitialForm({ siteId, date }) {
     internalNotes: "",
     sendConfirmationAfterSave: false,
   };
+}
+
+function isInputDateValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 }
 
 const APPOINTMENT_TYPE_CODES = {
@@ -1372,14 +1378,32 @@ function SectionCard({ title, subtitle, children, tone = "default" }) {
 }
 
 export default function Appointments() {
+  const location = useLocation();
+  const appointmentOpenRequest = React.useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const date = params.get("date") || "";
+    const site = canonicalAppointmentSiteId(params.get("site") || "");
+    const appointmentId = params.get("appointment") || "";
+    return {
+      key: `${date}|${site}|${appointmentId}`,
+      date: isInputDateValue(date) ? date : "",
+      site,
+      appointmentId,
+    };
+  }, [location.search]);
+  const handledAppointmentOpenRef = React.useRef("");
   const [loading, setLoading] = React.useState(true);
   const [toast, setToast] = React.useState(null);
 
   const [role, setRole] = React.useState("");
   const [profile, setProfile] = React.useState(null);
   const [sites, setSites] = React.useState([]);
-  const [selectedSiteId, setSelectedSiteId] = React.useState("");
-  const [selectedDate, setSelectedDate] = React.useState(todayInputValue);
+  const [selectedSiteId, setSelectedSiteId] = React.useState(
+    appointmentOpenRequest.site || "",
+  );
+  const [selectedDate, setSelectedDate] = React.useState(
+    appointmentOpenRequest.date || todayInputValue,
+  );
 
   const [areas, setAreas] = React.useState([]);
   const [appointments, setAppointments] = React.useState([]);
@@ -1950,6 +1974,103 @@ export default function Appointments() {
     if (!selectedSiteId || !profile?.site_id) return;
     loadCalendar(selectedSiteId, selectedDate);
   }, [loadCalendar, profile?.site_id, selectedDate, selectedSiteId]);
+
+  React.useEffect(() => {
+    if (!appointmentOpenRequest.appointmentId) return;
+    if (appointmentOpenRequest.site && appointmentOpenRequest.site !== selectedSiteId) {
+      setSelectedSiteId(appointmentOpenRequest.site);
+    }
+    if (appointmentOpenRequest.date && appointmentOpenRequest.date !== selectedDate) {
+      setSelectedDate(appointmentOpenRequest.date);
+    }
+  }, [
+    appointmentOpenRequest.appointmentId,
+    appointmentOpenRequest.date,
+    appointmentOpenRequest.site,
+    selectedDate,
+    selectedSiteId,
+  ]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function openRequestedAppointment() {
+      if (!appointmentOpenRequest.appointmentId) return;
+      if (!profile?.site_id) return;
+      if (loading) return;
+      if (handledAppointmentOpenRef.current === appointmentOpenRequest.key) {
+        return;
+      }
+
+      const localMatch = appointments.find(
+        (item) => item.id === appointmentOpenRequest.appointmentId,
+      );
+
+      if (localMatch) {
+        handledAppointmentOpenRef.current = appointmentOpenRequest.key;
+        openDetailModal(localMatch);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_appointment_for_calendar_open_staff",
+          {
+            p_appointment_id: appointmentOpenRequest.appointmentId,
+          },
+        );
+
+        if (error) throw error;
+        if (cancelled) return;
+
+        const appointment = Array.isArray(data) ? data[0] : data;
+        if (!appointment) {
+          handledAppointmentOpenRef.current = appointmentOpenRequest.key;
+          showToast("error", "That appointment could not be opened.");
+          return;
+        }
+
+        const targetSiteId = canonicalAppointmentSiteId(appointment.site_id || "");
+        const targetDate = isInputDateValue(appointment.appointment_date)
+          ? appointment.appointment_date
+          : inputDateValueFromIso(appointment.start_at);
+
+        if (targetSiteId && targetSiteId !== selectedSiteId) {
+          setSelectedSiteId(targetSiteId);
+        }
+        if (targetDate && targetDate !== selectedDate) {
+          setSelectedDate(targetDate);
+        }
+
+        handledAppointmentOpenRef.current = appointmentOpenRequest.key;
+        openDetailModal(appointment);
+      } catch (err) {
+        console.error("appointments: open requested appointment failed", err);
+        if (!cancelled) {
+          handledAppointmentOpenRef.current = appointmentOpenRequest.key;
+          showToast(
+            "error",
+            readErrorMessage(err, "That appointment could not be opened."),
+          );
+        }
+      }
+    }
+
+    openRequestedAppointment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    appointmentOpenRequest.appointmentId,
+    appointmentOpenRequest.key,
+    appointments,
+    loading,
+    profile?.site_id,
+    selectedDate,
+    selectedSiteId,
+    showToast,
+  ]);
 
   const visibleSiteName = React.useMemo(
     () => prettySiteName(selectedSiteId || profile?.site_id),
@@ -3473,7 +3594,7 @@ export default function Appointments() {
           p_end_at: endAt,
           p_customer_name: form.customerName.trim(),
           p_customer_email: form.customerEmail.trim(),
-          p_customer_phone: form.customerPhone.trim() || null,
+          p_customer_phone: normalizePhoneNumber(form.customerPhone) || null,
           p_customer_id: form.customerId || null,
           p_internal_notes: form.internalNotes.trim() || null,
         },
@@ -3759,7 +3880,7 @@ export default function Appointments() {
           p_end_at: endAt,
           p_customer_name: detailForm.customerName.trim(),
           p_customer_email: detailForm.customerEmail.trim(),
-          p_customer_phone: detailForm.customerPhone.trim() || null,
+          p_customer_phone: normalizePhoneNumber(detailForm.customerPhone) || null,
           p_customer_id: detailForm.customerId || null,
           p_internal_notes: detailForm.internalNotes.trim() || null,
         },
