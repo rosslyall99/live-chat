@@ -13,6 +13,7 @@ import AdminInsights from "./pages/AdminInsights";
 import Rota from "./pages/Rota";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
+import AppointmentCustomersAdmin from "./pages/AppointmentCustomersAdmin.jsx";
 import AppointmentHoursAdmin from "./pages/AppointmentHoursAdmin.jsx";
 import AppointmentTypesAdmin from "./pages/AppointmentTypesAdmin.jsx";
 import Shell from "./components/Shell";
@@ -189,6 +190,7 @@ function DesktopApp() {
         <Route path="admin/users" element={<UsersAdmin />} />
         <Route path="admin/live" element={<AdminLive />} />
         <Route path="admin/insights" element={<AdminInsights />} />
+        <Route path="admin/appointment-customers" element={<AppointmentCustomersAdmin />} />
         <Route path="admin/appointment-emails" element={<AppointmentEmailTemplates />} />
         <Route path="admin/appointment-hours" element={<AppointmentHoursAdmin />} />
         <Route path="admin/appointment-types" element={<AppointmentTypesAdmin />} />

@@ -65,6 +65,7 @@ export default function Sidebar({ role = "agent" }) {
   const isAdmin = normalizedRole === "admin";
   const isManager = normalizedRole === "manager";
   const canViewAppointmentEmails = isAdmin || isManager;
+  const canManageAppointmentCustomers = isAdmin || isManager;
 
   return (
     <aside
@@ -135,6 +136,9 @@ export default function Sidebar({ role = "agent" }) {
         {canViewAppointmentEmails && (
           <>
             <SectionTitle>Admin</SectionTitle>
+            {canManageAppointmentCustomers ? (
+              <Item to="/admin/appointment-customers" label="Customers" />
+            ) : null}
             <Item to="/admin/appointment-emails" label="Appointment Emails" />
           </>
         )}
