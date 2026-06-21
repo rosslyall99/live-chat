@@ -52,15 +52,26 @@ type RunFeedbackBatchParams = {
   limit?: number;
 };
 
+type SentFeedbackLogRow = {
+  appointment_id: string | null;
+  sent_at: string | null;
+};
+
 function summariseRows(rows: FeedbackResultRow[]) {
   return {
     total_found: rows.length,
-    eligible_count: rows.filter((row) => row.eligible).length,
-    sent_count: rows.filter((row) => row.send_result === "sent").length,
-    skipped_already_sent_count: rows.filter((row) => row.status === "already_sent").length,
-    skipped_missing_email_count: rows.filter((row) => row.status === "missing_email").length,
-    skipped_not_attended_count: rows.filter((row) => row.status === "not_attended").length,
-    failed_count: rows.filter((row) => row.send_result === "failed").length,
+    eligible_count: rows.filter((row: FeedbackResultRow) => row.eligible).length,
+    sent_count: rows.filter((row: FeedbackResultRow) => row.send_result === "sent").length,
+    skipped_already_sent_count: rows.filter(
+      (row: FeedbackResultRow) => row.status === "already_sent",
+    ).length,
+    skipped_missing_email_count: rows.filter(
+      (row: FeedbackResultRow) => row.status === "missing_email",
+    ).length,
+    skipped_not_attended_count: rows.filter(
+      (row: FeedbackResultRow) => row.status === "not_attended",
+    ).length,
+    failed_count: rows.filter((row: FeedbackResultRow) => row.send_result === "failed").length,
   };
 }
 
@@ -68,13 +79,11 @@ async function loadCandidateAppointments(adminClient: SupabaseClient, limit: num
   const { data, error } = await adminClient
     .from("appointments")
     .select(
-      "id, branch, area_id, start_at, end_at, status, customer_name, customer_email, appointment_type_id, booked_by_user_id, attendance_status, feedback_email_sent_at, feedback_email_status, feedback_email_last_error",
+      "id, branch, area_id, start_at, end_at, status, customer_name, customer_email, appointment_type_id, booked_by_user_id, attendance_status",
     )
     .neq("status", "cancelled")
     .in("attendance_status", ["checked_in", "checked_in_late"])
     .lt("end_at", new Date().toISOString())
-    .is("feedback_email_sent_at", null)
-    .or("feedback_email_status.is.null,feedback_email_status.eq.failed")
     .order("end_at", { ascending: true })
     .limit(limit)
     .returns<AppointmentRow[]>();
@@ -83,83 +92,61 @@ async function loadCandidateAppointments(adminClient: SupabaseClient, limit: num
   return data || [];
 }
 
-async function loadSentFeedbackLogMap(adminClient: SupabaseClient, appointmentIds: string[]) {
-  if (appointmentIds.length === 0) return new Map<string, string>();
+async function loadSentFeedbackLogMap(
+  adminClient: SupabaseClient,
+  appointmentIds: string[],
+): Promise<Map<string, string>> {
+  if (appointmentIds.length === 0) {
+    return new Map<string, string>();
+  }
 
   const { data, error } = await adminClient
     .from("appointment_email_log")
     .select("appointment_id, sent_at")
     .in("appointment_id", appointmentIds)
     .eq("email_type", "feedback")
-    .eq("status", "sent");
+    .eq("status", "sent")
+    .returns<SentFeedbackLogRow[]>();
 
   if (error) throw error;
 
-  return new Map(
-    (data || []).map((row) => [
-      String(row.appointment_id),
-      String(row.sent_at || new Date().toISOString()),
-    ]),
+  return new Map<string, string>(
+    (data || [])
+      .filter((row: SentFeedbackLogRow) => Boolean(row.appointment_id))
+      .map((row: SentFeedbackLogRow): [string, string] => [
+        String(row.appointment_id),
+        String(row.sent_at || new Date().toISOString()),
+      ]),
   );
 }
 
 async function markFeedbackSentFromExistingLog(
-  adminClient: SupabaseClient,
-  appointmentId: string,
-  sentAt: string,
+  _adminClient: SupabaseClient,
+  _appointmentId: string,
+  _sentAt: string,
 ) {
-  await adminClient
-    .from("appointments")
-    .update({
-      feedback_email_sent_at: sentAt,
-      feedback_email_status: "sent",
-      feedback_email_last_error: null,
-    })
-    .eq("id", appointmentId)
-    .is("feedback_email_sent_at", null);
+  // Temporary workaround:
+  // appointment_email_log is the source of truth for scheduled feedback emails.
 }
 
-async function claimAppointmentForFeedback(adminClient: SupabaseClient, appointmentId: string) {
-  const { data, error } = await adminClient
-    .from("appointments")
-    .update({
-      feedback_email_status: "pending",
-      feedback_email_last_error: null,
-    })
-    .eq("id", appointmentId)
-    .is("feedback_email_sent_at", null)
-    .or("feedback_email_status.is.null,feedback_email_status.eq.failed")
-    .select("id")
-    .maybeSingle();
-
-  if (error) throw error;
-  return Boolean(data?.id);
+async function claimAppointmentForFeedback(_adminClient: SupabaseClient, _appointmentId: string) {
+  // Temporary workaround:
+  // Do not touch appointments.feedback_email_status until the API/schema issue is resolved.
+  return true;
 }
 
-async function markFeedbackSent(adminClient: SupabaseClient, appointmentId: string) {
-  await adminClient
-    .from("appointments")
-    .update({
-      feedback_email_sent_at: new Date().toISOString(),
-      feedback_email_status: "sent",
-      feedback_email_last_error: null,
-    })
-    .eq("id", appointmentId);
+async function markFeedbackSent(_adminClient: SupabaseClient, _appointmentId: string) {
+  // Temporary workaround:
+  // sendAppointmentEmailForAppointment inserts the appointment_email_log row on success.
 }
 
 async function markFeedbackFailed(
-  adminClient: SupabaseClient,
-  appointmentId: string,
-  errorMessage: string,
+  _adminClient: SupabaseClient,
+  _appointmentId: string,
+  _errorMessage: string,
 ) {
-  await adminClient
-    .from("appointments")
-    .update({
-      feedback_email_status: "failed",
-      feedback_email_last_error: errorMessage,
-    })
-    .eq("id", appointmentId)
-    .is("feedback_email_sent_at", null);
+  // Temporary workaround:
+  // Do not touch appointments.feedback_email_status until the API/schema issue is resolved.
 }
 
 export async function runFeedbackBatch(params: RunFeedbackBatchParams) {
@@ -170,14 +157,17 @@ export async function runFeedbackBatch(params: RunFeedbackBatchParams) {
     dryRun = false,
     limit = 50,
   } = params;
+
   const rows = await loadCandidateAppointments(
     adminClient,
     Math.min(Math.max(limit, 1), 200),
   );
+
   const sentLogMap = await loadSentFeedbackLogMap(
     adminClient,
-    rows.map((row) => row.id),
+    rows.map((row: AppointmentRow) => row.id),
   );
+
   const emailEnv = getEmailEnvironment();
   const results: FeedbackResultRow[] = [];
 
@@ -187,13 +177,13 @@ export async function runFeedbackBatch(params: RunFeedbackBatchParams) {
       appointment_id: appointment.id,
       customer_name: appointment.customer_name,
       customer_email: customerEmail,
-      site_name: branchToSiteName(appointment.branch),
-      appointment_time: formatTimeLabel(appointment.start_at),
+      site_name: branchToSiteName(appointment.branch as Parameters<typeof branchToSiteName>[0]),
+      appointment_time: formatTimeLabel(String(appointment.start_at || "")),
     };
 
     const existingSentAt = sentLogMap.get(appointment.id);
     if (existingSentAt) {
-      await markFeedbackSentFromExistingLog(adminClient, appointment.id, existingSentAt);
+      await markFeedbackSentFromExistingLog(adminClient, String(appointment.id), String(existingSentAt));
       results.push({
         ...baseRow,
         status: "already_sent",
@@ -267,14 +257,15 @@ export async function runFeedbackBatch(params: RunFeedbackBatchParams) {
     });
 
     if (!result.ok) {
-      await markFeedbackFailed(adminClient, appointment.id, result.error);
+      const errorMessage = String(result.error || "Feedback email failed.");
+      await markFeedbackFailed(adminClient, appointment.id, errorMessage);
       results.push({
         ...baseRow,
         status: "eligible",
         eligible: true,
         send_result: "failed",
         message: "Failed",
-        error: result.error,
+        error: errorMessage,
       });
       continue;
     }
