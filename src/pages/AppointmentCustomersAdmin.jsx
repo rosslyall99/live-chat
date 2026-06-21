@@ -54,6 +54,13 @@ function formatShortDateTime(value) {
   });
 }
 
+function attendanceOutcomeLabel(status) {
+  if (status === "checked_in") return "Checked in";
+  if (status === "checked_in_late") return "Checked in late";
+  if (status === "no_show") return "No-show";
+  return "";
+}
+
 function branchLabel(branch) {
   const value = String(branch || "").toUpperCase();
   if (value === "DUK") return "Duke Street";
@@ -635,7 +642,7 @@ export default function AppointmentCustomersAdmin() {
               gridTemplateRows: "auto minmax(0, 1fr)",
             }}
           >
-            <label
+            <div
               style={{
                 display: "grid",
                 gap: 8,
@@ -644,30 +651,31 @@ export default function AppointmentCustomersAdmin() {
               }}
             >
               <span>Search</span>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, email, or phone"
-                style={inputStyle}
-              />
-              <label
+              <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: ui.colors.muted,
+                  alignItems: "stretch",
+                  gap: 10,
+                  flexWrap: "wrap",
                 }}
               >
                 <input
-                  type="checkbox"
-                  checked={showArchived}
-                  onChange={(e) => setShowArchived(e.target.checked)}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, email, or phone"
+                  style={{ ...inputStyle, flex: "1 1 260px" }}
                 />
-                Show archived
-              </label>
-            </label>
+                <label className="appointment-customer-archive-toggle">
+                  <input
+                    className="appointment-confirm-checkbox"
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                  />
+                  <span>Show archived</span>
+                </label>
+              </div>
+            </div>
 
             <div
               className="appointment-admin-selector-card appointment-admin-scroll"
@@ -1032,16 +1040,36 @@ export default function AppointmentCustomersAdmin() {
                           </div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
-                            {historyRows.map((appointment) => (
+                            {historyRows.map((appointment) => {
+                              const isCancelledAppointment =
+                                appointment.status === "cancelled";
+                              const attendanceLabel = attendanceOutcomeLabel(
+                                appointment.attendance_status,
+                              );
+
+                              return (
                               <div
                                 key={appointment.id}
+                                className={
+                                  isCancelledAppointment
+                                    ? "customer-appointment-row customer-appointment-row--cancelled"
+                                    : "customer-appointment-row"
+                                }
                                 style={{
                                   display: "grid",
-                                  gap: 4,
-                                  padding: 10,
+                                  gap: isCancelledAppointment ? 3 : 4,
+                                  padding: isCancelledAppointment ? 8 : 10,
                                   borderRadius: ui.radius.md,
-                                  border: `1px solid ${ui.colors.border}`,
-                                  background: "rgba(248, 250, 252, 0.75)",
+                                  border: isCancelledAppointment
+                                    ? "1px solid rgba(203, 213, 225, 0.8)"
+                                    : `1px solid ${ui.colors.border}`,
+                                  background: isCancelledAppointment
+                                    ? "rgba(241, 245, 249, 0.82)"
+                                    : "rgba(248, 250, 252, 0.75)",
+                                  color: isCancelledAppointment
+                                    ? "#64748b"
+                                    : "inherit",
+                                  opacity: isCancelledAppointment ? 0.72 : 1,
                                 }}
                               >
                                 <div
@@ -1052,15 +1080,25 @@ export default function AppointmentCustomersAdmin() {
                                     alignItems: "start",
                                   }}
                                 >
-                                  <strong>
+                                  <strong
+                                    style={{
+                                      fontSize: isCancelledAppointment
+                                        ? 13
+                                        : "inherit",
+                                    }}
+                                  >
                                     {formatDateTime(appointment.start_at)}
                                   </strong>
                                   <span
                                     style={{
-                                      fontSize: 12,
+                                      fontSize: isCancelledAppointment
+                                        ? 11
+                                        : 12,
                                       fontWeight: 900,
                                       textTransform: "capitalize",
-                                      color: ui.colors.muted,
+                                      color: isCancelledAppointment
+                                        ? "#475569"
+                                        : ui.colors.muted,
                                     }}
                                   >
                                     {appointment.status}
@@ -1068,14 +1106,34 @@ export default function AppointmentCustomersAdmin() {
                                 </div>
                                 <div
                                   style={{
-                                    fontSize: 13,
+                                    fontSize: isCancelledAppointment ? 12 : 13,
                                     fontWeight: 700,
-                                    color: ui.colors.muted,
+                                    color: isCancelledAppointment
+                                      ? "#64748b"
+                                      : ui.colors.muted,
                                   }}
                                 >
                                   {appointment.appointment_type_name ||
                                     "Appointment"}{" "}
                                   - {branchLabel(appointment.branch)}
+                                  {attendanceLabel ? (
+                                    <span
+                                      style={{
+                                        marginLeft: 8,
+                                        fontSize: isCancelledAppointment
+                                          ? 11
+                                          : 12,
+                                        fontWeight: 900,
+                                        color:
+                                          appointment.attendance_status ===
+                                          "no_show"
+                                            ? "#64748b"
+                                            : "#047857",
+                                      }}
+                                    >
+                                      {attendanceLabel}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <div
                                   style={{
@@ -1112,7 +1170,8 @@ export default function AppointmentCustomersAdmin() {
                                   ) : null}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

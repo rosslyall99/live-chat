@@ -123,6 +123,47 @@ function formatDateTimeLabel(iso) {
   });
 }
 
+function formatTimeLabel(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-GB", {
+    timeZone: "Europe/London",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function londonDateValue(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return todayInputValue();
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+}
+
+function attendanceOutcomeLabel(status) {
+  if (status === "checked_in") return "Checked in";
+  if (status === "checked_in_late") return "Checked in late";
+  if (status === "no_show") return "No-show";
+  return "";
+}
+
+function attendanceRecordedLabel(appointment) {
+  const label = attendanceOutcomeLabel(appointment?.attendance_status);
+  if (!label) return "";
+  const time = formatTimeLabel(appointment?.attendance_recorded_at);
+  if (!time) return label;
+  if (appointment.attendance_status === "no_show") {
+    return `${label} recorded at ${time}`;
+  }
+  return `${label} at ${time}`;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1450,6 +1491,9 @@ export default function Appointments() {
   const [emailLogError, setEmailLogError] = React.useState("");
   const [sendingConfirmation, setSendingConfirmation] = React.useState(false);
   const [sendingReminder, setSendingReminder] = React.useState(false);
+  const [attendanceSaving, setAttendanceSaving] = React.useState("");
+  const [notesDraft, setNotesDraft] = React.useState("");
+  const [notesSaving, setNotesSaving] = React.useState(false);
   const [isDesktopToolsLayout, setIsDesktopToolsLayout] = React.useState(
     typeof window === "undefined" ? true : window.innerWidth >= 1080,
   );
@@ -2527,6 +2571,19 @@ export default function Appointments() {
     return !!String(detailAppointment.customer_email || "").trim();
   }, [canManageSelectedAppointment, detailAppointment]);
 
+  const canRecordAttendance = React.useMemo(() => {
+    if (!detailAppointment) return false;
+    if (!canManageSelectedAppointment) return false;
+    if (detailAppointment.status === "cancelled") return false;
+    if (detailAppointment.attendance_status) return false;
+    return londonDateValue(detailAppointment.start_at) === londonDateValue();
+  }, [canManageSelectedAppointment, detailAppointment]);
+
+  const attendanceStatusText = React.useMemo(
+    () => attendanceRecordedLabel(detailAppointment),
+    [detailAppointment],
+  );
+
   const canManageSelectedBlock = React.useMemo(() => {
     if (!detailBlock || !profile) return false;
     return role === "admin" || role === "manager";
@@ -2872,8 +2929,11 @@ export default function Appointments() {
     setModalOpen(false);
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
+    setNotesDraft(item.internal_notes || "");
     setDetailError("");
     setDetailEditing(false);
+    setAttendanceSaving("");
+    setNotesSaving(false);
     setDetailOpen(true);
     setDrawerMode("detail");
     loadActivity(item.id);
@@ -2896,12 +2956,15 @@ export default function Appointments() {
     setDetailSaving(false);
     setDetailError("");
     setDetailAppointment(null);
+    setNotesDraft("");
     setActivityRows([]);
     setActivityError("");
     setEmailLogRows([]);
     setEmailLogError("");
     setSendingConfirmation(false);
     setSendingReminder(false);
+    setAttendanceSaving("");
+    setNotesSaving(false);
     setDrawerMode("empty");
   }
 
@@ -3943,6 +4006,108 @@ export default function Appointments() {
     }
   }
 
+  function applyDetailAppointmentPatch(patch) {
+    if (!patch?.id) return;
+    setDetailAppointment((current) =>
+      current?.id === patch.id ? { ...current, ...patch } : current,
+    );
+    setAppointments((current) =>
+      current.map((item) =>
+        item.id === patch.id ? { ...item, ...patch } : item,
+      ),
+    );
+  }
+
+  async function recordAttendance(attendanceStatus) {
+    if (!detailAppointment) return;
+    const toastByStatus = {
+      checked_in: "Customer checked in.",
+      checked_in_late: "Customer checked in late.",
+      no_show: "No-show recorded.",
+    };
+
+    setAttendanceSaving(attendanceStatus);
+    setDetailError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        "record_appointment_attendance_staff",
+        {
+          p_appointment_id: detailAppointment.id,
+          p_attendance_status: attendanceStatus,
+        },
+      );
+
+      if (rpcError) throw rpcError;
+      const updated = Array.isArray(data) ? data[0] : data;
+      if (!updated) {
+        throw new Error("Attendance could not be recorded.");
+      }
+
+      applyDetailAppointmentPatch({
+        id: detailAppointment.id,
+        ...updated,
+      });
+      await Promise.all([
+        loadCalendar(selectedSiteId, selectedDate),
+        loadActivity(detailAppointment.id),
+      ]);
+      showToast("success", toastByStatus[attendanceStatus]);
+    } catch (err) {
+      console.error("appointments: attendance update failed", err);
+      const message = readErrorMessage(err, "Could not record attendance.");
+      setDetailError(message);
+      showToast("error", message);
+    } finally {
+      setAttendanceSaving("");
+    }
+  }
+
+  async function saveAppointmentNotes() {
+    if (!detailAppointment) return;
+
+    setNotesSaving(true);
+    setDetailError("");
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        "update_appointment_notes_staff",
+        {
+          p_appointment_id: detailAppointment.id,
+          p_internal_notes: notesDraft.trim() || null,
+        },
+      );
+
+      if (rpcError) throw rpcError;
+      const updated = Array.isArray(data) ? data[0] : data;
+      if (!updated) {
+        throw new Error("Appointment notes could not be saved.");
+      }
+
+      applyDetailAppointmentPatch({
+        id: detailAppointment.id,
+        internal_notes: updated.internal_notes || "",
+      });
+      setDetailForm((current) => ({
+        ...current,
+        internalNotes: updated.internal_notes || "",
+      }));
+      setNotesDraft(updated.internal_notes || "");
+      await Promise.all([
+        loadCalendar(selectedSiteId, selectedDate),
+        loadActivity(detailAppointment.id),
+      ]);
+      showToast("success", "Appointment notes saved.");
+    } catch (err) {
+      console.error("appointments: notes update failed", err);
+      const message = readErrorMessage(err, "Could not save appointment notes.");
+      setDetailError(message);
+      showToast("error", message);
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
   async function sendConfirmationEmail() {
     if (!detailAppointment) return;
 
@@ -4870,16 +5035,81 @@ export default function Appointments() {
                         </div>
                       </SectionCard>
 
+                      {canRecordAttendance || attendanceStatusText ? (
+                        <SectionCard title="Attendance" tone="softSlate">
+                          {attendanceStatusText ? (
+                            <div className="appointment-attendance-status">
+                              {attendanceStatusText}
+                            </div>
+                          ) : (
+                            <div className="appointment-attendance-actions">
+                              <button
+                                className="appointment-drawer-action-button appointment-drawer-action-button--attendance-ok"
+                                type="button"
+                                onClick={() => recordAttendance("checked_in")}
+                                disabled={Boolean(attendanceSaving)}
+                              >
+                                {attendanceSaving === "checked_in"
+                                  ? "Saving..."
+                                  : "Checked in"}
+                              </button>
+                              <button
+                                className="appointment-drawer-action-button appointment-drawer-action-button--attendance-late"
+                                type="button"
+                                onClick={() =>
+                                  recordAttendance("checked_in_late")
+                                }
+                                disabled={Boolean(attendanceSaving)}
+                              >
+                                {attendanceSaving === "checked_in_late"
+                                  ? "Saving..."
+                                  : "Checked in late"}
+                              </button>
+                              <button
+                                className="appointment-drawer-action-button appointment-drawer-action-button--attendance-no-show"
+                                type="button"
+                                onClick={() => recordAttendance("no_show")}
+                                disabled={Boolean(attendanceSaving)}
+                              >
+                                {attendanceSaving === "no_show"
+                                  ? "Saving..."
+                                  : "No-show"}
+                              </button>
+                            </div>
+                          )}
+                        </SectionCard>
+                      ) : null}
+
                       <SectionCard title="Internal notes" tone="softSlate">
-                        <div
+                        <textarea
+                          rows={4}
+                          value={notesDraft}
+                          onChange={(e) => setNotesDraft(e.target.value)}
+                          disabled={!canManageSelectedAppointment || notesSaving}
                           style={{
-                            whiteSpace: "pre-wrap",
-                            fontWeight: 700,
+                            ...baseInputStyle,
+                            resize: "vertical",
+                            minHeight: 92,
                           }}
-                        >
-                          {detailAppointment.internal_notes ||
-                            "No internal notes"}
-                        </div>
+                        />
+                        {canManageSelectedAppointment ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              marginTop: 10,
+                            }}
+                          >
+                            <button
+                              className="appointment-drawer-action-button appointment-drawer-action-button--edit"
+                              type="button"
+                              onClick={saveAppointmentNotes}
+                              disabled={notesSaving}
+                            >
+                              {notesSaving ? "Saving..." : "Save notes"}
+                            </button>
+                          </div>
+                        ) : null}
                       </SectionCard>
 
                       <SectionCard>

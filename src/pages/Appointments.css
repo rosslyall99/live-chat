@@ -1136,6 +1136,40 @@
   background: rgba(239, 68, 68, 0.12);
 }
 
+.appointment-drawer-action-button--attendance-ok {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.appointment-drawer-action-button--attendance-late {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.appointment-drawer-action-button--attendance-no-show {
+  border-color: rgba(100, 116, 139, 0.35);
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.appointment-attendance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appointment-attendance-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 9px;
+  border: 1px solid rgba(100, 116, 139, 0.24);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--appointments-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .appointment-drawer-empty {
   height: 100%;
   display: flex;

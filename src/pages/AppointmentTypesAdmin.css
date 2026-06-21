@@ -67,6 +67,72 @@
   padding-bottom: 2px;
 }
 
+.customer-appointment-row {
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.customer-appointment-row--cancelled {
+  box-shadow: inset 3px 0 0 rgba(148, 163, 184, 0.55);
+}
+
+.appointment-customer-archive-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 2px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.appointment-customer-archive-toggle .appointment-confirm-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #111827;
+  border-radius: 4px;
+  background: #ffffff;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  flex: 0 0 16px;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.appointment-customer-archive-toggle .appointment-confirm-checkbox:hover {
+  border-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+.appointment-customer-archive-toggle .appointment-confirm-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(48, 199, 204, 0.22);
+}
+
+.appointment-customer-archive-toggle .appointment-confirm-checkbox:checked {
+  background: #ffffff;
+  border-color: #111827;
+}
+
+.appointment-customer-archive-toggle .appointment-confirm-checkbox:checked::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border-right: 2px solid #111827;
+  border-bottom: 2px solid #111827;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
 .appointment-types-admin button:focus:not(:focus-visible) {
   outline: none;
 }
