@@ -164,6 +164,13 @@ function attendanceRecordedLabel(appointment) {
   return `${label} at ${time}`;
 }
 
+function appointmentDurationMinutes(appointment) {
+  const start = new Date(appointment?.start_at);
+  const end = new Date(appointment?.end_at);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
 function feedbackEmailStatusLabel(appointment) {
   if (appointment?.feedback_email_sent_at) return "Feedback sent";
   if (appointment?.feedback_email_status === "failed") return "Feedback failed";
@@ -1250,14 +1257,15 @@ function TimelineItem({
   );
   const appointmentTextColorValue = appointmentTypeTextColor(item, typesById);
   const cardAreaLabel = item.area_name || "Area";
+  const isCompactAppointment = !isBlock && appointmentDurationMinutes(item) <= 15;
 
   return (
     <button
-      className={
-        isBlock
-          ? "appointment-entry appointment-block-entry"
-          : "appointment-entry"
-      }
+className={
+  isBlock
+    ? "appointment-entry appointment-block-entry"
+    : `appointment-entry${isCompactAppointment ? " appointment-entry--compact" : ""}`
+}
       type="button"
       onClick={onClick}
       disabled={!onClick}
@@ -1501,6 +1509,9 @@ export default function Appointments() {
   const [attendanceSaving, setAttendanceSaving] = React.useState("");
   const [notesDraft, setNotesDraft] = React.useState("");
   const [notesSaving, setNotesSaving] = React.useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = React.useState(null);
+  const [rescheduleSlot, setRescheduleSlot] = React.useState(null);
+  const [rescheduleSaving, setRescheduleSaving] = React.useState(false);
   const [isDesktopToolsLayout, setIsDesktopToolsLayout] = React.useState(
     typeof window === "undefined" ? true : window.innerWidth >= 1080,
   );
@@ -2459,6 +2470,31 @@ export default function Appointments() {
     },
     [appointmentTypes],
   );
+  const slotWouldClashForReschedule = React.useCallback(
+    (areaId, startMinutes) => {
+      if (!rescheduleTarget) return false;
+      const durationMinutes =
+        Number(rescheduleTarget.durationMinutes) ||
+        CALENDAR_SLOT_INTERVAL_MINUTES;
+      const proposedEndMinutes = startMinutes + durationMinutes;
+
+      return appointments.some((item) => {
+        if (!item) return false;
+        if (String(item.id) === String(rescheduleTarget.id)) return false;
+        if (item.status === "cancelled") return false;
+        if (item.area_id !== areaId) return false;
+        if (inputDateValueFromIso(item.start_at) !== selectedDate) return false;
+
+        return doIntervalsOverlap(
+          startMinutes,
+          proposedEndMinutes,
+          minutesFromIso(item.start_at),
+          minutesFromIso(item.end_at),
+        );
+      });
+    },
+    [appointments, rescheduleTarget, selectedDate],
+  );
   const detailAppointmentTypeOptions = React.useMemo(() => {
     const currentId = detailAppointment?.appointment_type_id;
     const hasCurrent = currentId
@@ -2938,6 +2974,9 @@ export default function Appointments() {
   function openDetailModal(item) {
     const nextSiteId = appointmentBranchToSiteId(item.branch) || selectedSiteId;
     setModalOpen(false);
+    setRescheduleTarget(null);
+    setRescheduleSlot(null);
+    setRescheduleSaving(false);
     setDetailAppointment(item);
     setDetailForm(buildDetailForm(item, nextSiteId));
     setNotesDraft(item.internal_notes || "");
@@ -2979,6 +3018,44 @@ export default function Appointments() {
     setDrawerMode("empty");
   }
 
+  function beginRescheduleAppointment(appointment) {
+    if (!appointment) return;
+
+    const durationMinutes = appointmentDurationMinutes(appointment);
+    const nextSiteId = appointmentBranchToSiteId(appointment.branch) || selectedSiteId;
+    const currentArea = areas.find((area) => area.id === appointment.area_id);
+    setRescheduleTarget({
+      id: appointment.id,
+      customer_name: appointment.customer_name || "Unnamed customer",
+      customer_email: appointment.customer_email || "",
+      customer_phone: appointment.customer_phone || "",
+      customer_id: appointment.customer_id || null,
+      internal_notes: appointment.internal_notes || "",
+      branch: appointment.branch,
+      site_id: nextSiteId,
+      siteName: prettySiteName(nextSiteId),
+      area_id: appointment.area_id,
+      areaLabel: canonicalAreaLabel(currentArea),
+      appointment_type_id: appointment.appointment_type_id,
+      start_at: appointment.start_at,
+      end_at: appointment.end_at,
+      durationMinutes,
+    });
+    setRescheduleSlot(null);
+    setRescheduleSaving(false);
+    setDetailOpen(false);
+    setDetailEditing(false);
+    setDetailSaving(false);
+    setModalOpen(false);
+    setDrawerMode("empty");
+  }
+
+  function cancelRescheduleMode() {
+    setRescheduleTarget(null);
+    setRescheduleSlot(null);
+    setRescheduleSaving(false);
+  }
+
   function closeBlockDetailModal() {
     setBlockDetailOpen(false);
     setBlockDetailEditing(false);
@@ -2990,7 +3067,7 @@ export default function Appointments() {
   }
 
   function handleQuickCreateSlotClick(areaId, startMinutes) {
-    if (!canOpenCreate) return;
+    if (!canOpenCreate && !rescheduleTarget) return;
     const roundedMinutes = clamp(
       roundMinutesToNearestInterval(startMinutes),
       CALENDAR_START_MINUTES,
@@ -3003,13 +3080,134 @@ export default function Appointments() {
     if (
       !isTimeRangeBookable(selectedCalendarBookableWindow, startTime, endTime)
     ) {
-      showToast("info", "This time is outside bookable hours.");
+      if (!rescheduleTarget) {
+        showToast("info", "This time is outside bookable hours.");
+      }
+      return;
+    }
+    if (rescheduleTarget) {
+      const selectedArea = areas.find((area) => area.id === areaId) || null;
+      const selectedBranch = siteIdToAppointmentBranch(selectedSiteId);
+      const durationMinutes =
+        Number(rescheduleTarget.durationMinutes) ||
+        CALENDAR_SLOT_INTERVAL_MINUTES;
+      setRescheduleSlot({
+        areaId,
+        areaLabel: canonicalAreaLabel(selectedArea),
+        date: selectedDate,
+        startTime,
+        endTime: addMinutesToTimeValue(startTime, durationMinutes),
+        siteId: selectedSiteId,
+        branch: selectedBranch || "",
+        siteName: prettySiteName(selectedSiteId),
+      });
+      console.info("appointments: reschedule slot selected", {
+        appointment_id: rescheduleTarget.id,
+        area_id: areaId,
+        date: selectedDate,
+        start_time: startTime,
+        duration_minutes: durationMinutes,
+      });
       return;
     }
     openQuickCreateDrawer({
       areaId,
       startTime,
     });
+  }
+
+  async function confirmRescheduleAppointment() {
+    if (rescheduleSaving) return;
+    if (!rescheduleTarget || !rescheduleSlot) {
+      showToast("error", "Choose a new free slot before confirming.");
+      return;
+    }
+
+    const durationMinutes =
+      Number(rescheduleTarget.durationMinutes) || CALENDAR_SLOT_INTERVAL_MINUTES;
+    const startAt = toDateTimeIso(rescheduleSlot.date, rescheduleSlot.startTime);
+    const endAt = toDateTimeIso(
+      rescheduleSlot.date,
+      addMinutesToTimeValue(rescheduleSlot.startTime, durationMinutes),
+    );
+
+    setRescheduleSaving(true);
+
+    try {
+      const { data: freshData, error: freshError } = await supabase.rpc(
+        "get_appointment_for_calendar_open_staff",
+        {
+          p_appointment_id: rescheduleTarget.id,
+        },
+      );
+
+      if (freshError) throw freshError;
+
+      const freshAppointment = Array.isArray(freshData)
+        ? freshData[0]
+        : freshData;
+      const sourceAppointment = freshAppointment || rescheduleTarget;
+
+      const { data, error: rpcError } = await supabase.rpc(
+        "update_appointment_staff",
+        {
+          p_appointment_id: rescheduleTarget.id,
+          p_area_id: rescheduleSlot.areaId,
+          p_appointment_type_id: sourceAppointment.appointment_type_id,
+          p_start_at: startAt,
+          p_end_at: endAt,
+          p_customer_name: String(
+            sourceAppointment.customer_name ||
+              rescheduleTarget.customer_name ||
+              "",
+          ).trim(),
+          p_customer_email: String(
+            sourceAppointment.customer_email ||
+              rescheduleTarget.customer_email ||
+              "",
+          ).trim(),
+          p_customer_phone:
+            normalizePhoneNumber(
+              sourceAppointment.customer_phone ||
+                rescheduleTarget.customer_phone ||
+                "",
+            ) || null,
+          p_customer_id:
+            sourceAppointment.customer_id || rescheduleTarget.customer_id || null,
+          p_internal_notes:
+            String(
+              sourceAppointment.internal_notes ??
+                rescheduleTarget.internal_notes ??
+                "",
+            ).trim() || null,
+          p_site_id: canonicalAppointmentSiteId(
+            rescheduleSlot.siteId || selectedSiteId,
+          ),
+        },
+      );
+
+      if (rpcError) throw rpcError;
+      if (!data || data.length === 0) {
+        throw new Error("The appointment could not be rescheduled.");
+      }
+
+      const nextSiteId = rescheduleSlot.siteId || selectedSiteId;
+      const nextDate = rescheduleSlot.date || selectedDate;
+      setSelectedSiteId(nextSiteId);
+      setSelectedDate(nextDate);
+      setRescheduleTarget(null);
+      setRescheduleSlot(null);
+      await loadCalendar(nextSiteId, nextDate);
+      showToast("success", "Appointment rescheduled");
+    } catch (err) {
+      console.error("appointments: reschedule failed", err);
+      showToast(
+        "error",
+        readErrorMessage(err, "Could not reschedule the appointment."),
+      );
+    } finally {
+      setRescheduleSaving(false);
+    }
   }
 
   function updateForm(key, value) {
@@ -4569,14 +4767,32 @@ export default function Appointments() {
                         CALENDAR_TOTAL_MINUTES) *
                       timelineHeight;
                     const startTime = timeLabelFromMinutes(minutes);
+                    const rescheduleDurationMinutes =
+                      Number(rescheduleTarget?.durationMinutes) ||
+                      CALENDAR_SLOT_INTERVAL_MINUTES;
+                    const slotDurationMinutes = rescheduleTarget
+                      ? rescheduleDurationMinutes
+                      : CALENDAR_SLOT_INTERVAL_MINUTES;
                     const endTime = timeLabelFromMinutes(
-                      minutes + CALENDAR_SLOT_INTERVAL_MINUTES,
+                      minutes + slotDurationMinutes,
                     );
-                    const isUnavailable = !isTimeRangeBookable(
+                    const isOutsideBookableHours = !isTimeRangeBookable(
                       selectedCalendarBookableWindow,
                       startTime,
                       endTime,
                     );
+                    const rescheduleClashes =
+                      Boolean(rescheduleTarget) &&
+                      slotWouldClashForReschedule(area.id, minutes);
+                    const isUnavailable =
+                      isOutsideBookableHours || rescheduleClashes;
+                    const isSelectedRescheduleSlot =
+                      rescheduleTarget &&
+                      rescheduleSlot &&
+                      rescheduleSlot.siteId === selectedSiteId &&
+                      rescheduleSlot.date === selectedDate &&
+                      rescheduleSlot.areaId === area.id &&
+                      rescheduleSlot.startTime === startTime;
                     return (
                       <button
                         key={`slot-${area.id}-${minutes}`}
@@ -4585,16 +4801,33 @@ export default function Appointments() {
                           isUnavailable
                             ? " appointment-area-slot--unavailable"
                             : ""
+                        }${
+                          rescheduleTarget && !isUnavailable
+                            ? " appointment-area-slot--reschedule"
+                            : ""
+                        }${
+                          isSelectedRescheduleSlot
+                            ? " appointment-area-slot--reschedule-selected"
+                            : ""
                         }`}
+                        disabled={Boolean(rescheduleTarget && isUnavailable)}
                         onClick={() =>
                           handleQuickCreateSlotClick(area.id, minutes)
                         }
-                        aria-label={`Create appointment at ${startTime} in ${canonicalAreaLabel(area)}`}
+                        aria-label={
+                          rescheduleTarget
+                            ? `Select reschedule slot at ${startTime} in ${canonicalAreaLabel(area)}`
+                            : `Create appointment at ${startTime} in ${canonicalAreaLabel(area)}`
+                        }
                         aria-disabled={isUnavailable}
                         title={
-                          isUnavailable
+                          isOutsideBookableHours
                             ? "This time is outside bookable hours."
-                            : undefined
+                            : rescheduleClashes
+                              ? "This time clashes with another appointment."
+                              : rescheduleTarget
+                              ? "Select this slot for the reschedule."
+                              : undefined
                         }
                         style={{
                           top,
@@ -5347,6 +5580,18 @@ export default function Appointments() {
                   </div>
 
                   <div className="appointment-drawer-footer appointment-drawer-footer--contained">
+                    {canManageSelectedAppointment &&
+                    detailAppointment.status !== "cancelled" ? (
+                      <button
+                        className="appointment-drawer-action-button appointment-drawer-action-button--reschedule"
+                        type="button"
+                        onClick={() => beginRescheduleAppointment(detailAppointment)}
+                        disabled={detailSaving}
+                      >
+                        Reschedule
+                      </button>
+                    ) : null}
+
                     {canManageSelectedAppointment ? (
                       <button
                         className="appointment-drawer-action-button appointment-drawer-action-button--edit"
@@ -7223,6 +7468,164 @@ export default function Appointments() {
     </aside>
   );
 
+  const rescheduleDrawer = rescheduleTarget ? (
+    <aside
+      className={`appointment-drawer ${
+        isDesktopToolsLayout
+          ? "appointment-drawer--desktop"
+          : "appointment-drawer--placeholder-stack"
+      }`}
+      aria-label="Reschedule appointment"
+    >
+      <div className="appointment-drawer-panel">
+        <div className="appointment-drawer-header">
+          <div className="appointment-drawer-summary">
+            <div className="appointment-drawer-summary-item appointment-drawer-summary-item--strong">
+              Reschedule appointment
+            </div>
+            <div className="appointment-drawer-summary-item appointment-drawer-summary-item--type">
+              {rescheduleTarget.customer_name}
+            </div>
+          </div>
+        </div>
+
+        <div className="appointment-drawer-scroll">
+          <div className="appointment-drawer-shell">
+            <div
+              className="appointment-drawer-body"
+              style={{ padding: 20, paddingBottom: 16 }}
+            >
+              <div style={{ display: "grid", gap: 16 }}>
+                <SectionCard title="Current appointment">
+                  <div className="appointment-drawer-detail-list">
+                    <div className="appointment-drawer-detail-line">
+                      <span className="appointment-drawer-detail-label">
+                        Customer
+                      </span>
+                      <span className="appointment-drawer-detail-value">
+                        {rescheduleTarget.customer_name}
+                      </span>
+                    </div>
+                    <div className="appointment-drawer-detail-line">
+                      <span className="appointment-drawer-detail-label">
+                        Current
+                      </span>
+                      <span className="appointment-drawer-detail-value">
+                        {formatDateTimeLabel(rescheduleTarget.start_at)}
+                        {" - "}
+                        {formatTimeRange(
+                          rescheduleTarget.start_at,
+                          rescheduleTarget.end_at,
+                        )}
+                      </span>
+                    </div>
+                    <div className="appointment-drawer-detail-line">
+                      <span className="appointment-drawer-detail-label">
+                        Branch
+                      </span>
+                      <span className="appointment-drawer-detail-value">
+                        {rescheduleTarget.siteName}
+                        {rescheduleTarget.branch
+                          ? ` (${rescheduleTarget.branch})`
+                          : ""}
+                      </span>
+                    </div>
+                    <div className="appointment-drawer-detail-line">
+                      <span className="appointment-drawer-detail-label">
+                        Area
+                      </span>
+                      <span className="appointment-drawer-detail-value">
+                        {rescheduleTarget.areaLabel}
+                      </span>
+                    </div>
+                    <div className="appointment-drawer-detail-line">
+                      <span className="appointment-drawer-detail-label">
+                        Duration
+                      </span>
+                      <span className="appointment-drawer-detail-value">
+                        {rescheduleTarget.durationMinutes || "Unknown"} minutes
+                      </span>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="New slot" tone="softSlate">
+                  {rescheduleSlot ? (
+                    <div className="appointment-drawer-detail-list">
+                      <div className="appointment-drawer-detail-line">
+                        <span className="appointment-drawer-detail-label">
+                          Date
+                        </span>
+                        <span className="appointment-drawer-detail-value">
+                          {formatDateHeading(rescheduleSlot.date)}
+                        </span>
+                      </div>
+                      <div className="appointment-drawer-detail-line">
+                        <span className="appointment-drawer-detail-label">
+                          Time
+                        </span>
+                        <span className="appointment-drawer-detail-value">
+                          {rescheduleSlot.startTime} - {rescheduleSlot.endTime}
+                        </span>
+                      </div>
+                      <div className="appointment-drawer-detail-line">
+                        <span className="appointment-drawer-detail-label">
+                          Branch
+                        </span>
+                        <span className="appointment-drawer-detail-value">
+                          {rescheduleSlot.siteName}
+                          {rescheduleSlot.branch
+                            ? ` (${rescheduleSlot.branch})`
+                            : ""}
+                        </span>
+                      </div>
+                      <div className="appointment-drawer-detail-line">
+                        <span className="appointment-drawer-detail-label">
+                          Area
+                        </span>
+                        <span className="appointment-drawer-detail-value">
+                          {rescheduleSlot.areaLabel}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="appointment-reschedule-instruction">
+                      Choose a new time on the calendar.
+                    </div>
+                  )}
+                </SectionCard>
+              </div>
+            </div>
+
+            <div className="appointment-drawer-footer appointment-drawer-footer--contained">
+              <button
+                className="appointment-drawer-action-button appointment-drawer-action-button--close"
+                type="button"
+                disabled={rescheduleSaving}
+                onClick={cancelRescheduleMode}
+              >
+                Cancel reschedule
+              </button>
+              <button
+                className="appointment-drawer-action-button appointment-drawer-action-button--reschedule"
+                type="button"
+                disabled={!rescheduleSlot || rescheduleSaving}
+                onClick={confirmRescheduleAppointment}
+                title={
+                  rescheduleSlot
+                    ? "Confirm this reschedule."
+                    : "Choose a new free slot first."
+                }
+              >
+                {rescheduleSaving ? "Saving..." : "Confirm reschedule"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  ) : null;
+
   const desktopDetailPanel = isDesktopToolsLayout ? (
     createWizardOpen ? (
       <div
@@ -7251,6 +7654,13 @@ export default function Appointments() {
         style={{ height: desktopWorkspaceHeight }}
       >
         {blockDetailDrawer}
+      </div>
+    ) : rescheduleTarget ? (
+      <div
+        className="appointments-layout-side"
+        style={{ height: desktopWorkspaceHeight }}
+      >
+        {rescheduleDrawer}
       </div>
     ) : detailOpen && detailAppointment ? (
       <div
@@ -7296,6 +7706,8 @@ export default function Appointments() {
               ? blockCreateDrawer
             : blockDetailOpen && detailBlock
               ? blockDetailDrawer
+            : rescheduleTarget
+              ? rescheduleDrawer
             : detailOpen && detailAppointment
               ? appointmentDetailDrawer
               : appointmentPlaceholderDrawer

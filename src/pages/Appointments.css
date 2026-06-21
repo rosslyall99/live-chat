@@ -284,6 +284,16 @@
   outline: none;
 }
 
+.appointment-area-slot--reschedule:hover,
+.appointment-area-slot--reschedule:focus-visible {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.appointment-area-slot--reschedule-selected {
+  background: rgba(168, 85, 247, 0.14);
+  box-shadow: inset 0 0 0 2px rgba(168, 85, 247, 0.3);
+}
+
 .appointment-area-slot--unavailable {
   background: repeating-linear-gradient(
     -45deg,
@@ -323,6 +333,10 @@
 .appointment-area-slot:hover .appointment-area-slot-label,
 .appointment-area-slot:focus-visible .appointment-area-slot-label {
   opacity: 1;
+}
+
+.appointment-area-slot--reschedule .appointment-area-slot-label {
+  color: rgba(107, 33, 168, 0.92);
 }
 
 .appointment-area-slot--unavailable .appointment-area-slot-label {
@@ -371,6 +385,10 @@
   font-size: var(--appointment-entry-font-size);
   line-height: 1.15;
   color: var(--appointment-entry-text-color, var(--appointments-text));
+}
+
+.appointment-entry--compact .appointment-entry-content {
+  transform: translateY(-3px);
 }
 
 .appointment-entry-time {
@@ -1131,6 +1149,11 @@
   background: rgba(168, 85, 247, 0.12);
 }
 
+.appointment-drawer-action-button--reschedule {
+  border-color: rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.1);
+}
+
 .appointment-drawer-action-button--cancel {
   border-color: rgba(239, 68, 68, 0.35);
   background: rgba(239, 68, 68, 0.12);
@@ -1187,6 +1210,13 @@
   border-color: rgba(245, 158, 11, 0.32);
   background: rgba(245, 158, 11, 0.1);
   color: #92400e;
+}
+
+.appointment-reschedule-instruction {
+  color: var(--appointments-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .appointment-drawer-empty {
