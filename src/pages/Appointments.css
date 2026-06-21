@@ -863,6 +863,71 @@
   color: var(--appointments-text);
 }
 
+.appointment-customer-autocomplete {
+  position: relative;
+}
+
+.appointment-customer-autocomplete-menu {
+  position: absolute;
+  z-index: 980;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 236px;
+  overflow-y: auto;
+  border: 1px solid var(--appointments-border);
+  border-radius: 10px;
+  background: var(--appointments-card-bg);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.appointment-customer-autocomplete-option {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: transparent;
+  color: var(--appointments-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.appointment-customer-autocomplete-option:last-child {
+  border-bottom: 0;
+}
+
+.appointment-customer-autocomplete-option:hover,
+.appointment-customer-autocomplete-option:focus-visible {
+  background: rgba(59, 130, 246, 0.08);
+  outline: none;
+}
+
+.appointment-customer-autocomplete-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.appointment-customer-autocomplete-meta,
+.appointment-customer-autocomplete-empty {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--appointments-muted);
+}
+
+.appointment-customer-autocomplete-empty {
+  padding: 8px 10px;
+}
+
 .appointment-form-field--full {
   grid-column: 1 / -1;
 }

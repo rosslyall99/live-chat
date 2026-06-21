@@ -540,6 +540,10 @@ function buildInitialForm({ siteId, date }) {
     customerName: "",
     customerEmail: "",
     customerPhone: "",
+    customerId: null,
+    selectedCustomerName: "",
+    selectedCustomerEmail: "",
+    selectedCustomerPhone: "",
     internalNotes: "",
     sendConfirmationAfterSave: false,
   };
@@ -852,6 +856,10 @@ function buildDetailForm(appointment, siteId) {
     customerName: appointment?.customer_name || "",
     customerEmail: appointment?.customer_email || "",
     customerPhone: appointment?.customer_phone || "",
+    customerId: appointment?.customer_id || null,
+    selectedCustomerName: appointment?.customer_name || "",
+    selectedCustomerEmail: appointment?.customer_email || "",
+    selectedCustomerPhone: appointment?.customer_phone || "",
     internalNotes: appointment?.internal_notes || "",
   };
 }
@@ -908,6 +916,186 @@ function isLikelyEmail(value) {
   const email = String(value || "").trim();
   if (!email) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeCustomerComparable(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function shouldKeepSelectedCustomer(prev, key, value) {
+  if (!prev.customerId) return false;
+
+  const next = {
+    customerName: prev.customerName,
+    customerEmail: prev.customerEmail,
+    customerPhone: prev.customerPhone,
+    [key]: value,
+  };
+
+  return (
+    normalizeCustomerComparable(next.customerName) ===
+      normalizeCustomerComparable(prev.selectedCustomerName) &&
+    normalizeCustomerComparable(next.customerEmail) ===
+      normalizeCustomerComparable(prev.selectedCustomerEmail) &&
+    normalizeCustomerComparable(next.customerPhone) ===
+      normalizeCustomerComparable(prev.selectedCustomerPhone)
+  );
+}
+
+function applyCustomerFieldChange(prev, key, value) {
+  const next = { ...prev, [key]: value };
+  if (!prev.customerId || shouldKeepSelectedCustomer(prev, key, value)) {
+    return next;
+  }
+
+  return {
+    ...next,
+    customerId: null,
+    selectedCustomerName: "",
+    selectedCustomerEmail: "",
+    selectedCustomerPhone: "",
+  };
+}
+
+function applySelectedCustomer(prev, customer) {
+  return {
+    ...prev,
+    customerId: customer.id,
+    customerName: customer.full_name || "",
+    customerEmail: customer.email || "",
+    customerPhone: customer.phone || "",
+    selectedCustomerName: customer.full_name || "",
+    selectedCustomerEmail: customer.email || "",
+    selectedCustomerPhone: customer.phone || "",
+  };
+}
+
+function CustomerAutocompleteInput({
+  value,
+  onChange,
+  onSelect,
+  inputStyle,
+  disabled = false,
+}) {
+  const [results, setResults] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [searched, setSearched] = React.useState(false);
+  const containerRef = React.useRef(null);
+  const trimmedValue = String(value || "").trim();
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (trimmedValue.length < 2 || disabled) {
+      setResults([]);
+      setOpen(false);
+      setLoading(false);
+      setSearched(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoading(true);
+    setSearched(false);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.rpc(
+          "search_appointment_customers_staff",
+          { p_query: trimmedValue },
+        );
+
+        if (error) throw error;
+        if (cancelled) return;
+
+        setResults(data || []);
+        setOpen(true);
+      } catch (err) {
+        console.error("appointments: customer search failed", err);
+        if (cancelled) return;
+        setResults([]);
+        setOpen(false);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setSearched(true);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [disabled, trimmedValue]);
+
+  React.useEffect(() => {
+    function handlePointerDown(event) {
+      if (!containerRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, []);
+
+  return (
+    <div className="appointment-customer-autocomplete" ref={containerRef}>
+      <input
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => {
+          if (trimmedValue.length >= 2) setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            e.currentTarget.blur();
+          }
+        }}
+        style={{ ...inputStyle, marginTop: 6 }}
+      />
+
+      {open && trimmedValue.length >= 2 ? (
+        <div className="appointment-customer-autocomplete-menu">
+          {loading ? (
+            <div className="appointment-customer-autocomplete-empty">
+              Searching...
+            </div>
+          ) : results.length > 0 ? (
+            results.map((customer) => (
+              <button
+                key={customer.id}
+                type="button"
+                className="appointment-customer-autocomplete-option"
+                onClick={() => {
+                  onSelect(customer);
+                  setOpen(false);
+                }}
+              >
+                <span className="appointment-customer-autocomplete-name">
+                  {customer.full_name || "Unnamed customer"}
+                </span>
+                <span className="appointment-customer-autocomplete-meta">
+                  {[customer.email, customer.phone].filter(Boolean).join(" / ")}
+                </span>
+              </button>
+            ))
+          ) : searched ? (
+            <div className="appointment-customer-autocomplete-empty">
+              No matching customer
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function normalizeAuditComparable(value) {
@@ -2663,20 +2851,26 @@ export default function Appointments() {
       return;
     }
 
-    if (key === "customerEmail") {
+    if (
+      key === "customerName" ||
+      key === "customerEmail" ||
+      key === "customerPhone"
+    ) {
       setForm((prev) => {
+        const nextCustomer = applyCustomerFieldChange(prev, key, value);
+        if (key !== "customerEmail") return nextCustomer;
+
         const nextEmail = value;
         const previousIsValid = isLikelyEmail(prev.customerEmail);
         const nextIsValid = isLikelyEmail(nextEmail);
         const nextSendConfirmationAfterSave = !nextIsValid
           ? false
           : previousIsValid
-            ? prev.sendConfirmationAfterSave
+            ? nextCustomer.sendConfirmationAfterSave
             : true;
 
         return {
-          ...prev,
-          customerEmail: nextEmail,
+          ...nextCustomer,
           sendConfirmationAfterSave: nextSendConfirmationAfterSave,
         };
       });
@@ -2709,7 +2903,36 @@ export default function Appointments() {
       return;
     }
 
+    if (
+      key === "customerName" ||
+      key === "customerEmail" ||
+      key === "customerPhone"
+    ) {
+      setDetailForm((prev) => applyCustomerFieldChange(prev, key, value));
+      return;
+    }
+
     setDetailForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function selectFormCustomer(customer) {
+    setForm((prev) => {
+      const next = applySelectedCustomer(prev, customer);
+      const nextIsValid = isLikelyEmail(next.customerEmail);
+      const previousIsValid = isLikelyEmail(prev.customerEmail);
+      return {
+        ...next,
+        sendConfirmationAfterSave: !nextIsValid
+          ? false
+          : previousIsValid
+            ? prev.sendConfirmationAfterSave
+            : true,
+      };
+    });
+  }
+
+  function selectDetailCustomer(customer) {
+    setDetailForm((prev) => applySelectedCustomer(prev, customer));
   }
 
   function updateBlockForm(key, value) {
@@ -3251,6 +3474,7 @@ export default function Appointments() {
           p_customer_name: form.customerName.trim(),
           p_customer_email: form.customerEmail.trim(),
           p_customer_phone: form.customerPhone.trim() || null,
+          p_customer_id: form.customerId || null,
           p_internal_notes: form.internalNotes.trim() || null,
         },
       );
@@ -3536,6 +3760,7 @@ export default function Appointments() {
           p_customer_name: detailForm.customerName.trim(),
           p_customer_email: detailForm.customerEmail.trim(),
           p_customer_phone: detailForm.customerPhone.trim() || null,
+          p_customer_id: detailForm.customerId || null,
           p_internal_notes: detailForm.internalNotes.trim() || null,
         },
       );
@@ -4345,12 +4570,13 @@ export default function Appointments() {
                           Customer details
                         </div>
                         Customer name
-                        <input
+                        <CustomerAutocompleteInput
                           value={detailForm.customerName}
-                          onChange={(e) =>
-                            updateDetailForm("customerName", e.target.value)
+                          onChange={(value) =>
+                            updateDetailForm("customerName", value)
                           }
-                          style={{ ...baseInputStyle, marginTop: 6 }}
+                          onSelect={selectDetailCustomer}
+                          inputStyle={baseInputStyle}
                         />
                       </label>
 
@@ -4978,12 +5204,11 @@ export default function Appointments() {
 
                       <label className="appointment-wizard-field">
                         <span>Customer name</span>
-                        <input
+                        <CustomerAutocompleteInput
                           value={form.customerName}
-                          onChange={(e) =>
-                            updateForm("customerName", e.target.value)
-                          }
-                          style={{ ...baseInputStyle, marginTop: 6 }}
+                          onChange={(value) => updateForm("customerName", value)}
+                          onSelect={selectFormCustomer}
+                          inputStyle={baseInputStyle}
                         />
                       </label>
 
@@ -5872,12 +6097,11 @@ export default function Appointments() {
                   <div className="appointment-wizard-fields">
                     <label className="appointment-wizard-field">
                       <span>Customer name</span>
-                      <input
+                      <CustomerAutocompleteInput
                         value={form.customerName}
-                        onChange={(e) =>
-                          updateForm("customerName", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
+                        onChange={(value) => updateForm("customerName", value)}
+                        onSelect={selectFormCustomer}
+                        inputStyle={baseInputStyle}
                       />
                     </label>
                     <label className="appointment-wizard-field">
