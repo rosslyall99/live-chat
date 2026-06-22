@@ -23,6 +23,11 @@ const BRANCH_ALIASES = {
   Hire: ["hire"],
   Office: ["office", "off"],
 };
+const LOGIN_QUOTE_FALLBACK = {
+  quote: "Measure twice, promise once.",
+  author: "Slanj HUB",
+  source: "fallback",
+};
 
 function logLogin(step, details) {
   console.debug(`[auth][login] ${step}`, {
@@ -231,9 +236,40 @@ function ArrowIcon({ size = 26 }) {
 }
 
 function LoginQuoteTerminal() {
-  const quote = "Measure twice, promise once.";
+  const [quote, setQuote] = React.useState(LOGIN_QUOTE_FALLBACK.quote);
   const fullText = `> "${quote}"`;
   const [typedText, setTypedText] = React.useState("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadDailyQuote() {
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "get-daily-login-quote",
+          { body: {} },
+        );
+
+        if (error) throw error;
+
+        const nextQuote = String(data?.quote || "").trim();
+        if (!cancelled && nextQuote) {
+          setQuote(nextQuote);
+        }
+      } catch (error) {
+        console.warn("[auth][login] daily quote fallback", error);
+        if (!cancelled) {
+          setQuote(LOGIN_QUOTE_FALLBACK.quote);
+        }
+      }
+    }
+
+    loadDailyQuote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     setTypedText("");
