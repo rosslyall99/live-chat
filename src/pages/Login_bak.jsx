@@ -68,9 +68,7 @@ function branchMatchesStaffValue(branch, value) {
 }
 
 function getUsernamePrefixBranchValue(row) {
-  const username = String(row?.username || "")
-    .trim()
-    .toLowerCase();
+  const username = String(row?.username || "").trim().toLowerCase();
   if (!username) return "";
 
   // Temporary compatibility fallback only. Login grouping should come from
@@ -487,11 +485,12 @@ export default function Login() {
   );
   const filteredStaff =
     selectedBranch && hasKnownBranchMatch
-      ? staff.filter((row) =>
-          branchMatchesStaffValue(
-            selectedBranch,
-            getStaffBranchValueWithFallback(row),
-          ),
+      ? staff.filter(
+          (row) =>
+            branchMatchesStaffValue(
+              selectedBranch,
+              getStaffBranchValueWithFallback(row),
+            ),
         )
       : staff;
   const selectedStaff = staff.find((s) => s.username === selectedUsername);
@@ -600,8 +599,6 @@ export default function Login() {
       display: "flex",
       flexDirection: "column",
       gap: 16,
-      flex: 1,
-      minHeight: 0,
       animation: "hubStepIn 220ms ease both",
     },
     choiceList: {
@@ -646,7 +643,7 @@ export default function Login() {
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
+      gap: 10,
       transition:
         "transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease",
     },
@@ -657,9 +654,9 @@ export default function Login() {
       minWidth: 0,
     },
     avatar: {
-      width: 64,
-      height: 64,
-      borderRadius: "20%",
+      width: 44,
+      height: 44,
+      borderRadius: "50%",
       flex: "0 0 auto",
       display: "grid",
       placeItems: "center",
@@ -674,48 +671,20 @@ export default function Login() {
       textOverflow: "ellipsis",
       whiteSpace: "normal",
       textAlign: "center",
-      fontSize: 14,
+      fontSize: 12,
       lineHeight: 1.25,
       fontWeight: 400,
     },
     backButton: {
-      alignSelf: "flex-start",
-      border: "1px solid rgba(48,199,204,0.36)",
-      borderRadius: 8,
-      padding: "9px 13px",
-      background: "rgba(5, 12, 24, 0.76)",
-      color: "rgba(210,245,248,0.88)",
-      fontSize: 12,
-      fontWeight: 400,
-      letterSpacing: "0.08em",
-      textTransform: "uppercase",
-      cursor: "pointer",
-      boxShadow: "0 0 18px rgba(48,199,204,0.08)",
-      transition:
-        "transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease",
-    },
-    submitButton: {
-      width: "100%",
-      border: "1px solid rgba(48,199,204,0.45)",
-      borderRadius: 10,
-      padding: "14px 16px",
-      background:
-        "linear-gradient(135deg, rgba(48,199,204,0.26), rgba(124,58,237,0.22))",
-      color: "#ffffff",
+      alignSelf: "center",
+      border: "none",
+      borderRadius: 999,
+      padding: "7px 10px",
+      background: "transparent",
+      color: "rgba(248,250,252,0.58)",
       fontSize: 13,
       fontWeight: 400,
-      letterSpacing: "0.12em",
-      textTransform: "uppercase",
-      cursor: loadingLogin ? "not-allowed" : "pointer",
-      boxShadow: "0 18px 40px rgba(48,199,204,0.14)",
-      opacity: loadingLogin ? 0.72 : 1,
-      transition:
-        "transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
-    },
-    pinFooterRow: {
-      display: "flex",
-      justifyContent: "flex-start",
-      marginTop: "auto",
+      cursor: "pointer",
     },
     selectedSummary: {
       border: "1px solid rgba(255,255,255,0.12)",
@@ -881,23 +850,25 @@ export default function Login() {
                     );
                   })}
                 </div>
-                <button
-                  type="button"
-                  onClick={changeBranch}
-                  style={{ ...S.backButton, marginTop: "auto" }}
-                >
-                  ← Back
+                <button type="button" onClick={changeBranch} style={S.backButton}>
+                  &lt; back
                 </button>
               </div>
             ) : null}
 
             {currentStep === "pin" ? (
               <div style={S.stepContent}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUsername("")}
+                  style={S.backButton}
+                >
+                  &lt; back
+                </button>
+
                 <div style={S.selectedSummary}>
                   <span style={S.avatar}>
-                    {getInitials(
-                      selectedStaff?.display_name || selectedUsername,
-                    )}
+                    {getInitials(selectedStaff?.display_name || selectedUsername)}
                   </span>
                   <span style={S.staffName}>
                     {selectedStaff?.display_name || selectedUsername}
@@ -915,8 +886,7 @@ export default function Login() {
                       placeholder="PIN"
                       style={S.inputBase}
                       disabled={loadingLogin}
-                      autoComplete="new-password"
-                      name="hub-pin-entry"
+                      autoComplete="current-password"
                       inputMode="numeric"
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#30c7cc";
@@ -941,8 +911,7 @@ export default function Login() {
                             "rgba(255,255,255,0.08)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.color =
-                            "rgba(226,232,240,0.64)";
+                          e.currentTarget.style.color = "rgba(226,232,240,0.64)";
                           e.currentTarget.style.background = "transparent";
                         }}
                         disabled={loadingLogin}
@@ -953,57 +922,54 @@ export default function Login() {
                   </div>
                 </label>
 
-                <button
-                  type="submit"
-                  style={S.submitButton}
-                  disabled={loadingLogin}
-                  onMouseEnter={(e) => {
-                    if (loadingLogin) return;
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.borderColor = "rgba(132,91,255,0.72)";
-                    e.currentTarget.style.boxShadow =
-                      "0 18px 42px rgba(124,58,237,0.18)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.borderColor = "rgba(48,199,204,0.45)";
-                    e.currentTarget.style.boxShadow =
-                      "0 18px 40px rgba(48,199,204,0.14)";
-                  }}
-                >
-                  Sign in
-                </button>
-
-                <div style={S.pinFooterRow}>
+                <div style={S.numberPad} aria-label="PIN number pad">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                    <button
+                      key={digit}
+                      className="hub-pad-button"
+                      type="button"
+                      onClick={() => appendPinDigit(digit)}
+                      disabled={loadingLogin}
+                      style={S.padButton}
+                    >
+                      {digit}
+                    </button>
+                  ))}
                   <button
+                    className="hub-pad-button"
                     type="button"
-                    onClick={() => setSelectedUsername("")}
-                    style={S.backButton}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.borderColor =
-                        "rgba(132,91,255,0.7)";
-                      e.currentTarget.style.background = "rgba(22,18,42,0.86)";
-                      e.currentTarget.style.color = "#ffffff";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.borderColor =
-                        "rgba(48,199,204,0.36)";
-                      e.currentTarget.style.background = "rgba(5,12,24,0.76)";
-                      e.currentTarget.style.color = "rgba(210,245,248,0.88)";
-                    }}
+                    onClick={removePinDigit}
+                    disabled={loadingLogin}
+                    aria-label="Backspace"
+                    style={S.padButton}
                   >
-                    ← Back
+                    <BackspaceIcon />
+                  </button>
+                  <button
+                    className="hub-pad-button"
+                    type="button"
+                    onClick={() => appendPinDigit(0)}
+                    disabled={loadingLogin}
+                    style={S.padButton}
+                  >
+                    0
+                  </button>
+                  <button
+                    className="hub-pad-button"
+                    type="button"
+                    onClick={submitPin}
+                    disabled={loadingLogin}
+                    aria-label="Sign in"
+                    style={{ ...S.padButton, ...S.submitPadButton }}
+                  >
+                    <ArrowIcon />
                   </button>
                 </div>
               </div>
             ) : null}
 
             {error ? <div style={S.error}>{error}</div> : null}
-            {loadingLogin ? (
-              <div style={S.loadingLine}>Signing in...</div>
-            ) : null}
+            {loadingLogin ? <div style={S.loadingLine}>Signing in...</div> : null}
           </form>
         )}
       </div>
