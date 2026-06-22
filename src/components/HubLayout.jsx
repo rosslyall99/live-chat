@@ -1,5 +1,5 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import "./HubLayout.css";
 
@@ -14,10 +14,14 @@ export default function HubLayout({
   userActions,
 }) {
   const [consoleCollapsed, setConsoleCollapsed] = React.useState(false);
+  const location = useLocation();
+  const isAppointmentsRoute = location.pathname === "/appointments";
 
   return (
     <div
-      className={`hub-layout ${consoleCollapsed ? "hub-layout--console-collapsed" : ""}`}
+      className={`hub-layout ${consoleCollapsed ? "hub-layout--console-collapsed" : ""} ${
+        isAppointmentsRoute ? "hub-layout--appointments" : ""
+      }`}
     >
       <Sidebar
         role={role}

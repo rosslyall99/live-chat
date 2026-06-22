@@ -142,7 +142,9 @@ function londonDateValue(value = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(date);
-  const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const lookup = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${lookup.year}-${lookup.month}-${lookup.day}`;
 }
 
@@ -634,7 +636,7 @@ const LEGACY_APPOINTMENT_TYPE_CODE_BY_NAME = {
   "hire measurement": APPOINTMENT_TYPE_CODES.hireMeasurement,
   "hire remeasure": APPOINTMENT_TYPE_CODES.hireRemeasure,
   remeasure: APPOINTMENT_TYPE_CODES.hireRemeasure,
-  "collection": APPOINTMENT_TYPE_CODES.hireCollection,
+  collection: APPOINTMENT_TYPE_CODES.hireCollection,
   "party collection try on": APPOINTMENT_TYPE_CODES.hireCollection,
   "hire collection": APPOINTMENT_TYPE_CODES.hireCollection,
   "style fit": APPOINTMENT_TYPE_CODES.hireStyleFit,
@@ -651,8 +653,7 @@ const LEGACY_APPOINTMENT_TYPE_CODE_BY_NAME = {
     APPOINTMENT_TYPE_CODES.retailCollectionFullKiltOutfit,
   "retail collection kilt only":
     APPOINTMENT_TYPE_CODES.retailCollectionKiltOnly,
-  "retail collection trousers":
-    APPOINTMENT_TYPE_CODES.retailCollectionTrousers,
+  "retail collection trousers": APPOINTMENT_TYPE_CODES.retailCollectionTrousers,
   "retail collection jacket waistcoat":
     APPOINTMENT_TYPE_CODES.retailCollectionJacketWaistcoat,
   "retail collection accessories":
@@ -783,11 +784,15 @@ function normalizeAppointmentTypeName(value) {
 }
 
 function appointmentTypeCode(item) {
-  const explicitCode = String(item?.code || "").trim().toLowerCase();
+  const explicitCode = String(item?.code || "")
+    .trim()
+    .toLowerCase();
   if (explicitCode) return explicitCode;
-  return LEGACY_APPOINTMENT_TYPE_CODE_BY_NAME[
-    normalizeAppointmentTypeName(item?.name)
-  ] || "";
+  return (
+    LEGACY_APPOINTMENT_TYPE_CODE_BY_NAME[
+      normalizeAppointmentTypeName(item?.name)
+    ] || ""
+  );
 }
 
 function isMeasurementAppointmentTypeCode(code) {
@@ -827,7 +832,8 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
   }
 
   const selectedType =
-    appointmentTypes.find((item) => item.id === wizardForm.selectedTypeId) || null;
+    appointmentTypes.find((item) => item.id === wizardForm.selectedTypeId) ||
+    null;
   if (!selectedType) {
     return {
       appointmentType: null,
@@ -866,7 +872,8 @@ function resolveWizardAppointmentType(appointmentTypes, wizardForm) {
     guidance =
       "Please make sure an outfit has been booked in the hire database for this full try-on appointment.";
   } else if (isCustomAppointmentTypeCode(selectedTypeCode)) {
-    routeLabel = wizardForm.customLabel || selectedType.name || "Custom appointment";
+    routeLabel =
+      wizardForm.customLabel || selectedType.name || "Custom appointment";
     summaryLabel = routeLabel;
     baseDurationMinutes = Number(wizardForm.customDurationMinutes || 0);
   }
@@ -979,7 +986,9 @@ function isLikelyEmail(value) {
 }
 
 function normalizeCustomerComparable(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function shouldKeepSelectedCustomer(prev, key, value) {
@@ -1034,6 +1043,8 @@ function CustomerAutocompleteInput({
   value,
   onChange,
   onSelect,
+  selectedCustomerId,
+  selectedCustomerName,
   inputStyle,
   disabled = false,
 }) {
@@ -1041,17 +1052,32 @@ function CustomerAutocompleteInput({
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [searched, setSearched] = React.useState(false);
+  const [queryTouched, setQueryTouched] = React.useState(false);
   const containerRef = React.useRef(null);
   const trimmedValue = String(value || "").trim();
+  const selectedName = String(selectedCustomerName || "").trim();
+  const matchesSelectedCustomer =
+    Boolean(selectedCustomerId) &&
+    normalizeCustomerComparable(trimmedValue) ===
+      normalizeCustomerComparable(selectedName);
+  const shouldSearch =
+    !disabled &&
+    queryTouched &&
+    trimmedValue.length >= 2 &&
+    !matchesSelectedCustomer;
+
+  const closeSuggestions = React.useCallback(() => {
+    setOpen(false);
+    setResults([]);
+    setLoading(false);
+    setSearched(false);
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
 
-    if (trimmedValue.length < 2 || disabled) {
-      setResults([]);
-      setOpen(false);
-      setLoading(false);
-      setSearched(false);
+    if (!shouldSearch) {
+      closeSuggestions();
       return () => {
         cancelled = true;
       };
@@ -1070,13 +1096,16 @@ function CustomerAutocompleteInput({
         if (error) throw error;
         if (cancelled) return;
 
-        setResults(data || []);
+        const nextResults = (data || []).filter((customer) => {
+          if (!selectedCustomerId || !matchesSelectedCustomer) return true;
+          return customer.id !== selectedCustomerId;
+        });
+        setResults(nextResults);
         setOpen(true);
       } catch (err) {
         console.error("appointments: customer search failed", err);
         if (cancelled) return;
-        setResults([]);
-        setOpen(false);
+        closeSuggestions();
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -1089,12 +1118,25 @@ function CustomerAutocompleteInput({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [disabled, trimmedValue]);
+  }, [
+    closeSuggestions,
+    matchesSelectedCustomer,
+    selectedCustomerId,
+    shouldSearch,
+    trimmedValue,
+  ]);
+
+  React.useEffect(() => {
+    if (matchesSelectedCustomer) {
+      setQueryTouched(false);
+      closeSuggestions();
+    }
+  }, [closeSuggestions, matchesSelectedCustomer]);
 
   React.useEffect(() => {
     function handlePointerDown(event) {
       if (!containerRef.current?.contains(event.target)) {
-        setOpen(false);
+        closeSuggestions();
       }
     }
 
@@ -1102,27 +1144,33 @@ function CustomerAutocompleteInput({
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, []);
+  }, [closeSuggestions]);
 
   return (
     <div className="appointment-customer-autocomplete" ref={containerRef}>
       <input
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          setQueryTouched(true);
+          onChange(e.target.value);
+        }}
         onFocus={() => {
-          if (trimmedValue.length >= 2) setOpen(true);
+          if (shouldSearch && results.length > 0) setOpen(true);
+        }}
+        onBlur={() => {
+          window.setTimeout(closeSuggestions, 120);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
-            setOpen(false);
+            closeSuggestions();
             e.currentTarget.blur();
           }
         }}
         style={{ ...inputStyle, marginTop: 6 }}
       />
 
-      {open && trimmedValue.length >= 2 ? (
+      {open && shouldSearch ? (
         <div className="appointment-customer-autocomplete-menu">
           {loading ? (
             <div className="appointment-customer-autocomplete-empty">
@@ -1134,9 +1182,11 @@ function CustomerAutocompleteInput({
                 key={customer.id}
                 type="button"
                 className="appointment-customer-autocomplete-option"
-                onClick={() => {
+                onMouseDown={(event) => {
+                  event.preventDefault();
                   onSelect(customer);
-                  setOpen(false);
+                  setQueryTouched(false);
+                  closeSuggestions();
                 }}
               >
                 <span className="appointment-customer-autocomplete-name">
@@ -1239,6 +1289,7 @@ function TimelineItem({
   timelineHeight,
   typesById,
   onClick,
+  selected = false,
 }) {
   const top = toPosition(item.start_at, timelineStartMinutes, timelineHeight);
   const height = itemHeight(
@@ -1257,15 +1308,16 @@ function TimelineItem({
   );
   const appointmentTextColorValue = appointmentTypeTextColor(item, typesById);
   const cardAreaLabel = item.area_name || "Area";
-  const isCompactAppointment = !isBlock && appointmentDurationMinutes(item) <= 15;
+  const isCompactAppointment =
+    !isBlock && appointmentDurationMinutes(item) <= 15;
 
   return (
     <button
-className={
-  isBlock
-    ? "appointment-entry appointment-block-entry"
-    : `appointment-entry${isCompactAppointment ? " appointment-entry--compact" : ""}`
-}
+      className={`appointment-entry${
+        isBlock ? " appointment-block-entry" : ""
+      }${isCompactAppointment ? " appointment-entry--compact" : ""}${
+        selected ? " appointment-entry--selected" : ""
+      }`}
       type="button"
       onClick={onClick}
       disabled={!onClick}
@@ -1282,10 +1334,11 @@ className={
           ? "repeating-linear-gradient(-45deg, rgba(148,163,184,0.2), rgba(148,163,184,0.2) 8px, rgba(100,116,139,0.12) 8px, rgba(100,116,139,0.12) 16px)"
           : appointmentAccent.background,
         "--appointment-entry-shadow": isBlock
-          ? "inset 0 0 0 1px rgba(255,255,255,0.25)"
-          : "0 6px 14px rgba(15,23,42,0.08)",
+          ? "inset 0 0 0 1px rgba(255,255,255,0.08)"
+          : "0 12px 26px rgba(0,0,0,0.22)",
         "--appointment-entry-type-color":
-          normalizeHexColor(appointmentTextColorValue) || appointmentAccent.accent,
+          normalizeHexColor(appointmentTextColorValue) ||
+          appointmentAccent.accent,
       }}
       title={
         isBlock
@@ -1422,7 +1475,9 @@ function SectionCard({ title, subtitle, children, tone = "default" }) {
         border: `1px solid ${ui.colors.border}`,
       }}
     >
-      {title ? <div style={{ fontSize: 13, fontWeight: 900 }}>{title}</div> : null}
+      {title ? (
+        <div style={{ fontSize: 13, fontWeight: 900 }}>{title}</div>
+      ) : null}
       {subtitle ? (
         <div style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}>
           {subtitle}
@@ -1464,7 +1519,9 @@ export default function Appointments() {
   const [areas, setAreas] = React.useState([]);
   const [appointments, setAppointments] = React.useState([]);
   const [blocks, setBlocks] = React.useState([]);
-  const [siteOpeningHoursBySite, setSiteOpeningHoursBySite] = React.useState({});
+  const [siteOpeningHoursBySite, setSiteOpeningHoursBySite] = React.useState(
+    {},
+  );
   const [appointmentCategories, setAppointmentCategories] = React.useState([]);
   const [appointmentTypes, setAppointmentTypes] = React.useState([]);
   const [typesById, setTypesById] = React.useState({});
@@ -1562,13 +1619,14 @@ export default function Appointments() {
     () => ({
       width: "100%",
       padding: "10px 12px",
-      borderRadius: ui.radius.md,
-      border: `1px solid ${ui.colors.border}`,
-      background: ui.colors.cardBg,
-      color: ui.colors.text,
+      borderRadius: 8,
+      border: "1px solid rgba(125, 211, 252, 0.2)",
+      background: "rgba(5, 12, 24, 0.72)",
+      color: "#f8fafc",
       outline: "none",
       boxSizing: "border-box",
       fontFamily: ui.font.ui,
+      fontWeight: 300,
     }),
     [],
   );
@@ -1618,19 +1676,23 @@ export default function Appointments() {
 
   const selectedWizardCategory = React.useMemo(
     () =>
-      appointmentCategories.find((item) => item.id === wizardForm.category) || null,
+      appointmentCategories.find((item) => item.id === wizardForm.category) ||
+      null,
     [appointmentCategories, wizardForm.category],
   );
 
   const selectedWizardTypes = React.useMemo(
     () =>
-      appointmentTypes.filter((item) => item.category_id === wizardForm.category),
+      appointmentTypes.filter(
+        (item) => item.category_id === wizardForm.category,
+      ),
     [appointmentTypes, wizardForm.category],
   );
 
   const selectedWizardType = React.useMemo(
     () =>
-      appointmentTypes.find((item) => item.id === wizardForm.selectedTypeId) || null,
+      appointmentTypes.find((item) => item.id === wizardForm.selectedTypeId) ||
+      null,
     [appointmentTypes, wizardForm.selectedTypeId],
   );
 
@@ -1660,7 +1722,9 @@ export default function Appointments() {
   React.useEffect(() => {
     if (
       wizardForm.selectedTypeId &&
-      !selectedWizardTypes.some((option) => option.id === wizardForm.selectedTypeId)
+      !selectedWizardTypes.some(
+        (option) => option.id === wizardForm.selectedTypeId,
+      )
     ) {
       updateWizardForm("selectedTypeId", "");
     }
@@ -2039,10 +2103,16 @@ export default function Appointments() {
 
   React.useEffect(() => {
     if (!appointmentOpenRequest.appointmentId) return;
-    if (appointmentOpenRequest.site && appointmentOpenRequest.site !== selectedSiteId) {
+    if (
+      appointmentOpenRequest.site &&
+      appointmentOpenRequest.site !== selectedSiteId
+    ) {
       setSelectedSiteId(appointmentOpenRequest.site);
     }
-    if (appointmentOpenRequest.date && appointmentOpenRequest.date !== selectedDate) {
+    if (
+      appointmentOpenRequest.date &&
+      appointmentOpenRequest.date !== selectedDate
+    ) {
       setSelectedDate(appointmentOpenRequest.date);
     }
   }, [
@@ -2092,7 +2162,9 @@ export default function Appointments() {
           return;
         }
 
-        const targetSiteId = canonicalAppointmentSiteId(appointment.site_id || "");
+        const targetSiteId = canonicalAppointmentSiteId(
+          appointment.site_id || "",
+        );
         const targetDate = isInputDateValue(appointment.appointment_date)
           ? appointment.appointment_date
           : inputDateValueFromIso(appointment.start_at);
@@ -2196,7 +2268,8 @@ export default function Appointments() {
         const next = {};
         for (const row of data || []) {
           next[row.site_id] = row.opening_hours || null;
-          next[canonicalAppointmentSiteId(row.site_id)] = row.opening_hours || null;
+          next[canonicalAppointmentSiteId(row.site_id)] =
+            row.opening_hours || null;
         }
         setSiteOpeningHoursBySite(next);
       } catch (err) {
@@ -2319,7 +2392,11 @@ export default function Appointments() {
         setWizardDayLoading(false);
         return;
       }
-      if (!form.siteId || !form.date || !isBookableAppointmentSite(form.siteId)) {
+      if (
+        !form.siteId ||
+        !form.date ||
+        !isBookableAppointmentSite(form.siteId)
+      ) {
         setWizardDayAppointments([]);
         setWizardDayBlocks([]);
         setWizardDayError("");
@@ -2397,7 +2474,7 @@ export default function Appointments() {
     if (!isDesktopToolsLayout) {
       return Math.max((CALENDAR_TOTAL_MINUTES / 60) * HOUR_HEIGHT, 540);
     }
-    return Math.max(viewportHeight - 288, 540);
+    return Math.max(viewportHeight - 180, 650);
   }, [isDesktopToolsLayout, viewportHeight]);
 
   const timeTicks = React.useMemo(() => {
@@ -2465,7 +2542,8 @@ export default function Appointments() {
         (item) => item.id === appointmentTypeId,
       );
       const durationMinutes =
-        Number(nextType?.duration_minutes) || QUICK_CREATE_DEFAULT_DURATION_MINUTES;
+        Number(nextType?.duration_minutes) ||
+        QUICK_CREATE_DEFAULT_DURATION_MINUTES;
       return addMinutesToTimeValueRoundedUp(startTime, durationMinutes);
     },
     [appointmentTypes],
@@ -2525,8 +2603,7 @@ export default function Appointments() {
   const detailSelectedType =
     detailAppointmentTypeOptions.find(
       (item) => item.id === detailForm.appointmentTypeId,
-    ) ||
-    null;
+    ) || null;
 
   const detailEndTimeLabel =
     detailForm.startTime && detailSelectedType
@@ -2709,7 +2786,14 @@ export default function Appointments() {
       form.siteId === selectedSiteId && form.date === selectedDate
         ? blocks
         : wizardDayBlocks,
-    [blocks, form.date, form.siteId, selectedDate, selectedSiteId, wizardDayBlocks],
+    [
+      blocks,
+      form.date,
+      form.siteId,
+      selectedDate,
+      selectedSiteId,
+      wizardDayBlocks,
+    ],
   );
   const wizardSuggestedSlots = React.useMemo(
     () =>
@@ -2733,7 +2817,9 @@ export default function Appointments() {
   const wizardAvailableAreaSlots = React.useMemo(
     () =>
       wizardSelectedArea
-        ? wizardSuggestedSlots.filter((slot) => slot.areaId === wizardSelectedArea.id)
+        ? wizardSuggestedSlots.filter(
+            (slot) => slot.areaId === wizardSelectedArea.id,
+          )
         : [],
     [wizardSelectedArea, wizardSuggestedSlots],
   );
@@ -2881,10 +2967,7 @@ export default function Appointments() {
       return;
     }
 
-    if (
-      form.startTime &&
-      !wizardAvailableStartTimes.includes(form.startTime)
-    ) {
+    if (form.startTime && !wizardAvailableStartTimes.includes(form.startTime)) {
       setForm((prev) => ({ ...prev, startTime: "", endTime: "" }));
     }
   }, [
@@ -2910,9 +2993,7 @@ export default function Appointments() {
     setModalAreas(areas);
     setWizardForm(buildInitialWizardForm());
     setWizardStep(0);
-    setDrawerReturnMode(
-      detailOpen && detailAppointment ? "detail" : "empty",
-    );
+    setDrawerReturnMode(detailOpen && detailAppointment ? "detail" : "empty");
     setDrawerMode("newWizard");
     setModalOpen(true);
   }
@@ -3022,7 +3103,8 @@ export default function Appointments() {
     if (!appointment) return;
 
     const durationMinutes = appointmentDurationMinutes(appointment);
-    const nextSiteId = appointmentBranchToSiteId(appointment.branch) || selectedSiteId;
+    const nextSiteId =
+      appointmentBranchToSiteId(appointment.branch) || selectedSiteId;
     const currentArea = areas.find((area) => area.id === appointment.area_id);
     setRescheduleTarget({
       id: appointment.id,
@@ -3124,8 +3206,12 @@ export default function Appointments() {
     }
 
     const durationMinutes =
-      Number(rescheduleTarget.durationMinutes) || CALENDAR_SLOT_INTERVAL_MINUTES;
-    const startAt = toDateTimeIso(rescheduleSlot.date, rescheduleSlot.startTime);
+      Number(rescheduleTarget.durationMinutes) ||
+      CALENDAR_SLOT_INTERVAL_MINUTES;
+    const startAt = toDateTimeIso(
+      rescheduleSlot.date,
+      rescheduleSlot.startTime,
+    );
     const endAt = toDateTimeIso(
       rescheduleSlot.date,
       addMinutesToTimeValue(rescheduleSlot.startTime, durationMinutes),
@@ -3173,7 +3259,9 @@ export default function Appointments() {
                 "",
             ) || null,
           p_customer_id:
-            sourceAppointment.customer_id || rescheduleTarget.customer_id || null,
+            sourceAppointment.customer_id ||
+            rescheduleTarget.customer_id ||
+            null,
           p_internal_notes:
             String(
               sourceAppointment.internal_notes ??
@@ -3217,7 +3305,9 @@ export default function Appointments() {
         const nextTypeId =
           key === "appointmentTypeId" ? value : prev.appointmentTypeId;
         const nextStartTime = key === "startTime" ? value : prev.startTime;
-        const nextType = appointmentTypes.find((item) => item.id === nextTypeId);
+        const nextType = appointmentTypes.find(
+          (item) => item.id === nextTypeId,
+        );
         const shouldAutoUpdateEndTime =
           drawerMode !== "quickCreate" || !quickCreateEndTimeTouched;
         const nextEndTime = shouldAutoUpdateEndTime
@@ -3333,7 +3423,10 @@ export default function Appointments() {
       const next = { ...prev, [key]: value };
 
       if (key === "date") {
-        if (!prev.recurrenceUntilDate || prev.recurrenceUntilDate === prev.date) {
+        if (
+          !prev.recurrenceUntilDate ||
+          prev.recurrenceUntilDate === prev.date
+        ) {
           next.recurrenceUntilDate = value;
         }
       }
@@ -3440,9 +3533,7 @@ export default function Appointments() {
         return "Confirm the outfit has been booked in the hire database.";
       }
 
-      if (
-        isCustomAppointmentTypeCode(wizardSelectedTypeCode)
-      ) {
+      if (isCustomAppointmentTypeCode(wizardSelectedTypeCode)) {
         if (!wizardForm.customLabel.trim()) {
           return "Enter a custom appointment label.";
         }
@@ -3473,7 +3564,8 @@ export default function Appointments() {
         endTime: form.endTime,
         setErrorMessage: () => {},
       });
-      if (!times) return "Check that the appointment end time is after the start time.";
+      if (!times)
+        return "Check that the appointment end time is after the start time.";
       return "";
     }
 
@@ -3675,7 +3767,8 @@ export default function Appointments() {
       return {
         isPossible: false,
         tone: "warning",
-        message: "Add at least one adult or child before checking availability.",
+        message:
+          "Add at least one adult or child before checking availability.",
       };
     }
 
@@ -4152,7 +4245,8 @@ export default function Appointments() {
           p_end_at: endAt,
           p_customer_name: detailForm.customerName.trim(),
           p_customer_email: detailForm.customerEmail.trim(),
-          p_customer_phone: normalizePhoneNumber(detailForm.customerPhone) || null,
+          p_customer_phone:
+            normalizePhoneNumber(detailForm.customerPhone) || null,
           p_customer_id: detailForm.customerId || null,
           p_internal_notes: detailForm.internalNotes.trim() || null,
         },
@@ -4309,7 +4403,10 @@ export default function Appointments() {
       showToast("success", "Appointment notes saved.");
     } catch (err) {
       console.error("appointments: notes update failed", err);
-      const message = readErrorMessage(err, "Could not save appointment notes.");
+      const message = readErrorMessage(
+        err,
+        "Could not save appointment notes.",
+      );
       setDetailError(message);
       showToast("error", message);
     } finally {
@@ -4585,6 +4682,7 @@ export default function Appointments() {
             {quickJumpButtons.map((item) => (
               <button
                 key={item.label}
+                className="appointment-calendar-nav-button"
                 type="button"
                 onClick={item.onClick}
                 style={{
@@ -4724,10 +4822,10 @@ export default function Appointments() {
                       top,
                       height: 0,
                       borderTop: isLast
-                        ? "1px solid rgba(2, 6, 23, 0.08)"
+                        ? "1px solid rgba(125, 211, 252, 0.16)"
                         : isHour
-                          ? "1px solid rgba(2, 6, 23, 0.08)"
-                          : "1px dashed rgba(2, 6, 23, 0.08)",
+                          ? "1px solid rgba(125, 211, 252, 0.16)"
+                          : "1px dashed rgba(125, 211, 252, 0.1)",
                     }}
                   >
                     <span className="appointment-time-label">
@@ -4826,8 +4924,8 @@ export default function Appointments() {
                             : rescheduleClashes
                               ? "This time clashes with another appointment."
                               : rescheduleTarget
-                              ? "Select this slot for the reschedule."
-                              : undefined
+                                ? "Select this slot for the reschedule."
+                                : undefined
                         }
                         style={{
                           top,
@@ -4855,10 +4953,10 @@ export default function Appointments() {
                         style={{
                           top,
                           borderTop: isLast
-                            ? "1px solid rgba(2, 6, 23, 0.08)"
+                            ? "1px solid rgba(125, 211, 252, 0.14)"
                             : isHour
-                              ? "1px solid rgba(2, 6, 23, 0.08)"
-                              : "1px dashed rgba(2, 6, 23, 0.06)",
+                              ? "1px solid rgba(125, 211, 252, 0.14)"
+                              : "1px dashed rgba(125, 211, 252, 0.08)",
                         }}
                       />
                     );
@@ -4873,6 +4971,7 @@ export default function Appointments() {
                       timelineHeight={timelineHeight}
                       typesById={typesById}
                       onClick={() => openBlockDetailModal(item)}
+                      selected={blockDetailOpen && detailBlock?.id === item.id}
                     />
                   ))}
 
@@ -4885,6 +4984,7 @@ export default function Appointments() {
                       timelineHeight={timelineHeight}
                       typesById={typesById}
                       onClick={() => openDetailModal(item)}
+                      selected={detailOpen && detailAppointment?.id === item.id}
                     />
                   ))}
                 </div>
@@ -4943,7 +5043,8 @@ export default function Appointments() {
                   Booked by {bookedByLabel(detailAppointment) || "Unknown"}
                 </div>
                 <div className="appointment-drawer-summary-item">
-                  {prettySiteName(detailSiteId)}, {canonicalAreaLabel(detailArea)}
+                  {prettySiteName(detailSiteId)},{" "}
+                  {canonicalAreaLabel(detailArea)}
                 </div>
               </div>
             </div>
@@ -4976,7 +5077,8 @@ export default function Appointments() {
                             color: ui.colors.muted,
                           }}
                         >
-                          Update the date, time, area, and appointment type here.
+                          Update the date, time, area, and appointment type
+                          here.
                         </div>
                       </div>
 
@@ -5029,7 +5131,10 @@ export default function Appointments() {
                         <select
                           value={detailForm.appointmentTypeId}
                           onChange={(e) =>
-                            updateDetailForm("appointmentTypeId", e.target.value)
+                            updateDetailForm(
+                              "appointmentTypeId",
+                              e.target.value,
+                            )
                           }
                           style={{ ...baseInputStyle, marginTop: 6 }}
                         >
@@ -5106,6 +5211,8 @@ export default function Appointments() {
                             updateDetailForm("customerName", value)
                           }
                           onSelect={selectDetailCustomer}
+                          selectedCustomerId={detailForm.customerId}
+                          selectedCustomerName={detailForm.selectedCustomerName}
                           inputStyle={baseInputStyle}
                         />
                       </label>
@@ -5248,7 +5355,8 @@ export default function Appointments() {
                               Name
                             </span>
                             <span className="appointment-drawer-detail-value">
-                              {detailAppointment.customer_name || "Not provided"}
+                              {detailAppointment.customer_name ||
+                                "Not provided"}
                             </span>
                           </div>
                           <div className="appointment-drawer-detail-line">
@@ -5273,7 +5381,8 @@ export default function Appointments() {
                               Phone
                             </span>
                             <span className="appointment-drawer-detail-value">
-                              {detailAppointment.customer_phone || "Not provided"}
+                              {detailAppointment.customer_phone ||
+                                "Not provided"}
                             </span>
                           </div>
                         </div>
@@ -5329,7 +5438,9 @@ export default function Appointments() {
                           rows={4}
                           value={notesDraft}
                           onChange={(e) => setNotesDraft(e.target.value)}
-                          disabled={!canManageSelectedAppointment || notesSaving}
+                          disabled={
+                            !canManageSelectedAppointment || notesSaving
+                          }
                           style={{
                             ...baseInputStyle,
                             resize: "vertical",
@@ -5404,7 +5515,8 @@ export default function Appointments() {
                         {feedbackStatusText ? (
                           <div
                             className={`appointment-feedback-status ${
-                              detailAppointment.feedback_email_status === "failed"
+                              detailAppointment.feedback_email_status ===
+                              "failed"
                                 ? "appointment-feedback-status--failed"
                                 : ""
                             }`}
@@ -5414,7 +5526,9 @@ export default function Appointments() {
                         ) : null}
 
                         {emailLogLoading ? (
-                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          <div
+                            style={{ marginTop: 10, color: ui.colors.muted }}
+                          >
                             Loading email history...
                           </div>
                         ) : emailLogError ? (
@@ -5430,7 +5544,9 @@ export default function Appointments() {
                             {emailLogError}
                           </div>
                         ) : emailLogRows.length === 0 ? (
-                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          <div
+                            style={{ marginTop: 10, color: ui.colors.muted }}
+                          >
                             No email history yet.
                           </div>
                         ) : (
@@ -5440,12 +5556,7 @@ export default function Appointments() {
                             {emailLogRows.map((row) => (
                               <div
                                 key={row.id}
-                                style={{
-                                  padding: 10,
-                                  borderRadius: 10,
-                                  background: ui.colors.cardBg,
-                                  border: `1px solid ${ui.colors.border}`,
-                                }}
+                                className="appointment-drawer-history-card"
                               >
                                 <div
                                   style={{
@@ -5486,7 +5597,9 @@ export default function Appointments() {
 
                       <SectionCard title="Activity">
                         {activityLoading ? (
-                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          <div
+                            style={{ marginTop: 10, color: ui.colors.muted }}
+                          >
                             Loading activity...
                           </div>
                         ) : activityError ? (
@@ -5502,7 +5615,9 @@ export default function Appointments() {
                             {activityError}
                           </div>
                         ) : visibleActivityRows.length === 0 ? (
-                          <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          <div
+                            style={{ marginTop: 10, color: ui.colors.muted }}
+                          >
                             No appointment activity has been recorded yet.
                           </div>
                         ) : (
@@ -5512,12 +5627,7 @@ export default function Appointments() {
                             {visibleActivityRows.map((row) => (
                               <div
                                 key={row.id}
-                                style={{
-                                  padding: 10,
-                                  borderRadius: 10,
-                                  background: ui.colors.cardBg,
-                                  border: `1px solid ${ui.colors.border}`,
-                                }}
+                                className="appointment-drawer-history-card"
                               >
                                 <div
                                   style={{
@@ -5585,7 +5695,9 @@ export default function Appointments() {
                       <button
                         className="appointment-drawer-action-button appointment-drawer-action-button--reschedule"
                         type="button"
-                        onClick={() => beginRescheduleAppointment(detailAppointment)}
+                        onClick={() =>
+                          beginRescheduleAppointment(detailAppointment)
+                        }
                         disabled={detailSaving}
                       >
                         Reschedule
@@ -5615,7 +5727,7 @@ export default function Appointments() {
                         onClick={cancelAppointment}
                         disabled={detailSaving}
                       >
-                        Cancel
+                        Delete
                       </button>
                     ) : null}
 
@@ -5682,7 +5794,10 @@ export default function Appointments() {
           </div>
 
           <div className="appointment-drawer-scroll">
-            <form className="appointment-drawer-shell" onSubmit={submitCreateAppointment}>
+            <form
+              className="appointment-drawer-shell"
+              onSubmit={submitCreateAppointment}
+            >
               <div
                 className="appointment-drawer-body appointment-quick-create"
                 style={{ padding: 20, paddingBottom: 16 }}
@@ -5692,7 +5807,9 @@ export default function Appointments() {
                     <span>Appointment category</span>
                     <select
                       value={wizardForm.category}
-                      onChange={(e) => updateQuickCreateCategory(e.target.value)}
+                      onChange={(e) =>
+                        updateQuickCreateCategory(e.target.value)
+                      }
                       style={{ ...baseInputStyle, marginTop: 6 }}
                     >
                       <option value="">Select a category...</option>
@@ -5825,8 +5942,12 @@ export default function Appointments() {
                         <span>Customer name</span>
                         <CustomerAutocompleteInput
                           value={form.customerName}
-                          onChange={(value) => updateForm("customerName", value)}
+                          onChange={(value) =>
+                            updateForm("customerName", value)
+                          }
                           onSelect={selectFormCustomer}
+                          selectedCustomerId={form.customerId}
+                          selectedCustomerName={form.selectedCustomerName}
                           inputStyle={baseInputStyle}
                         />
                       </label>
@@ -5978,7 +6099,11 @@ export default function Appointments() {
                     Block details
                   </div>
                   <div
-                    style={{ marginTop: 4, fontSize: 12, color: ui.colors.muted }}
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
                   >
                     Choose whether this blocks one area or the whole site before
                     setting the time range.
@@ -5990,7 +6115,9 @@ export default function Appointments() {
                     Site
                     <select
                       value={blockForm.siteId}
-                      onChange={(e) => updateBlockForm("siteId", e.target.value)}
+                      onChange={(e) =>
+                        updateBlockForm("siteId", e.target.value)
+                      }
                       style={{ ...baseInputStyle, marginTop: 6 }}
                     >
                       {bookableSites.map((site) => (
@@ -6041,7 +6168,11 @@ export default function Appointments() {
                 </label>
 
                 <label
-                  style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    gridColumn: "1 / -1",
+                  }}
                 >
                   Area / resource
                   <select
@@ -6058,7 +6189,11 @@ export default function Appointments() {
                     ))}
                   </select>
                   <div
-                    style={{ marginTop: 6, fontSize: 12, color: ui.colors.muted }}
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      color: ui.colors.muted,
+                    }}
                   >
                     {blockForm.areaId
                       ? "This block applies only to the selected area/resource."
@@ -6099,7 +6234,9 @@ export default function Appointments() {
                   Start time
                   <select
                     value={blockForm.startTime}
-                    onChange={(e) => updateBlockForm("startTime", e.target.value)}
+                    onChange={(e) =>
+                      updateBlockForm("startTime", e.target.value)
+                    }
                     style={{ ...baseInputStyle, marginTop: 6 }}
                   >
                     <option value="">Select a time...</option>
@@ -6128,9 +6265,15 @@ export default function Appointments() {
                 </label>
 
                 <label
-                  style={{ fontSize: 13, fontWeight: 700, gridColumn: "1 / -1" }}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    gridColumn: "1 / -1",
+                  }}
                 >
-                  <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}>
+                  <div
+                    style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
+                  >
                     Reason
                   </div>
                   Reason
@@ -6276,17 +6419,16 @@ export default function Appointments() {
                   <div className="appointment-wizard-options">
                     {selectedWizardTypes.map((option) => {
                       const optionCode = appointmentTypeCode(option);
-                      const optionDescription = isMeasurementAppointmentTypeCode(
-                        optionCode,
-                      )
-                        ? "Uses quantity-based measuring rules"
-                        : optionCode === APPOINTMENT_TYPE_CODES.hireCollection
-                          ? "Uses try-on counts to calculate the duration"
-                          : isFullTryOnAppointmentTypeCode(optionCode)
-                            ? "Requires a hire-database check before saving"
-                            : isCustomAppointmentTypeCode(optionCode)
-                              ? "Staff can set a custom label and duration"
-                              : `${option.duration_minutes} mins default duration`;
+                      const optionDescription =
+                        isMeasurementAppointmentTypeCode(optionCode)
+                          ? "Uses quantity-based measuring rules"
+                          : optionCode === APPOINTMENT_TYPE_CODES.hireCollection
+                            ? "Uses try-on counts to calculate the duration"
+                            : isFullTryOnAppointmentTypeCode(optionCode)
+                              ? "Requires a hire-database check before saving"
+                              : isCustomAppointmentTypeCode(optionCode)
+                                ? "Staff can set a custom label and duration"
+                                : `${option.duration_minutes} mins default duration`;
 
                       return (
                         <button
@@ -6351,7 +6493,8 @@ export default function Appointments() {
                     </div>
                   ) : null}
 
-                  {wizardSelectedTypeCode === APPOINTMENT_TYPE_CODES.hireCollection ? (
+                  {wizardSelectedTypeCode ===
+                  APPOINTMENT_TYPE_CODES.hireCollection ? (
                     <div className="appointment-wizard-fields">
                       <div className="appointment-wizard-note">
                         Duration is based on how many people are trying on,
@@ -6458,102 +6601,105 @@ export default function Appointments() {
                         }
                         style={{ ...baseInputStyle, marginTop: 6 }}
                       >
-                        {[-30, -20, -10, 0, 10, 20, 30, 40, 50, 60].map((minutes) => (
-                          <option key={minutes} value={String(minutes)}>
-                            {minutes > 0
-                              ? `+${minutes} mins`
-                              : `${minutes} mins`}
-                          </option>
-                        ))}
+                        {[-30, -20, -10, 0, 10, 20, 30, 40, 50, 60].map(
+                          (minutes) => (
+                            <option key={minutes} value={String(minutes)}>
+                              {minutes > 0
+                                ? `+${minutes} mins`
+                                : `${minutes} mins`}
+                            </option>
+                          ),
+                        )}
                       </select>
                     </label>
                   </div>
 
-                    <div className="appointment-wizard-summary-card">
-                      <div className="appointment-wizard-summary-row">
-                        <span>Suggested appointment type</span>
-                        <strong style={{ color: wizardTypeAccent.accent }}>
-                          {wizardSummaryLabel || "Choose below"}
-                        </strong>
-                      </div>
-                      <div className="appointment-wizard-summary-row">
-                        <span>Base duration</span>
-                        <strong>
-                          {wizardBaseDurationMinutes
-                            ? `${wizardBaseDurationMinutes} mins`
-                            : "0 mins"}
-                        </strong>
-                      </div>
-                      {wizardDurationBreakdown ? (
-                        <div className="appointment-wizard-breakdown">
-                          <div className="appointment-wizard-breakdown-title">
-                            Breakdown
-                          </div>
-                          {wizardDurationBreakdown.kind === "measurement" ? (
-                            <>
-                              {wizardDurationBreakdown.adultCount > 0 ? (
-                                <div className="appointment-wizard-breakdown-line">
-                                  <span>
-                                    {wizardDurationBreakdown.adultCount} adult
-                                    {wizardDurationBreakdown.adultCount === 1
-                                      ? ""
-                                      : "s"}
-                                  </span>
-                                  <strong>
-                                    {wizardDurationBreakdown.adultMinutes} mins
-                                  </strong>
-                                </div>
-                              ) : null}
-                              {wizardDurationBreakdown.childCount > 0 ? (
-                                <div className="appointment-wizard-breakdown-line">
-                                  <span>
-                                    {wizardDurationBreakdown.childCount} child
-                                    {wizardDurationBreakdown.childCount === 1
-                                      ? ""
-                                      : "ren"}
-                                  </span>
-                                  <strong>
-                                    {wizardDurationBreakdown.childMinutes} mins
-                                  </strong>
-                                </div>
-                              ) : null}
-                              {wizardDurationBreakdown.adultCount === 0 &&
-                              wizardDurationBreakdown.childCount === 0 ? (
-                                <div className="appointment-wizard-breakdown-empty">
-                                  Add adults or children to calculate the duration.
-                                </div>
-                              ) : null}
-                            </>
-                          ) : (
-                            <>
-                              {wizardDurationBreakdown.totalPeople > 0 ? (
-                                <div className="appointment-wizard-breakdown-line">
-                                  <span>People trying on</span>
-                                  <strong>
-                                    {wizardDurationBreakdown.totalPeople}
-                                  </strong>
-                                </div>
-                              ) : (
-                                <div className="appointment-wizard-breakdown-empty">
-                                  Add people trying on to calculate the duration.
-                                </div>
-                              )}
-                            </>
-                          )}
+                  <div className="appointment-wizard-summary-card">
+                    <div className="appointment-wizard-summary-row">
+                      <span>Suggested appointment type</span>
+                      <strong style={{ color: wizardTypeAccent.accent }}>
+                        {wizardSummaryLabel || "Choose below"}
+                      </strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Base duration</span>
+                      <strong>
+                        {wizardBaseDurationMinutes
+                          ? `${wizardBaseDurationMinutes} mins`
+                          : "0 mins"}
+                      </strong>
+                    </div>
+                    {wizardDurationBreakdown ? (
+                      <div className="appointment-wizard-breakdown">
+                        <div className="appointment-wizard-breakdown-title">
+                          Breakdown
                         </div>
-                      ) : null}
-                      <div className="appointment-wizard-summary-row">
-                        <span>Additional time</span>
-                        <strong>{wizardAdditionalTimeMinutes} mins</strong>
+                        {wizardDurationBreakdown.kind === "measurement" ? (
+                          <>
+                            {wizardDurationBreakdown.adultCount > 0 ? (
+                              <div className="appointment-wizard-breakdown-line">
+                                <span>
+                                  {wizardDurationBreakdown.adultCount} adult
+                                  {wizardDurationBreakdown.adultCount === 1
+                                    ? ""
+                                    : "s"}
+                                </span>
+                                <strong>
+                                  {wizardDurationBreakdown.adultMinutes} mins
+                                </strong>
+                              </div>
+                            ) : null}
+                            {wizardDurationBreakdown.childCount > 0 ? (
+                              <div className="appointment-wizard-breakdown-line">
+                                <span>
+                                  {wizardDurationBreakdown.childCount} child
+                                  {wizardDurationBreakdown.childCount === 1
+                                    ? ""
+                                    : "ren"}
+                                </span>
+                                <strong>
+                                  {wizardDurationBreakdown.childMinutes} mins
+                                </strong>
+                              </div>
+                            ) : null}
+                            {wizardDurationBreakdown.adultCount === 0 &&
+                            wizardDurationBreakdown.childCount === 0 ? (
+                              <div className="appointment-wizard-breakdown-empty">
+                                Add adults or children to calculate the
+                                duration.
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <>
+                            {wizardDurationBreakdown.totalPeople > 0 ? (
+                              <div className="appointment-wizard-breakdown-line">
+                                <span>People trying on</span>
+                                <strong>
+                                  {wizardDurationBreakdown.totalPeople}
+                                </strong>
+                              </div>
+                            ) : (
+                              <div className="appointment-wizard-breakdown-empty">
+                                Add people trying on to calculate the duration.
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
-                      <div className="appointment-wizard-summary-row">
-                        <span>Total duration</span>
-                        <strong>
-                          {wizardSuggestedDurationMinutes
-                            ? `${wizardSuggestedDurationMinutes} mins`
-                            : "0 mins"}
-                        </strong>
-                      </div>
+                    ) : null}
+                    <div className="appointment-wizard-summary-row">
+                      <span>Additional time</span>
+                      <strong>{wizardAdditionalTimeMinutes} mins</strong>
+                    </div>
+                    <div className="appointment-wizard-summary-row">
+                      <span>Total duration</span>
+                      <strong>
+                        {wizardSuggestedDurationMinutes
+                          ? `${wizardSuggestedDurationMinutes} mins`
+                          : "0 mins"}
+                      </strong>
+                    </div>
                     {wizardResolution.guidance ? (
                       <div className="appointment-wizard-note">
                         {wizardResolution.guidance}
@@ -6685,7 +6831,9 @@ export default function Appointments() {
                         <span>End time</span>
                         <select
                           value={form.endTime}
-                          onChange={(e) => updateForm("endTime", e.target.value)}
+                          onChange={(e) =>
+                            updateForm("endTime", e.target.value)
+                          }
                           style={{ ...baseInputStyle, marginTop: 6 }}
                         >
                           <option value="">
@@ -6720,6 +6868,8 @@ export default function Appointments() {
                         value={form.customerName}
                         onChange={(value) => updateForm("customerName", value)}
                         onSelect={selectFormCustomer}
+                        selectedCustomerId={form.customerId}
+                        selectedCustomerName={form.selectedCustomerName}
                         inputStyle={baseInputStyle}
                       />
                     </label>
@@ -6981,161 +7131,169 @@ export default function Appointments() {
             <div className="appointment-drawer-scroll">
               {blockDetailEditing ? (
                 <form
-                  className="appointment-drawer-body"
+                  className="appointment-drawer-shell"
                   onSubmit={submitBlockUpdate}
-                  style={{ padding: 20, paddingBottom: 16 }}
                 >
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
+                    className="appointment-drawer-body"
+                    style={{ padding: 20, paddingBottom: 16 }}
                   >
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <div style={{ fontSize: 13, fontWeight: 900 }}>
-                        Block details
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <div style={{ fontSize: 13, fontWeight: 900 }}>
+                          Block details
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 12,
+                            color: ui.colors.muted,
+                          }}
+                        >
+                          Adjust the date, scope, and reason for this
+                          blocked-out time.
+                        </div>
                       </div>
-                      <div
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Site
+                        <input
+                          value={prettySiteName(detailBlockSiteId)}
+                          readOnly
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            background: "rgba(2, 6, 23, 0.03)",
+                          }}
+                        />
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Date
+                        <input
+                          type="date"
+                          value={detailBlockForm.date}
+                          onChange={(e) =>
+                            updateDetailBlockForm("date", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        />
+                      </label>
+
+                      <label
                         style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: ui.colors.muted,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          gridColumn: "1 / -1",
                         }}
                       >
-                        Adjust the date, scope, and reason for this blocked-out
-                        time.
-                      </div>
+                        Area / resource
+                        <select
+                          value={detailBlockForm.areaId}
+                          onChange={(e) =>
+                            updateDetailBlockForm("areaId", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Whole site</option>
+                          {areas.map((area) => (
+                            <option key={area.id} value={area.id}>
+                              {canonicalAreaLabel(area)}
+                            </option>
+                          ))}
+                        </select>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            fontSize: 12,
+                            color: ui.colors.muted,
+                          }}
+                        >
+                          {detailBlockForm.areaId
+                            ? "This block affects only the selected area/resource."
+                            : "This block affects the whole site."}
+                        </div>
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        Start time
+                        <select
+                          value={detailBlockForm.startTime}
+                          onChange={(e) =>
+                            updateDetailBlockForm("startTime", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Select a time...</option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label style={{ fontSize: 13, fontWeight: 700 }}>
+                        End time
+                        <select
+                          value={detailBlockForm.endTime}
+                          onChange={(e) =>
+                            updateDetailBlockForm("endTime", e.target.value)
+                          }
+                          style={{ ...baseInputStyle, marginTop: 6 }}
+                        >
+                          <option value="">Select a time...</option>
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          gridColumn: "1 / -1",
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: 6,
+                            fontSize: 13,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Reason
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={detailBlockForm.reason}
+                          onChange={(e) =>
+                            updateDetailBlockForm("reason", e.target.value)
+                          }
+                          style={{
+                            ...baseInputStyle,
+                            marginTop: 6,
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
                     </div>
 
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Site
-                      <input
-                        value={prettySiteName(detailBlockSiteId)}
-                        readOnly
-                        style={{
-                          ...baseInputStyle,
-                          marginTop: 6,
-                          background: "rgba(2, 6, 23, 0.03)",
-                        }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Date
-                      <input
-                        type="date"
-                        value={detailBlockForm.date}
-                        onChange={(e) =>
-                          updateDetailBlockForm("date", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      />
-                    </label>
-
-                    <label
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        gridColumn: "1 / -1",
-                      }}
-                    >
-                      Area / resource
-                      <select
-                        value={detailBlockForm.areaId}
-                        onChange={(e) =>
-                          updateDetailBlockForm("areaId", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">Whole site</option>
-                        {areas.map((area) => (
-                          <option key={area.id} value={area.id}>
-                            {canonicalAreaLabel(area)}
-                          </option>
-                        ))}
-                      </select>
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 12,
-                          color: ui.colors.muted,
-                        }}
-                      >
-                        {detailBlockForm.areaId
-                          ? "This block affects only the selected area/resource."
-                          : "This block affects the whole site."}
+                    {blockDetailError ? (
+                      <div className="appointment-wizard-warning-inline">
+                        {blockDetailError}
                       </div>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Start time
-                      <select
-                        value={detailBlockForm.startTime}
-                        onChange={(e) =>
-                          updateDetailBlockForm("startTime", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">Select a time...</option>
-                        {timeOptions.map((time) => (
-                          <option key={time} value={time}>
-                            {time}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      End time
-                      <select
-                        value={detailBlockForm.endTime}
-                        onChange={(e) =>
-                          updateDetailBlockForm("endTime", e.target.value)
-                        }
-                        style={{ ...baseInputStyle, marginTop: 6 }}
-                      >
-                        <option value="">Select a time...</option>
-                        {timeOptions.map((time) => (
-                          <option key={time} value={time}>
-                            {time}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        gridColumn: "1 / -1",
-                      }}
-                    >
-                      <div
-                        style={{ marginBottom: 6, fontSize: 13, fontWeight: 900 }}
-                      >
-                        Reason
-                      </div>
-                      <textarea
-                        rows={4}
-                        value={detailBlockForm.reason}
-                        onChange={(e) =>
-                          updateDetailBlockForm("reason", e.target.value)
-                        }
-                        style={{
-                          ...baseInputStyle,
-                          marginTop: 6,
-                          resize: "vertical",
-                        }}
-                      />
-                    </label>
+                    ) : null}
                   </div>
-
-                  {blockDetailError ? (
-                    <div className="appointment-wizard-warning-inline">
-                      {blockDetailError}
-                    </div>
-                  ) : null}
 
                   <div className="appointment-drawer-footer appointment-drawer-footer--contained">
                     <button
@@ -7162,184 +7320,198 @@ export default function Appointments() {
                   </div>
                 </form>
               ) : (
-                <div
-                  className="appointment-drawer-body"
-                  style={{ padding: 20, paddingBottom: 16 }}
-                >
+                <div className="appointment-drawer-shell">
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 12,
-                    }}
+                    className="appointment-drawer-body"
+                    style={{ padding: 20, paddingBottom: 16 }}
                   >
-                    {detailBlockIsRecurring ? (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      {detailBlockIsRecurring ? (
+                        <div
+                          style={{
+                            gridColumn: "1 / -1",
+                            padding: 12,
+                            borderRadius: 12,
+                            border: "1px solid rgba(190,24,93,0.24)",
+                            background: "rgba(190,24,93,0.08)",
+                            fontSize: 13,
+                            color: ui.colors.text,
+                          }}
+                        >
+                          This block is part of a recurring series.
+                          {detailBlock.recurrence_until_date
+                            ? ` It repeats ${detailBlockRecurrenceLabel.toLowerCase()} until ${formatDateHeading(detailBlock.recurrence_until_date)}.`
+                            : ""}
+                        </div>
+                      ) : null}
+                      <FieldValue
+                        label="Scope"
+                        value={
+                          detailBlock.area_id
+                            ? "One area / resource"
+                            : "Whole site"
+                        }
+                      />
+                      <FieldValue
+                        label="Area / resource"
+                        value={
+                          detailBlock.area_id
+                            ? canonicalAreaLabel(detailBlockArea)
+                            : "Whole site"
+                        }
+                      />
+                      <FieldValue
+                        label="Date"
+                        value={formatDateLabel(detailBlock.start_at)}
+                      />
+                      <FieldValue
+                        label="Time"
+                        value={formatTimeRange(
+                          detailBlock.start_at,
+                          detailBlock.end_at,
+                        )}
+                      />
+                      <FieldValue
+                        label="Site"
+                        value={prettySiteName(detailBlockSiteId)}
+                      />
+                      <FieldValue label="Reason" value={detailBlock.reason} />
+                      <FieldValue
+                        label="Recurrence"
+                        value={detailBlockRecurrenceLabel}
+                      />
+                      <FieldValue
+                        label="Repeats until"
+                        value={
+                          detailBlock.recurrence_until_date
+                            ? formatDateHeading(
+                                detailBlock.recurrence_until_date,
+                              )
+                            : "Single block"
+                        }
+                      />
+                      <FieldValue
+                        label="Created by"
+                        value={detailBlock.created_by_name}
+                      />
                       <div
-                        style={{
-                          gridColumn: "1 / -1",
-                          padding: 12,
-                          borderRadius: 12,
-                          border: "1px solid rgba(190,24,93,0.24)",
-                          background: "rgba(190,24,93,0.08)",
-                          fontSize: 13,
-                          color: ui.colors.text,
-                        }}
+                        className="appointment-drawer-detail-list"
+                        style={{ gridColumn: "1 / -1" }}
                       >
-                        This block is part of a recurring series.
-                        {detailBlock.recurrence_until_date
-                          ? ` It repeats ${detailBlockRecurrenceLabel.toLowerCase()} until ${formatDateHeading(detailBlock.recurrence_until_date)}.`
-                          : ""}
+                        <FieldValue
+                          label="Created at"
+                          value={formatDateTimeLabel(detailBlock.created_at)}
+                        />
+                        <FieldValue
+                          label="Last updated by"
+                          value={
+                            detailBlockLastChange?.changed_by_name ||
+                            detailBlock.updated_by_name ||
+                            "Not available"
+                          }
+                        />
+                        <FieldValue
+                          label="Last updated"
+                          value={
+                            detailBlockLastChange
+                              ? formatDateTimeLabel(
+                                  detailBlockLastChange.created_at,
+                                )
+                              : formatDateTimeLabel(detailBlock.updated_at)
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 16,
+                        padding: 12,
+                        borderRadius: 12,
+                        border: `1px solid ${ui.colors.border}`,
+                        background: "rgba(2, 6, 23, 0.02)",
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 900 }}>
+                        Activity
+                      </div>
+
+                      {blockActivityLoading ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          Loading activity...
+                        </div>
+                      ) : blockActivityError ? (
+                        <div
+                          style={{
+                            marginTop: 10,
+                            padding: 10,
+                            borderRadius: 10,
+                            background: "rgba(245,158,11,0.12)",
+                            border: "1px solid rgba(245,158,11,0.35)",
+                          }}
+                        >
+                          {blockActivityError}
+                        </div>
+                      ) : blockActivityRows.length === 0 ? (
+                        <div style={{ marginTop: 10, color: ui.colors.muted }}>
+                          No activity has been recorded yet.
+                        </div>
+                      ) : (
+                        <div
+                          style={{ marginTop: 10, display: "grid", gap: 10 }}
+                        >
+                          {blockActivityRows.map((row) => (
+                            <div
+                              key={row.id}
+                              className="appointment-drawer-history-card"
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 800,
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {activityActionLabel(row.action)}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 13,
+                                  color: ui.colors.muted,
+                                }}
+                              >
+                                {formatDateTimeLabel(row.created_at)}
+                                {row.changed_by_name
+                                  ? ` by ${row.changed_by_name}`
+                                  : ""}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: 13,
+                                  color: ui.colors.text,
+                                }}
+                              >
+                                {describeBlockActivity(row)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {blockDetailError ? (
+                      <div className="appointment-wizard-warning-inline">
+                        {blockDetailError}
                       </div>
                     ) : null}
-                    <FieldValue
-                      label="Scope"
-                      value={
-                        detailBlock.area_id ? "One area / resource" : "Whole site"
-                      }
-                    />
-                    <FieldValue
-                      label="Area / resource"
-                      value={
-                        detailBlock.area_id
-                          ? canonicalAreaLabel(detailBlockArea)
-                          : "Whole site"
-                      }
-                    />
-                    <FieldValue
-                      label="Date"
-                      value={formatDateLabel(detailBlock.start_at)}
-                    />
-                    <FieldValue
-                      label="Time"
-                      value={formatTimeRange(
-                        detailBlock.start_at,
-                        detailBlock.end_at,
-                      )}
-                    />
-                    <FieldValue
-                      label="Site"
-                      value={prettySiteName(detailBlockSiteId)}
-                    />
-                    <FieldValue label="Reason" value={detailBlock.reason} />
-                    <FieldValue
-                      label="Recurrence"
-                      value={detailBlockRecurrenceLabel}
-                    />
-                    <FieldValue
-                      label="Repeats until"
-                      value={
-                        detailBlock.recurrence_until_date
-                          ? formatDateHeading(detailBlock.recurrence_until_date)
-                          : "Single block"
-                      }
-                    />
-                    <FieldValue
-                      label="Created by"
-                      value={detailBlock.created_by_name}
-                    />
-                    <FieldValue
-                      label="Created at"
-                      value={formatDateTimeLabel(detailBlock.created_at)}
-                    />
-                    <FieldValue
-                      label="Last updated by"
-                      value={
-                        detailBlockLastChange?.changed_by_name ||
-                        detailBlock.updated_by_name ||
-                        "Not available"
-                      }
-                    />
-                    <FieldValue
-                      label="Last updated"
-                      value={
-                        detailBlockLastChange
-                          ? formatDateTimeLabel(detailBlockLastChange.created_at)
-                          : formatDateTimeLabel(detailBlock.updated_at)
-                      }
-                    />
                   </div>
-
-                  <div
-                    style={{
-                      marginTop: 16,
-                      padding: 12,
-                      borderRadius: 12,
-                      border: `1px solid ${ui.colors.border}`,
-                      background: "rgba(2, 6, 23, 0.02)",
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 900 }}>Activity</div>
-
-                    {blockActivityLoading ? (
-                      <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                        Loading activity...
-                      </div>
-                    ) : blockActivityError ? (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          padding: 10,
-                          borderRadius: 10,
-                          background: "rgba(245,158,11,0.12)",
-                          border: "1px solid rgba(245,158,11,0.35)",
-                        }}
-                      >
-                        {blockActivityError}
-                      </div>
-                    ) : blockActivityRows.length === 0 ? (
-                      <div style={{ marginTop: 10, color: ui.colors.muted }}>
-                        No activity has been recorded yet.
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                        {blockActivityRows.map((row) => (
-                          <div
-                            key={row.id}
-                            style={{
-                              padding: 10,
-                              borderRadius: 10,
-                              background: ui.colors.cardBg,
-                              border: `1px solid ${ui.colors.border}`,
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontWeight: 800,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {activityActionLabel(row.action)}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 13,
-                                color: ui.colors.muted,
-                              }}
-                            >
-                              {formatDateTimeLabel(row.created_at)}
-                              {row.changed_by_name ? ` by ${row.changed_by_name}` : ""}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: 6,
-                                fontSize: 13,
-                                color: ui.colors.text,
-                              }}
-                            >
-                              {describeBlockActivity(row)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {blockDetailError ? (
-                    <div className="appointment-wizard-warning-inline">
-                      {blockDetailError}
-                    </div>
-                  ) : null}
 
                   <div className="appointment-drawer-footer appointment-drawer-footer--contained">
                     {canManageSelectedBlock ? (
@@ -7349,7 +7521,10 @@ export default function Appointments() {
                         onClick={() => {
                           setBlockDetailEditing(true);
                           setDetailBlockForm(
-                            buildBlockDetailForm(detailBlock, detailBlockSiteId),
+                            buildBlockDetailForm(
+                              detailBlock,
+                              detailBlockSiteId,
+                            ),
                           );
                           setBlockDetailError("");
                         }}
@@ -7684,12 +7859,12 @@ export default function Appointments() {
       className="appointments-page"
       style={{
         width: "100%",
-        color: ui.colors.text,
+        color: "#f8fafc",
         fontFamily: ui.font.ui,
-        "--appointments-text": ui.colors.text,
-        "--appointments-muted": ui.colors.muted,
-        "--appointments-border": ui.colors.border,
-        "--appointments-card-bg": ui.colors.cardBg,
+        "--appointments-text": "#f8fafc",
+        "--appointments-muted": "rgba(203, 213, 225, 0.68)",
+        "--appointments-border": "rgba(125, 211, 252, 0.18)",
+        "--appointments-card-bg": "rgba(4, 10, 24, 0.72)",
       }}
     >
       <div className="appointments-layout">
@@ -7704,13 +7879,13 @@ export default function Appointments() {
             ? quickCreateDrawer
             : blockModalOpen
               ? blockCreateDrawer
-            : blockDetailOpen && detailBlock
-              ? blockDetailDrawer
-            : rescheduleTarget
-              ? rescheduleDrawer
-            : detailOpen && detailAppointment
-              ? appointmentDetailDrawer
-              : appointmentPlaceholderDrawer
+              : blockDetailOpen && detailBlock
+                ? blockDetailDrawer
+                : rescheduleTarget
+                  ? rescheduleDrawer
+                  : detailOpen && detailAppointment
+                    ? appointmentDetailDrawer
+                    : appointmentPlaceholderDrawer
         : null}
 
       {toast ? (

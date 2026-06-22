@@ -132,9 +132,27 @@
   flex-direction: column;
 }
 
+.hub-layout--appointments .hub-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hub-layout--appointments .hub-content__inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 @media (max-width: 720px) {
   .hub-layout {
     height: auto;
+    min-height: 100vh;
+  }
+
+  .hub-layout--appointments {
+    height: 100vh;
     min-height: 100vh;
   }
 

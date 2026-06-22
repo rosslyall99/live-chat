@@ -3,7 +3,7 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
-import Lion from "../images/lion.png";
+import Lion from "../images/iconTransparent.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
 import HubLayout from "./HubLayout";
 

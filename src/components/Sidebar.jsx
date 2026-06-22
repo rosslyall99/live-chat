@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import HubLogo from "../images/iconTransparent.png";
+import HubSmallIcon from "../images/smallIconTransparent.png";
 import "./Sidebar.css";
 
 function ConsoleItem({ to, label, code, collapsed }) {
@@ -138,7 +139,7 @@ export default function Sidebar({
           aria-label="Dashboard home"
           title="Dashboard"
         >
-          <img src={HubLogo} alt="Hub" draggable={false} />
+          <img src={collapsed ? HubSmallIcon : HubLogo} alt="Hub" draggable={false} />
         </Link>
         <button
           type="button"

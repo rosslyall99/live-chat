@@ -22,6 +22,7 @@
 }
 
 .hub-console-brand {
+  position: relative;
   min-height: 74px;
   display: flex;
   align-items: center;
@@ -68,9 +69,30 @@
   padding: 15px 10px;
 }
 
-.hub-console--collapsed .hub-console-toggle {
+.hub-console--collapsed .hub-console-brand__mark {
+  width: 46px;
+  height: 46px;
+}
+
+.hub-console .hub-console-toggle {
   position: absolute;
+  top: 50%;
   right: -18px;
+  z-index: 4;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  transform: translateY(-50%);
+  box-shadow:
+    0 0 0 1px rgba(3, 7, 18, 0.86),
+    0 0 18px rgba(48, 199, 204, 0.12);
+}
+
+.hub-console .hub-console-toggle:hover,
+.hub-console .hub-console-toggle:focus-visible {
+  transform: translateY(-50%);
 }
 
 .hub-console-nav {
