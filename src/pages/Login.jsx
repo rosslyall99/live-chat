@@ -237,6 +237,9 @@ function ArrowIcon({ size = 26 }) {
 
 function LoginQuoteTerminal() {
   const [quote, setQuote] = React.useState(LOGIN_QUOTE_FALLBACK.quote);
+  const [author, setAuthor] = React.useState(
+    LOGIN_QUOTE_FALLBACK.author || "Slanj HUB",
+  );
   const fullText = `> "${quote}"`;
   const [typedText, setTypedText] = React.useState("");
 
@@ -253,13 +256,17 @@ function LoginQuoteTerminal() {
         if (error) throw error;
 
         const nextQuote = String(data?.quote || "").trim();
+        const nextAuthor = String(data?.author || "").trim();
+
         if (!cancelled && nextQuote) {
           setQuote(nextQuote);
+          setAuthor(nextAuthor || LOGIN_QUOTE_FALLBACK.author || "Slanj HUB");
         }
       } catch (error) {
         console.warn("[auth][login] daily quote fallback", error);
         if (!cancelled) {
           setQuote(LOGIN_QUOTE_FALLBACK.quote);
+          setAuthor(LOGIN_QUOTE_FALLBACK.author || "Slanj HUB");
         }
       }
     }
@@ -295,6 +302,10 @@ function LoginQuoteTerminal() {
           <span className="hub-quote-terminal__cursor">█</span>
         </span>
       </div>
+
+      {author ? (
+        <div className="hub-quote-terminal__author">— {author}</div>
+      ) : null}
     </section>
   );
 }
