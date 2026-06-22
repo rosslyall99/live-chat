@@ -293,8 +293,8 @@ export default function Rota() {
         .from("rota_absences")
         .select("staff_name, absence_type, absence_label, start_date, end_date, is_partial")
         .eq("sync_run_id", runId)
-        .lte("start_date", weekEnd.toISOString().slice(0, 10))
-        .gte("end_date", weekStart.toISOString().slice(0, 10))
+        .lte("start_date", ymdLocal(weekEnd))
+        .gte("end_date", ymdLocal(weekStart))
         .order("staff_name", { ascending: true });
   
       // -------- Today dataset (TodayCard) --------
@@ -314,8 +314,8 @@ export default function Rota() {
         .from("rota_absences")
         .select("staff_name, absence_type, absence_label, start_date, end_date, is_partial")
         .eq("sync_run_id", runId)
-        .lte("start_date", today0.toISOString().slice(0, 10))
-        .gte("end_date", today0.toISOString().slice(0, 10))
+        .lte("start_date", ymdLocal(today0))
+        .gte("end_date", ymdLocal(today0))
         .order("staff_name", { ascending: true });
   
       const [

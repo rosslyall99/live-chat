@@ -130,7 +130,7 @@
   font-size: 12px;
   font-weight: 900;
   color: rgba(17, 24, 39, 0.80);
-  min-width: 100px; /* Ensure header names don’t squash too hard */
+  min-width: 100px; /* Ensure header names don't squash too hard */
 }
 
 /* First column (Day) sticky */
@@ -180,7 +180,7 @@
   color: rgba(17, 24, 39, 0.55);
 }
 
-/* Shift “pill” */
+/* Shift "pill" */
 .rota-pill {
   display: inline-block;
   padding: 6px 10px;
@@ -509,7 +509,7 @@
   .today-col--holiday { background: rgba(168, 85, 247, 0.18); }
   .today-col--sick    { background: rgba(234, 179, 8, 0.18); }
 
-  /* Mobile should use full width – no centered max-width stack */
+  /* Mobile should use full width - no centered max-width stack */
   .rota-stack {
     max-width: none;
     margin: 0;

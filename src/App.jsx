@@ -10,7 +10,7 @@ import UsersAdmin from "./pages/UsersAdmin";
 import ChangePin from "./pages/ChangePin.jsx";
 import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
-import Rota from "./pages/Rota";
+import HubRota from "./pages/HubRota.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
@@ -146,16 +146,24 @@ function useIsMobile(breakpointPx = 900) {
 }
 
 /* -------------------- MOBILE APP -------------------- */
-/** Mobile should ONLY ever show /rota (no Shell). Everything else redirects to /rota. */
+/** Mobile keeps public rota links available; authenticated HUB rota opens without the desktop Shell. */
 function MobileApp() {
   return (
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/today-rota" element={<StaffView />} />
+      <Route path="/staff-view" element={<StaffView />} />
 
       {/* Protected */}
-      <Route path="/rota" element={<Rota />} />
-      <Route path="/staff-view" element={<StaffView />} />
+      <Route
+        path="/rota"
+        element={
+          <RequireAuth>
+            <HubRota />
+          </RequireAuth>
+        }
+      />
 
       {/* Mobile lock-down: nothing else reachable */}
       <Route path="*" element={<Navigate to="/rota" replace />} />
@@ -169,6 +177,7 @@ function DesktopApp() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/today-rota" element={<StaffView />} />
       <Route path="/staff-view" element={<StaffView />} />
       {/* Protected app (with Shell) */}
       <Route
@@ -181,7 +190,7 @@ function DesktopApp() {
         {/* Core */}
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
-        <Route path="rota" element={<Rota />} />
+        <Route path="rota" element={<HubRota />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="inbox" element={<Inbox />} />
         <Route path="chat/:id" element={<Chat />} />

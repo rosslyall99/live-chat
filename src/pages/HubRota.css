@@ -1,0 +1,404 @@
+.hub-rota-page {
+  --rota-bg: rgba(3, 7, 18, 0.48);
+  --rota-card: rgba(4, 10, 24, 0.72);
+  --rota-grid-line: rgba(125, 211, 252, 0.16);
+  --rota-text: rgba(248, 250, 252, 0.92);
+  --rota-muted: rgba(203, 213, 225, 0.62);
+  --rota-cyan: rgba(125, 211, 252, 0.86);
+  min-height: 100%;
+  color: var(--rota-text);
+}
+
+.hub-rota-page,
+.hub-rota-page * {
+  box-sizing: border-box;
+}
+
+.hub-rota-page .rota-page {
+  min-height: 100%;
+  padding: 0;
+  color: var(--rota-text);
+}
+
+.hub-rota-page .rota-stack {
+  max-width: none;
+  margin: 0;
+  gap: 14px;
+}
+
+.hub-rota-page .rota-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    var(--rota-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 24px 62px rgba(0, 0, 0, 0.24);
+}
+
+.hub-rota-page .rota-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(48, 199, 204, 0.16), transparent 34%);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.hub-rota-page .rota-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.hub-rota-page .rota-toolbar {
+  padding: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(48, 199, 204, 0.1), rgba(124, 58, 237, 0.08)),
+    rgba(5, 12, 24, 0.68);
+}
+
+.hub-rota-page .rota-title {
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 250;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.hub-rota-page .rota-subtitle {
+  margin-top: 6px;
+  color: var(--rota-cyan);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hub-rota-page .rota-btn,
+.hub-rota-page .rota-select,
+.hub-rota-page .rota-mobileTab {
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 8px;
+  background: rgba(5, 12, 24, 0.72);
+  color: rgba(226, 232, 240, 0.9);
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+
+.hub-rota-page .rota-select {
+  padding-right: 28px;
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(125, 211, 252, 0.9) 50%) right 12px center / 6px 6px no-repeat,
+    rgba(5, 12, 24, 0.72);
+}
+
+.hub-rota-page .rota-select option {
+  background: #050c18;
+  color: #f8fafc;
+}
+
+.hub-rota-page .rota-btn:hover,
+.hub-rota-page .rota-btn:focus-visible,
+.hub-rota-page .rota-select:hover,
+.hub-rota-page .rota-select:focus-visible,
+.hub-rota-page .rota-mobileTab:hover,
+.hub-rota-page .rota-mobileTab:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(48, 199, 204, 0.56);
+  background: rgba(8, 20, 38, 0.9);
+  box-shadow: 0 0 20px rgba(48, 199, 204, 0.11);
+  outline: none;
+}
+
+.hub-rota-page .rota-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+.hub-rota-page .rota-mobileTab.is-active {
+  border-color: rgba(45, 212, 191, 0.42);
+  background: rgba(20, 184, 166, 0.12);
+  color: #ccfbf1;
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.1);
+}
+
+.hub-rota-page .rota-gridWrap {
+  max-height: 560px;
+  border: 1px solid var(--rota-grid-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(48, 199, 204, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(48, 199, 204, 0.028) 1px, transparent 1px),
+    rgba(3, 7, 18, 0.52);
+  background-size: 34px 34px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.hub-rota-page .rota-gridWrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.hub-rota-page .rota-gridWrap::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.55);
+  border-left: 1px solid rgba(125, 211, 252, 0.08);
+}
+
+.hub-rota-page .rota-gridWrap::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 0.82),
+    rgba(124, 58, 237, 0.78)
+  );
+}
+
+.hub-rota-page .rota-gridWrap::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 1),
+    rgba(196, 181, 253, 0.9)
+  );
+}
+
+.hub-rota-page .rota-grid {
+  border: 1px solid var(--rota-grid-line);
+  background: rgba(3, 7, 18, 0.72) !important;
+}
+
+.hub-rota-page .rota-grid th,
+.hub-rota-page .rota-grid td {
+  padding: 3px;
+  border-right: 1px solid var(--rota-grid-line);
+  border-bottom: 1px solid var(--rota-grid-line);
+}
+
+.hub-rota-page .rota-grid thead th {
+  min-width: 112px;
+  border-bottom-color: rgba(48, 199, 204, 0.28);
+  background:
+    linear-gradient(180deg, rgba(5, 12, 24, 0.98), rgba(5, 12, 24, 0.88)),
+    rgba(5, 12, 24, 0.94);
+  color: rgba(248, 250, 252, 0.86);
+  font-weight: 300;
+  line-height: 1.18;
+  backdrop-filter: blur(12px);
+}
+
+.hub-rota-page .rota-grid .rota-staffCol {
+  min-width: 84px;
+  width: 84px;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.1), rgba(5, 12, 24, 0.94)),
+    rgba(5, 12, 24, 0.94) !important;
+  color: var(--rota-cyan);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 300 !important;
+  letter-spacing: 0.04em;
+}
+
+.hub-rota-page .rota-grid th.rota-staffCol {
+  box-shadow: inset -1px 0 0 rgba(48, 199, 204, 0.34);
+}
+
+.hub-rota-page .rota-grid tbody th.rota-staffCol {
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.hub-rota-page .rota-colDivider {
+  box-shadow: inset 2px 0 0 rgba(48, 199, 204, 0.3);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch,
+.hub-rota-page .rota-grid tbody td.rota-branch {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026), transparent),
+    rgba(4, 10, 24, 0.34);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch--stenoch,
+.hub-rota-page .rota-grid tbody td.rota-branch--stenoch {
+  background:
+    linear-gradient(180deg, rgba(56, 120, 248, 0.15), rgba(56, 120, 248, 0.055)),
+    rgba(4, 10, 24, 0.45);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch--duke,
+.hub-rota-page .rota-grid tbody td.rota-branch--duke {
+  background:
+    linear-gradient(180deg, rgba(45, 212, 191, 0.14), rgba(45, 212, 191, 0.052)),
+    rgba(4, 10, 24, 0.45);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch--hire,
+.hub-rota-page .rota-grid tbody td.rota-branch--hire {
+  background:
+    linear-gradient(180deg, rgba(196, 181, 253, 0.14), rgba(196, 181, 253, 0.05)),
+    rgba(4, 10, 24, 0.45);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch--office,
+.hub-rota-page .rota-grid tbody td.rota-branch--office {
+  background:
+    linear-gradient(180deg, rgba(248, 113, 113, 0.12), rgba(248, 113, 113, 0.045)),
+    rgba(4, 10, 24, 0.45);
+}
+
+.hub-rota-page .rota-grid thead th.rota-branch--unknown,
+.hub-rota-page .rota-grid tbody td.rota-branch--unknown {
+  background:
+    linear-gradient(180deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.035)),
+    rgba(4, 10, 24, 0.42);
+}
+
+.hub-rota-page .rota-pill {
+  max-width: 100%;
+  padding: 6px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 8px;
+  color: rgba(248, 250, 252, 0.9);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 300;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.hub-rota-page .rota-pill--stenoch {
+  border-color: rgba(96, 165, 250, 0.42);
+  background: rgba(59, 130, 246, 0.18);
+  color: #dbeafe;
+}
+
+.hub-rota-page .rota-pill--duke {
+  border-color: rgba(45, 212, 191, 0.42);
+  background: rgba(20, 184, 166, 0.14);
+  color: #ccfbf1;
+}
+
+.hub-rota-page .rota-pill--hire,
+.hub-rota-page .rota-pill--hol {
+  border-color: rgba(196, 181, 253, 0.42);
+  background: rgba(124, 58, 237, 0.16);
+  color: #ede9fe;
+}
+
+.hub-rota-page .rota-pill--office {
+  border-color: rgba(248, 113, 113, 0.38);
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+}
+
+.hub-rota-page .rota-pill--unknown,
+.hub-rota-page .rota-pill--other {
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(100, 116, 139, 0.12);
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.hub-rota-page .rota-pill--sick {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+
+.hub-rota-page .rota-empty,
+.hub-rota-page .today-empty {
+  color: rgba(203, 213, 225, 0.36);
+  font-weight: 300;
+}
+
+.hub-rota-page .today-grid {
+  gap: 8px;
+}
+
+.hub-rota-page .today-col {
+  min-height: 96px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 12, 24, 0.46);
+}
+
+.hub-rota-page .today-col-title {
+  color: var(--rota-cyan);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 1;
+}
+
+.hub-rota-page .today-name {
+  color: var(--rota-text);
+  font-weight: 300;
+}
+
+.hub-rota-page .today-col--stenoch {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(5, 12, 24, 0.42));
+}
+
+.hub-rota-page .today-col--duke {
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(5, 12, 24, 0.42));
+}
+
+.hub-rota-page .today-col--hire,
+.hub-rota-page .today-col--holiday {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.16), rgba(5, 12, 24, 0.42));
+}
+
+.hub-rota-page .today-col--office {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.12), rgba(5, 12, 24, 0.42));
+}
+
+.hub-rota-page .today-col--sick {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(5, 12, 24, 0.42));
+}
+
+@media (max-width: 780px) {
+  .hub-rota-page .rota-page {
+    padding: 0;
+  }
+
+  .hub-rota-page .rota-toolbar {
+    background:
+      linear-gradient(135deg, rgba(48, 199, 204, 0.1), rgba(124, 58, 237, 0.08)),
+      rgba(5, 12, 24, 0.68);
+  }
+
+  .hub-rota-page .rota-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+      var(--rota-card);
+    border-color: rgba(125, 211, 252, 0.2);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.045),
+      0 24px 62px rgba(0, 0, 0, 0.24);
+  }
+
+  .hub-rota-page .rota-gridWrap {
+    background:
+      linear-gradient(rgba(48, 199, 204, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(48, 199, 204, 0.028) 1px, transparent 1px),
+      rgba(3, 7, 18, 0.52);
+    background-size: 34px 34px;
+  }
+}
