@@ -41,7 +41,7 @@ function usernameToEmail(username) {
 }
 
 function getSafeRedirectTarget(rawValue) {
-  const fallback = "/rota";
+  const fallback = "/dashboard";
   if (!rawValue) return fallback;
 
   const value = String(rawValue).trim();

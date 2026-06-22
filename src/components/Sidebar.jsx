@@ -1,173 +1,183 @@
-// src/components/Sidebar.jsx
 import React from "react";
-import { NavLink } from "react-router-dom";
-import { ui } from "../ui/tokens";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import HubLogo from "../images/iconTransparent.png";
+import "./Sidebar.css";
 
-function SectionTitle({ children }) {
-  return (
-    <div
-      style={{
-        marginTop: 14,
-        marginBottom: 8,
-        padding: "0 14px",
-        fontSize: 11,
-        letterSpacing: "0.12em",
-        textTransform: "uppercase",
-        color: ui.colors.sidebarMuted,
-        opacity: 0.9,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Item({ to, label }) {
+function ConsoleItem({ to, label, code, collapsed }) {
   return (
     <NavLink
       to={to}
-      style={({ isActive }) => ({
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 14px",
-        margin: "2px 10px",
-        borderRadius: 12,
-        textDecoration: "none",
-        color: ui.colors.sidebarText,
-        background: isActive ? ui.colors.sidebarActiveBg : "transparent",
-        position: "relative",
-        fontWeight: isActive ? 700 : 500,
-      })}
+      className={({ isActive }) =>
+        `hub-console-item ${isActive ? "hub-console-item--active" : ""}`
+      }
+      title={collapsed ? label : undefined}
     >
-      {({ isActive }) => (
-        <>
-          <span
-            style={{
-              width: 6,
-              height: 18,
-              borderRadius: 999,
-              background: isActive ? ui.colors.brand : "transparent",
-              boxShadow: isActive ? `0 0 0 4px ${ui.colors.brandSoft}` : "none",
-              flex: "0 0 auto",
-            }}
-          />
-          <span>{label}</span>
-        </>
-      )}
+      <span className="hub-console-item__glyph">{code}</span>
+      <span className="hub-console-item__label">{label}</span>
     </NavLink>
   );
 }
 
-export default function Sidebar({ role = "agent" }) {
+function ConsoleGroup({ title, code, items, collapsed, defaultOpen = false }) {
+  const location = useLocation();
+  const hasActiveItem = items.some((item) => item.to === location.pathname);
+  const [isOpen, setIsOpen] = React.useState(defaultOpen || hasActiveItem);
+
+  React.useEffect(() => {
+    if (hasActiveItem) setIsOpen(true);
+  }, [hasActiveItem]);
+
+  if (!items.length) return null;
+
+  if (collapsed) {
+    return (
+      <div className="hub-console-group hub-console-group--collapsed">
+        {items.map((item) => (
+          <ConsoleItem key={item.to} {...item} collapsed={collapsed} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <section className="hub-console-group">
+      <button
+        type="button"
+        className={`hub-console-group__trigger ${hasActiveItem ? "hub-console-group__trigger--active" : ""}`}
+        onClick={() => setIsOpen((value) => !value)}
+        aria-expanded={isOpen}
+      >
+        <span className="hub-console-group__code">{code}</span>
+        <span className="hub-console-group__title">{title}</span>
+        <span className="hub-console-group__chevron">{isOpen ? "-" : "+"}</span>
+      </button>
+
+      {isOpen ? (
+        <div className="hub-console-group__items">
+          {items.map((item) => (
+            <ConsoleItem key={item.to} {...item} collapsed={collapsed} />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function Sidebar({
+  role = "agent",
+  collapsed = false,
+  onToggleCollapsed,
+  displayName,
+  email,
+  branchName,
+  liveStatus,
+  loading,
+  topControls,
+  userActions,
+}) {
   const normalizedRole = String(role).toLowerCase();
   const isAdmin = normalizedRole === "admin";
-  const isManager = normalizedRole === "manager";
-  const canViewAppointmentEmails = isAdmin || isManager;
-  const canManageAppointmentCustomers = isAdmin || isManager;
+
+  const primaryItems = [
+    { to: "/rota", label: "ROTA", code: "RT" },
+    { to: "/appointments", label: "CALENDAR", code: "CA" },
+    { to: "/inbox", label: "LIVE CHAT", code: "LC" },
+  ];
+
+  const groups = isAdmin
+    ? [
+        {
+          title: "Appointments",
+          code: "AP",
+          items: [
+            {
+              to: "/admin/appointment-customers",
+              label: "Customers",
+              code: "CU",
+            },
+            { to: "/admin/appointment-emails", label: "Emails", code: "EM" },
+            { to: "/admin/appointment-types", label: "Types", code: "TY" },
+            { to: "/admin/appointment-hours", label: "Hours", code: "HR" },
+          ],
+        },
+        {
+          title: "Live Chat Admin",
+          code: "LA",
+          items: [
+            { to: "/admin/live", label: "Chats", code: "CH" },
+            { to: "/admin/insights", label: "Insights", code: "IX" },
+            { to: "/admin/canned", label: "Canned Replies", code: "CR" },
+          ],
+        },
+        {
+          title: "Settings",
+          code: "ST",
+          items: [
+            { to: "/admin/users", label: "Users", code: "US" },
+            { to: "/change-pin", label: "Change PIN", code: "PN" },
+          ],
+        },
+      ]
+    : [
+        {
+          title: "Settings",
+          code: "ST",
+          items: [{ to: "/change-pin", label: "Change PIN", code: "PN" }],
+        },
+      ];
 
   return (
     <aside
-      style={{
-        width: 260,
-        minWidth: 260,
-        height: "100vh",
-        position: "sticky",
-        top: 0,
-        background: `linear-gradient(180deg, ${ui.colors.sidebarBg} 0%, ${ui.colors.sidebarBg2} 100%)`,
-        borderRight: `1px solid ${ui.colors.sidebarBorder}`,
-        color: ui.colors.sidebarText,
-        fontFamily: ui.font.ui,
-        display: "flex",
-        flexDirection: "column",
-      }}
+      className={`hub-console ${collapsed ? "hub-console--collapsed" : ""}`}
+      aria-label="Console navigation"
     >
-      {/* Brand */}
-      <div
-        style={{
-          padding: "18px 16px 14px 16px",
-          borderBottom: `1px solid ${ui.colors.sidebarBorder}`,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: "rgba(255,255,255,0.06)",
-              //border: `1px solid ${ui.colors.sidebarBorder}`,
-              display: "grid",
-              placeItems: "center",
-              overflow: "hidden",
-              flex: "0 0 auto",
-            }}
-          >
-            <img
-              src={HubLogo}
-              alt="Hub"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                display: "block",
-              }}
-              draggable={false}
-            />
-          </div>
-
-          <div style={{ lineHeight: 1, color: ui.colors.sidebarText }}>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>HUB</div>
-          </div>
-        </div>
+      <div className="hub-console-brand">
+        <Link
+          to="/dashboard"
+          className="hub-console-brand__mark"
+          aria-label="Dashboard home"
+          title="Dashboard"
+        >
+          <img src={HubLogo} alt="Hub" draggable={false} />
+        </Link>
+        <button
+          type="button"
+          className="hub-console-toggle"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? "Expand Console" : "Collapse Console"}
+          title={collapsed ? "Expand Console" : "Collapse Console"}
+        >
+          {collapsed ? ">" : "<"}
+        </button>
       </div>
 
-      {/* Nav */}
-      <div style={{ paddingTop: 10, overflow: "auto" }}>
-        <SectionTitle>Apps</SectionTitle>
-        <Item to="/rota" label="Rota" />
-        <Item to="/appointments" label="Appointments" />
-        <Item to="/inbox" label="Inbox" />
-
-        <SectionTitle>User</SectionTitle>
-        <Item to="/change-pin" label="Change PIN" />
-
-        {canViewAppointmentEmails && (
-          <>
-            <SectionTitle>Admin</SectionTitle>
-            {canManageAppointmentCustomers ? (
-              <Item to="/admin/appointment-customers" label="Customers" />
-            ) : null}
-            <Item to="/admin/appointment-emails" label="Appointment Emails" />
-          </>
-        )}
-
-        {isAdmin && (
-          <>
-            <Item to="/admin/appointment-hours" label="Appointment Hours" />
-            <Item to="/admin/appointment-types" label="Appointment Types" />
-            <Item to="/admin/live" label="Active Chats" />
-            <Item to="/admin/insights" label="Insights" />
-            <Item to="/admin/users" label="Users" />
-            <Item to="/admin/canned" label="Canned Replies" />
-          </>
-        )}
-      </div>
-
-      {/* Bottom */}
-      <div
-        style={{
-          marginTop: "auto",
-          padding: 14,
-          borderTop: `1px solid ${ui.colors.sidebarBorder}`,
-          color: ui.colors.sidebarMuted,
-          fontSize: 12,
-        }}
-      >
-        <div style={{ opacity: 0.9 }}>
-          Ross Lyall © {new Date().getFullYear()}
+      <nav className="hub-console-nav">
+        <div className="hub-console-primary">
+          {primaryItems.map((item) => (
+            <ConsoleItem key={item.to} {...item} collapsed={collapsed} />
+          ))}
         </div>
+
+        {groups.map((group) => (
+          <ConsoleGroup key={group.title} collapsed={collapsed} {...group} />
+        ))}
+      </nav>
+
+      <div className="hub-console-operator">
+        <div className="hub-console-operator__top">
+          <div className="hub-console-operator__identity">
+            <div className="hub-console-operator__signal" />
+            <div className="hub-console-operator__copy">
+              <span>
+                {loading ? "Loading..." : displayName || email || "Operator"}
+              </span>
+              <small>{branchName || "Branch pending"}</small>
+            </div>
+          </div>
+          <div className="hub-console-operator__controls">{topControls}</div>
+        </div>
+
+        <div className="hub-console-operator__actions">{userActions}</div>
       </div>
     </aside>
   );

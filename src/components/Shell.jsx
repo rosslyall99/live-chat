@@ -1,11 +1,11 @@
 // src/components/Shell.jsx
 import React from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import Sidebar from "./Sidebar";
 import { ui } from "../ui/tokens";
 import Lion from "../images/lion.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
+import HubLayout from "./HubLayout";
 
 function logShellAuth(step, details) {
     console.debug(`[auth][shell] ${step}`, {
@@ -489,6 +489,77 @@ export default function Shell() {
     function pressUp(e) {
         e.currentTarget.style.transform = "translateY(0px)";
     }
+
+    const topControls = (
+        <div className="hub-status-controls">
+            <button
+                type="button"
+                className={`hub-status-button ${effectiveBranchLive ? "hub-status-button--online" : "hub-status-button--offline"}`}
+                title={
+                    !globalEnabled
+                        ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
+                        : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
+                }
+                onClick={() => {
+                    if (!globalEnabled) return;
+                    toggleBranch(!branchEnabled);
+                }}
+                disabled={!canToggleBranch || !globalEnabled}
+            >
+                {siteLetter(siteId)}
+            </button>
+
+            {(isAdmin || isManager) && (
+                <button
+                    type="button"
+                    className={`hub-status-button ${globalEnabled ? "hub-status-button--online" : "hub-status-button--offline"}`}
+                    disabled={!canToggleGlobal}
+                    onClick={() => toggleGlobal(!globalEnabled)}
+                    title={`Global (${globalEnabled ? "Online" : "Offline"})`}
+                >
+                    <img
+                        src={Lion}
+                        alt=""
+                        style={{
+                            width: 17,
+                            height: 17,
+                            objectFit: "contain",
+                            display: "block",
+                            filter: "grayscale(100%) contrast(130%) invert(1)",
+                            opacity: 0.82,
+                        }}
+                    />
+                </button>
+            )}
+
+            {switchError ? <span className="hub-status-error">{switchError}</span> : null}
+        </div>
+    );
+
+    const userActions = (
+        <button
+            type="button"
+            className="hub-signout-button"
+            onClick={async () => {
+                await supabase.auth.signOut();
+            }}
+        >
+            Sign out
+        </button>
+    );
+
+    return (
+        <HubLayout
+            role={role}
+            displayName={displayName}
+            email={me?.email}
+            branchName={prettySite(siteId)}
+            liveStatus={effectiveLive ? "Online" : "Offline"}
+            loading={loading}
+            topControls={topControls}
+            userActions={userActions}
+        />
+    );
 
     return (
         <div

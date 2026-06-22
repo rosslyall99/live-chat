@@ -11,6 +11,7 @@ import ChangePin from "./pages/ChangePin.jsx";
 import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
 import Rota from "./pages/Rota";
+import Dashboard from "./pages/Dashboard.jsx";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
 import AppointmentCustomersAdmin from "./pages/AppointmentCustomersAdmin.jsx";
@@ -178,7 +179,8 @@ function DesktopApp() {
         }
       >
         {/* Core */}
-        <Route index element={<Rota />} />
+        <Route index element={<Dashboard />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="rota" element={<Rota />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="inbox" element={<Inbox />} />
@@ -197,7 +199,7 @@ function DesktopApp() {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/rota" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
