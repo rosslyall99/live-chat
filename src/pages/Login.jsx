@@ -109,6 +109,12 @@ function getInitials(name) {
     .toUpperCase();
 }
 
+function sanitizePin(value) {
+  return String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 6);
+}
+
 function EyeOpenIcon({ size = 18 }) {
   return (
     <svg
@@ -334,6 +340,7 @@ export default function Login() {
   const [loadingLogin, setLoadingLogin] = React.useState(false);
   const [checkingSession, setCheckingSession] = React.useState(true);
   const pinInputRef = React.useRef(null);
+  const lastAutoSubmittedPinRef = React.useRef("");
 
   React.useEffect(() => {
     let cancelled = false;
@@ -389,7 +396,9 @@ export default function Login() {
   }, [selectedBranch, selectedUsername]);
 
   async function onSubmit(e) {
-    e.preventDefault();
+    e?.preventDefault();
+    if (loadingLogin) return;
+
     setError("");
     setLoadingLogin(true);
 
@@ -505,7 +514,7 @@ export default function Login() {
 
   function appendPinDigit(digit) {
     if (loadingLogin) return;
-    setPin((current) => `${current}${digit}`);
+    setPin((current) => sanitizePin(`${current}${digit}`));
   }
 
   function removePinDigit() {
@@ -546,6 +555,20 @@ export default function Login() {
     : selectedUsername
       ? "pin"
       : "staff";
+
+  React.useEffect(() => {
+    if (currentStep !== "pin") return;
+    if (loadingLogin) return;
+    if (pin.length !== 6) return;
+
+    const autoSubmitKey = `${selectedUsername}:${pin}`;
+    if (lastAutoSubmittedPinRef.current === autoSubmitKey) return;
+
+    lastAutoSubmittedPinRef.current = autoSubmitKey;
+    onSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, loadingLogin, pin, selectedUsername]);
+
   React.useEffect(() => {
     if (!loadingStaff && staff.length && !hasKnownBranchMatch) {
       console.warn(
@@ -657,7 +680,7 @@ export default function Login() {
                     <input
                       ref={pinInputRef}
                       value={pin}
-                      onChange={(e) => setPin(e.target.value)}
+                      onChange={(e) => setPin(sanitizePin(e.target.value))}
                       type={showPin ? "text" : "password"}
                       placeholder="PIN"
                       className="hub-login-input"
@@ -665,6 +688,7 @@ export default function Login() {
                       autoComplete="new-password"
                       name="hub-pin-entry"
                       inputMode="numeric"
+                      maxLength={6}
                     />
 
                     {pin ? (
