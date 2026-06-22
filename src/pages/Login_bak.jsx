@@ -68,7 +68,9 @@ function branchMatchesStaffValue(branch, value) {
 }
 
 function getUsernamePrefixBranchValue(row) {
-  const username = String(row?.username || "").trim().toLowerCase();
+  const username = String(row?.username || "")
+    .trim()
+    .toLowerCase();
   if (!username) return "";
 
   // Temporary compatibility fallback only. Login grouping should come from
@@ -225,6 +227,39 @@ function ArrowIcon({ size = 26 }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function LoginQuoteTerminal() {
+  const quote = "Measure twice, promise once.";
+  const fullText = `> "${quote}"`;
+  const [typedText, setTypedText] = React.useState("");
+
+  React.useEffect(() => {
+    setTypedText("");
+    let index = 0;
+
+    const timer = window.setInterval(() => {
+      index += 1;
+      setTypedText(fullText.slice(0, index));
+
+      if (index >= fullText.length) {
+        window.clearInterval(timer);
+      }
+    }, 34);
+
+    return () => window.clearInterval(timer);
+  }, [fullText]);
+
+  return (
+    <section className="hub-quote-terminal" aria-label="Daily quote">
+      <div className="hub-quote-terminal__text">
+        <span>
+          {typedText}
+          <span className="hub-quote-terminal__cursor">█</span>
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -485,12 +520,11 @@ export default function Login() {
   );
   const filteredStaff =
     selectedBranch && hasKnownBranchMatch
-      ? staff.filter(
-          (row) =>
-            branchMatchesStaffValue(
-              selectedBranch,
-              getStaffBranchValueWithFallback(row),
-            ),
+      ? staff.filter((row) =>
+          branchMatchesStaffValue(
+            selectedBranch,
+            getStaffBranchValueWithFallback(row),
+          ),
         )
       : staff;
   const selectedStaff = staff.find((s) => s.username === selectedUsername);
@@ -599,6 +633,8 @@ export default function Login() {
       display: "flex",
       flexDirection: "column",
       gap: 16,
+      flex: 1,
+      minHeight: 0,
       animation: "hubStepIn 220ms ease both",
     },
     choiceList: {
@@ -643,7 +679,7 @@ export default function Login() {
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: 10,
+      gap: 6,
       transition:
         "transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease",
     },
@@ -654,9 +690,9 @@ export default function Login() {
       minWidth: 0,
     },
     avatar: {
-      width: 44,
-      height: 44,
-      borderRadius: "50%",
+      width: 64,
+      height: 64,
+      borderRadius: "20%",
       flex: "0 0 auto",
       display: "grid",
       placeItems: "center",
@@ -671,20 +707,48 @@ export default function Login() {
       textOverflow: "ellipsis",
       whiteSpace: "normal",
       textAlign: "center",
-      fontSize: 12,
+      fontSize: 14,
       lineHeight: 1.25,
       fontWeight: 400,
     },
     backButton: {
-      alignSelf: "center",
-      border: "none",
-      borderRadius: 999,
-      padding: "7px 10px",
-      background: "transparent",
-      color: "rgba(248,250,252,0.58)",
+      alignSelf: "flex-start",
+      border: "1px solid rgba(48,199,204,0.36)",
+      borderRadius: 8,
+      padding: "9px 13px",
+      background: "rgba(5, 12, 24, 0.76)",
+      color: "rgba(210,245,248,0.88)",
+      fontSize: 12,
+      fontWeight: 400,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      cursor: "pointer",
+      boxShadow: "0 0 18px rgba(48,199,204,0.08)",
+      transition:
+        "transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease",
+    },
+    submitButton: {
+      width: "100%",
+      border: "1px solid rgba(48,199,204,0.45)",
+      borderRadius: 10,
+      padding: "14px 16px",
+      background:
+        "linear-gradient(135deg, rgba(48,199,204,0.26), rgba(124,58,237,0.22))",
+      color: "#ffffff",
       fontSize: 13,
       fontWeight: 400,
-      cursor: "pointer",
+      letterSpacing: "0.12em",
+      textTransform: "uppercase",
+      cursor: loadingLogin ? "not-allowed" : "pointer",
+      boxShadow: "0 18px 40px rgba(48,199,204,0.14)",
+      opacity: loadingLogin ? 0.72 : 1,
+      transition:
+        "transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+    },
+    pinFooterRow: {
+      display: "flex",
+      justifyContent: "flex-start",
+      marginTop: "auto",
     },
     selectedSummary: {
       border: "1px solid rgba(255,255,255,0.12)",
@@ -771,6 +835,70 @@ export default function Login() {
           }
         }
 
+.hub-quote-terminal {
+  position: fixed;
+  left: clamp(24px, 6vw, 104px);
+  right: calc(clamp(24px, 6vw, 104px) + 430px);
+  bottom: clamp(22px, 5vh, 58px);
+  width: auto;
+  min-height: 118px;
+
+  border: 1px solid rgba(56, 189, 248, 0.34);
+  background: rgba(4, 12, 24, 0.38);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 0 26px rgba(56, 189, 248, 0.06),
+    0 0 34px rgba(56, 189, 248, 0.12);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hub-quote-terminal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(56, 189, 248, 0.04) 0,
+    rgba(56, 189, 248, 0.04) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.hub-quote-terminal__text {
+  position: relative;
+  z-index: 1;
+  height: 118px;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  color: rgba(125, 211, 252, 0.96);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: clamp(15px, 1.25vw, 20px);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.035em;
+  text-shadow: 0 0 14px rgba(56, 189, 248, 0.32);
+  white-space: pre-wrap;
+}
+
+.hub-quote-terminal__cursor {
+  display: inline-block;
+  margin-left: 3px;
+  color: rgba(96, 165, 250, 0.95);
+  animation: hubTerminalCursor 900ms steps(2, start) infinite;
+}
+
+@keyframes hubTerminalCursor {
+  0%, 42% { opacity: 1; }
+  43%, 100% { opacity: 0; }
+}
+
         @media (max-width: 720px) {
           .hub-login-page {
             justify-content: center !important;
@@ -787,6 +915,10 @@ export default function Login() {
           .hub-staff-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
+
+          .hub-quote-terminal {
+  display: none;
+}
         }
 
         .hub-login-panel input::placeholder {
@@ -801,6 +933,8 @@ export default function Login() {
           transform: translateY(-1px);
         }
       `}</style>
+      <LoginQuoteTerminal />
+
       <div className="hub-login-panel" style={S.panel}>
         <img src={PhilLogo} alt="Slanj" style={S.logo} draggable={false} />
 
@@ -850,25 +984,23 @@ export default function Login() {
                     );
                   })}
                 </div>
-                <button type="button" onClick={changeBranch} style={S.backButton}>
-                  &lt; back
+                <button
+                  type="button"
+                  onClick={changeBranch}
+                  style={{ ...S.backButton, marginTop: "auto" }}
+                >
+                  ← Back
                 </button>
               </div>
             ) : null}
 
             {currentStep === "pin" ? (
               <div style={S.stepContent}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedUsername("")}
-                  style={S.backButton}
-                >
-                  &lt; back
-                </button>
-
                 <div style={S.selectedSummary}>
                   <span style={S.avatar}>
-                    {getInitials(selectedStaff?.display_name || selectedUsername)}
+                    {getInitials(
+                      selectedStaff?.display_name || selectedUsername,
+                    )}
                   </span>
                   <span style={S.staffName}>
                     {selectedStaff?.display_name || selectedUsername}
@@ -886,7 +1018,8 @@ export default function Login() {
                       placeholder="PIN"
                       style={S.inputBase}
                       disabled={loadingLogin}
-                      autoComplete="current-password"
+                      autoComplete="new-password"
+                      name="hub-pin-entry"
                       inputMode="numeric"
                       onFocus={(e) => {
                         e.currentTarget.style.borderColor = "#30c7cc";
@@ -911,7 +1044,8 @@ export default function Login() {
                             "rgba(255,255,255,0.08)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.color = "rgba(226,232,240,0.64)";
+                          e.currentTarget.style.color =
+                            "rgba(226,232,240,0.64)";
                           e.currentTarget.style.background = "transparent";
                         }}
                         disabled={loadingLogin}
@@ -922,54 +1056,57 @@ export default function Login() {
                   </div>
                 </label>
 
-                <div style={S.numberPad} aria-label="PIN number pad">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-                    <button
-                      key={digit}
-                      className="hub-pad-button"
-                      type="button"
-                      onClick={() => appendPinDigit(digit)}
-                      disabled={loadingLogin}
-                      style={S.padButton}
-                    >
-                      {digit}
-                    </button>
-                  ))}
+                <button
+                  type="submit"
+                  style={S.submitButton}
+                  disabled={loadingLogin}
+                  onMouseEnter={(e) => {
+                    if (loadingLogin) return;
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.borderColor = "rgba(132,91,255,0.72)";
+                    e.currentTarget.style.boxShadow =
+                      "0 18px 42px rgba(124,58,237,0.18)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.borderColor = "rgba(48,199,204,0.45)";
+                    e.currentTarget.style.boxShadow =
+                      "0 18px 40px rgba(48,199,204,0.14)";
+                  }}
+                >
+                  Sign in
+                </button>
+
+                <div style={S.pinFooterRow}>
                   <button
-                    className="hub-pad-button"
                     type="button"
-                    onClick={removePinDigit}
-                    disabled={loadingLogin}
-                    aria-label="Backspace"
-                    style={S.padButton}
+                    onClick={() => setSelectedUsername("")}
+                    style={S.backButton}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(132,91,255,0.7)";
+                      e.currentTarget.style.background = "rgba(22,18,42,0.86)";
+                      e.currentTarget.style.color = "#ffffff";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(48,199,204,0.36)";
+                      e.currentTarget.style.background = "rgba(5,12,24,0.76)";
+                      e.currentTarget.style.color = "rgba(210,245,248,0.88)";
+                    }}
                   >
-                    <BackspaceIcon />
-                  </button>
-                  <button
-                    className="hub-pad-button"
-                    type="button"
-                    onClick={() => appendPinDigit(0)}
-                    disabled={loadingLogin}
-                    style={S.padButton}
-                  >
-                    0
-                  </button>
-                  <button
-                    className="hub-pad-button"
-                    type="button"
-                    onClick={submitPin}
-                    disabled={loadingLogin}
-                    aria-label="Sign in"
-                    style={{ ...S.padButton, ...S.submitPadButton }}
-                  >
-                    <ArrowIcon />
+                    ← Back
                   </button>
                 </div>
               </div>
             ) : null}
 
             {error ? <div style={S.error}>{error}</div> : null}
-            {loadingLogin ? <div style={S.loadingLine}>Signing in...</div> : null}
+            {loadingLogin ? (
+              <div style={S.loadingLine}>Signing in...</div>
+            ) : null}
           </form>
         )}
       </div>

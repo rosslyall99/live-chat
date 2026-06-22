@@ -3,8 +3,8 @@ import { supabase } from "../supabaseClient";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PhilLogo from "../images/logoTransparent.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
+import "./Login.css";
 
-const LOGIN_BACKGROUND_URL = "/backgrounds/hub-login-bg.png";
 const LAST_BRANCH_KEY = "hub:lastBranch";
 const BRANCHES = ["St Enoch", "Duke Street", "Hire", "Office"];
 const BRANCH_FIELDS = [
@@ -230,6 +230,39 @@ function ArrowIcon({ size = 26 }) {
   );
 }
 
+function LoginQuoteTerminal() {
+  const quote = "Measure twice, promise once.";
+  const fullText = `> "${quote}"`;
+  const [typedText, setTypedText] = React.useState("");
+
+  React.useEffect(() => {
+    setTypedText("");
+    let index = 0;
+
+    const timer = window.setInterval(() => {
+      index += 1;
+      setTypedText(fullText.slice(0, index));
+
+      if (index >= fullText.length) {
+        window.clearInterval(timer);
+      }
+    }, 34);
+
+    return () => window.clearInterval(timer);
+  }, [fullText]);
+
+  return (
+    <section className="hub-quote-terminal" aria-label="Daily quote">
+      <div className="hub-quote-terminal__text">
+        <span>
+          {typedText}
+          <span className="hub-quote-terminal__cursor">█</span>
+        </span>
+      </div>
+    </section>
+  );
+}
+
 export default function Login() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
@@ -440,40 +473,6 @@ export default function Login() {
     }
   }
 
-  function choiceHover(disabled = false) {
-    return {
-      onMouseEnter: (e) => {
-        if (disabled) return;
-        e.currentTarget.style.transform = "translateY(-1px)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.13)";
-        e.currentTarget.style.borderColor = "rgba(255,255,255,0.24)";
-      },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.08)";
-        e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
-      },
-    };
-  }
-
-  function cardHover(disabled = false) {
-    return {
-      onMouseEnter: (e) => {
-        if (disabled) return;
-        e.currentTarget.style.transform = "translateY(-1px)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.1)";
-        e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
-        e.currentTarget.style.boxShadow = "0 12px 28px rgba(0,0,0,0.16)";
-      },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-        e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
-        e.currentTarget.style.boxShadow = "none";
-      },
-    };
-  }
-
   const hasDatabaseBranchField = staff.some((row) => getStaffBranchValue(row));
   const hasKnownDatabaseBranchMatch = staff.some((row) =>
     BRANCHES.some((branch) =>
@@ -500,8 +499,6 @@ export default function Login() {
     : selectedUsername
       ? "pin"
       : "staff";
-  const focusRing = "0 0 0 3px rgba(48,199,204,0.22)";
-
   React.useEffect(() => {
     if (!loadingStaff && staff.length && !hasKnownBranchMatch) {
       console.warn(
@@ -520,337 +517,37 @@ export default function Login() {
     }
   }, [hasKnownDatabaseBranchMatch, loadingStaff, staff.length]);
 
-  const S = {
-    page: {
-      minHeight: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      padding: 16,
-      boxSizing: "border-box",
-      backgroundColor: "#05070d",
-      backgroundImage: `linear-gradient(90deg, rgba(5,7,13,0.34), rgba(5,7,13,0.74)), url("${LOGIN_BACKGROUND_URL}")`,
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundRepeat: "no-repeat",
-      fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-      color: "#f8fafc",
-    },
-    panel: {
-      width: "100%",
-      maxWidth: 460,
-      height: "calc(100vh - 32px)",
-      overflowY: "auto",
-      background: "rgba(5, 10, 20, 0.82)",
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 28,
-      boxShadow: "0 26px 80px rgba(0,0,0,0.34)",
-      backdropFilter: "blur(18px)",
-      WebkitBackdropFilter: "blur(18px)",
-      padding: "34px 30px",
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-      gap: 24,
-    },
-    logo: {
-      display: "block",
-      width: 220,
-      maxWidth: "72%",
-      height: "auto",
-      margin: "2px auto 14px",
-      userSelect: "none",
-      WebkitUserSelect: "none",
-    },
-    form: {
-      width: "100%",
-      display: "flex",
-      flexDirection: "column",
-      gap: 20,
-      flex: 1,
-    },
-    label: {
-      display: "block",
-      fontSize: 12,
-      fontWeight: 400,
-      color: "rgba(226,232,240,0.78)",
-      textTransform: "uppercase",
-      letterSpacing: "0.08em",
-    },
-    fieldWrap: {
-      width: "100%",
-      marginTop: 8,
-      position: "relative",
-    },
-    inputBase: {
-      width: "100%",
-      boxSizing: "border-box",
-      padding: "15px 48px 15px 16px",
-      borderRadius: 18,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.08)",
-      color: "#f8fafc",
-      outline: "none",
-      fontSize: 20,
-      fontWeight: 400,
-      lineHeight: "26px",
-      transition: "border-color 140ms ease, box-shadow 140ms ease",
-    },
-    stepContent: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 16,
-      flex: 1,
-      minHeight: 0,
-      animation: "hubStepIn 220ms ease both",
-    },
-    choiceList: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 14,
-    },
-    choiceButton: {
-      width: "100%",
-      border: "1px solid rgba(255,255,255,0.12)",
-      borderRadius: 24,
-      padding: "22px 20px",
-      fontWeight: 400,
-      fontSize: 17,
-      cursor: loadingLogin ? "not-allowed" : "pointer",
-      background: "rgba(255,255,255,0.08)",
-      color: "#f8fafc",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-      textAlign: "left",
-      transition:
-        "transform 120ms ease, border-color 120ms ease, background 120ms ease",
-      opacity: loadingLogin ? 0.8 : 1,
-    },
-    staffGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-      gap: 12,
-    },
-    staffCard: {
-      minWidth: 0,
-      minHeight: 112,
-      border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 20,
-      padding: "13px 10px",
-      background: "rgba(255,255,255,0.06)",
-      color: "#f8fafc",
-      cursor: loadingLogin ? "not-allowed" : "pointer",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      transition:
-        "transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease",
-    },
-    staffButtonMain: {
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      minWidth: 0,
-    },
-    avatar: {
-      width: 64,
-      height: 64,
-      borderRadius: "20%",
-      flex: "0 0 auto",
-      display: "grid",
-      placeItems: "center",
-      background: "linear-gradient(135deg, #30c7cc, #7c3aed)",
-      color: "#ffffff",
-      fontSize: 14,
-      fontWeight: 400,
-      boxShadow: "0 10px 22px rgba(48,199,204,0.18)",
-    },
-    staffName: {
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "normal",
-      textAlign: "center",
-      fontSize: 14,
-      lineHeight: 1.25,
-      fontWeight: 400,
-    },
-    backButton: {
-      alignSelf: "flex-start",
-      border: "1px solid rgba(48,199,204,0.36)",
-      borderRadius: 8,
-      padding: "9px 13px",
-      background: "rgba(5, 12, 24, 0.76)",
-      color: "rgba(210,245,248,0.88)",
-      fontSize: 12,
-      fontWeight: 400,
-      letterSpacing: "0.08em",
-      textTransform: "uppercase",
-      cursor: "pointer",
-      boxShadow: "0 0 18px rgba(48,199,204,0.08)",
-      transition:
-        "transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease",
-    },
-    submitButton: {
-      width: "100%",
-      border: "1px solid rgba(48,199,204,0.45)",
-      borderRadius: 10,
-      padding: "14px 16px",
-      background:
-        "linear-gradient(135deg, rgba(48,199,204,0.26), rgba(124,58,237,0.22))",
-      color: "#ffffff",
-      fontSize: 13,
-      fontWeight: 400,
-      letterSpacing: "0.12em",
-      textTransform: "uppercase",
-      cursor: loadingLogin ? "not-allowed" : "pointer",
-      boxShadow: "0 18px 40px rgba(48,199,204,0.14)",
-      opacity: loadingLogin ? 0.72 : 1,
-      transition:
-        "transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
-    },
-    pinFooterRow: {
-      display: "flex",
-      justifyContent: "flex-start",
-      marginTop: "auto",
-    },
-    selectedSummary: {
-      border: "1px solid rgba(255,255,255,0.12)",
-      borderRadius: 20,
-      padding: "13px 14px",
-      background: "rgba(255,255,255,0.06)",
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-    },
-    numberPad: {
-      display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-      gap: 14,
-      justifyItems: "center",
-    },
-    padButton: {
-      width: "clamp(62px, 17vw, 76px)",
-      height: "clamp(62px, 17vw, 76px)",
-      borderRadius: "50%",
-      border: "1px solid rgba(255,255,255,0.1)",
-      background: "rgba(255,255,255,0.06)",
-      color: "#ffffff",
-      fontSize: 23,
-      fontWeight: 400,
-      cursor: loadingLogin ? "not-allowed" : "pointer",
-      display: "grid",
-      placeItems: "center",
-      transition:
-        "transform 120ms ease, background 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
-    },
-    submitPadButton: {
-      background: "rgba(48,199,204,0.24)",
-      borderColor: "rgba(48,199,204,0.34)",
-      boxShadow: "0 14px 32px rgba(48,199,204,0.16)",
-    },
-    eyeBtn: {
-      position: "absolute",
-      right: 10,
-      top: "50%",
-      transform: "translateY(-50%)",
-      border: "none",
-      background: "transparent",
-      padding: 6,
-      borderRadius: 10,
-      cursor: "pointer",
-      color: "rgba(226,232,240,0.64)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      transition: "background 120ms ease, color 120ms ease",
-    },
-    loadingLine: {
-      fontSize: 13,
-      fontWeight: 400,
-      color: "rgba(226,232,240,0.72)",
-      textAlign: "center",
-      width: "100%",
-    },
-    error: {
-      borderRadius: 18,
-      border: "1px solid rgba(239,68,68,0.35)",
-      background: "rgba(239,68,68,0.12)",
-      color: "#fee2e2",
-      padding: "10px 12px",
-      fontSize: 13,
-      fontWeight: 400,
-      lineHeight: 1.35,
-    },
-  };
-
   return (
-    <div className="hub-login-page" style={S.page}>
-      <style>{`
-        @keyframes hubStepIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
+    <div className="hub-login-page">
+      <LoginQuoteTerminal />
 
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @media (max-width: 720px) {
-          .hub-login-page {
-            justify-content: center !important;
-            padding: 10px !important;
-          }
-
-          .hub-login-panel {
-            max-width: none !important;
-            height: calc(100vh - 20px) !important;
-            padding: 28px 20px !important;
-            border-radius: 24px !important;
-          }
-
-          .hub-staff-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-        }
-
-        .hub-login-panel input::placeholder {
-          color: rgba(226,232,240,0.38);
-        }
-
-        .hub-pad-button:hover,
-        .hub-pad-button:focus-visible {
-          background: rgba(255,255,255,0.1) !important;
-          border-color: rgba(48,199,204,0.28) !important;
-          box-shadow: 0 0 0 3px rgba(48,199,204,0.13) !important;
-          transform: translateY(-1px);
-        }
-      `}</style>
-      <div className="hub-login-panel" style={S.panel}>
-        <img src={PhilLogo} alt="Slanj" style={S.logo} draggable={false} />
+      <div className="hub-login-panel">
+        <img
+          src={PhilLogo}
+          alt="Slanj"
+          className="hub-login-logo"
+          draggable={false}
+        />
 
         {checkingSession || loadingStaff ? (
-          <div style={S.loadingLine}>
+          <div className="hub-login-loading-line">
             {checkingSession ? "Checking session..." : "Loading staff list..."}
           </div>
         ) : (
-          <form id="hub-login-form" onSubmit={onSubmit} style={S.form}>
+          <form
+            id="hub-login-form"
+            onSubmit={onSubmit}
+            className="hub-login-form"
+          >
             {currentStep === "branch" ? (
-              <div style={S.stepContent}>
-                <div style={S.choiceList}>
+              <div className="hub-login-step">
+                <div className="hub-login-choice-list">
                   {BRANCHES.map((branch) => (
                     <button
                       key={branch}
                       type="button"
                       onClick={() => selectBranch(branch)}
-                      style={S.choiceButton}
-                      {...choiceHover(false)}
+                      className="hub-login-choice-button"
                     >
                       <span>{branch}</span>
                       <ChevronIcon />
@@ -861,9 +558,9 @@ export default function Login() {
             ) : null}
 
             {currentStep === "staff" ? (
-              <div style={S.stepContent}>
+              <div className="hub-login-step">
                 {/* Temporary fallback: username prefixes are used only if staff_login_list does not expose populated site_id/login_branch yet. */}
-                <div className="hub-staff-grid" style={S.staffGrid}>
+                <div className="hub-staff-grid">
                   {filteredStaff.map((s) => {
                     const displayName = s.display_name || s.username;
 
@@ -872,11 +569,14 @@ export default function Login() {
                         key={s.username}
                         type="button"
                         onClick={() => selectStaff(s.username)}
-                        style={S.staffCard}
-                        {...cardHover(false)}
+                        className="hub-staff-card"
                       >
-                        <span style={S.avatar}>{getInitials(displayName)}</span>
-                        <span style={S.staffName}>{displayName}</span>
+                        <span className="hub-login-avatar">
+                          {getInitials(displayName)}
+                        </span>
+                        <span className="hub-login-staff-name">
+                          {displayName}
+                        </span>
                       </button>
                     );
                   })}
@@ -884,7 +584,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={changeBranch}
-                  style={{ ...S.backButton, marginTop: "auto" }}
+                  className="hub-login-back-button hub-login-back-button--bottom"
                 >
                   ← Back
                 </button>
@@ -892,41 +592,32 @@ export default function Login() {
             ) : null}
 
             {currentStep === "pin" ? (
-              <div style={S.stepContent}>
-                <div style={S.selectedSummary}>
-                  <span style={S.avatar}>
+              <div className="hub-login-step">
+                <div className="hub-login-selected-summary">
+                  <span className="hub-login-avatar">
                     {getInitials(
                       selectedStaff?.display_name || selectedUsername,
                     )}
                   </span>
-                  <span style={S.staffName}>
+                  <span className="hub-login-staff-name">
                     {selectedStaff?.display_name || selectedUsername}
                   </span>
                 </div>
 
-                <label style={S.label}>
+                <label className="hub-login-label">
                   PIN
-                  <div style={S.fieldWrap}>
+                  <div className="hub-login-field-wrap">
                     <input
                       ref={pinInputRef}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
                       type={showPin ? "text" : "password"}
                       placeholder="PIN"
-                      style={S.inputBase}
+                      className="hub-login-input"
                       disabled={loadingLogin}
                       autoComplete="new-password"
                       name="hub-pin-entry"
                       inputMode="numeric"
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "#30c7cc";
-                        e.currentTarget.style.boxShadow = focusRing;
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor =
-                          "rgba(255,255,255,0.14)";
-                        e.currentTarget.style.boxShadow = "none";
-                      }}
                     />
 
                     {pin ? (
@@ -934,17 +625,7 @@ export default function Login() {
                         type="button"
                         aria-label={showPin ? "Hide PIN" : "Show PIN"}
                         onClick={() => setShowPin((s) => !s)}
-                        style={S.eyeBtn}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = "#ffffff";
-                          e.currentTarget.style.background =
-                            "rgba(255,255,255,0.08)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color =
-                            "rgba(226,232,240,0.64)";
-                          e.currentTarget.style.background = "transparent";
-                        }}
+                        className="hub-login-eye-button"
                         disabled={loadingLogin}
                       >
                         {showPin ? <EyeOpenIcon /> : <EyeClosedIcon />}
@@ -955,44 +636,17 @@ export default function Login() {
 
                 <button
                   type="submit"
-                  style={S.submitButton}
+                  className="hub-login-submit-button"
                   disabled={loadingLogin}
-                  onMouseEnter={(e) => {
-                    if (loadingLogin) return;
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.borderColor = "rgba(132,91,255,0.72)";
-                    e.currentTarget.style.boxShadow =
-                      "0 18px 42px rgba(124,58,237,0.18)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.borderColor = "rgba(48,199,204,0.45)";
-                    e.currentTarget.style.boxShadow =
-                      "0 18px 40px rgba(48,199,204,0.14)";
-                  }}
                 >
                   Sign in
                 </button>
 
-                <div style={S.pinFooterRow}>
+                <div className="hub-login-pin-footer">
                   <button
                     type="button"
                     onClick={() => setSelectedUsername("")}
-                    style={S.backButton}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.borderColor =
-                        "rgba(132,91,255,0.7)";
-                      e.currentTarget.style.background = "rgba(22,18,42,0.86)";
-                      e.currentTarget.style.color = "#ffffff";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.borderColor =
-                        "rgba(48,199,204,0.36)";
-                      e.currentTarget.style.background = "rgba(5,12,24,0.76)";
-                      e.currentTarget.style.color = "rgba(210,245,248,0.88)";
-                    }}
+                    className="hub-login-back-button"
                   >
                     ← Back
                   </button>
@@ -1000,9 +654,9 @@ export default function Login() {
               </div>
             ) : null}
 
-            {error ? <div style={S.error}>{error}</div> : null}
+            {error ? <div className="hub-login-error">{error}</div> : null}
             {loadingLogin ? (
-              <div style={S.loadingLine}>Signing in...</div>
+              <div className="hub-login-loading-line">Signing in...</div>
             ) : null}
           </form>
         )}
