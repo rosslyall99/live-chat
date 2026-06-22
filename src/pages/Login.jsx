@@ -236,11 +236,11 @@ function ArrowIcon({ size = 26 }) {
 }
 
 function LoginQuoteTerminal() {
-  const [quote, setQuote] = React.useState(LOGIN_QUOTE_FALLBACK.quote);
+  const [quote, setQuote] = React.useState("");
   const [author, setAuthor] = React.useState(
     LOGIN_QUOTE_FALLBACK.author || "Slanj HUB",
   );
-  const fullText = `> "${quote}"`;
+  const fullText = quote ? `> "${quote}"` : "";
   const [typedText, setTypedText] = React.useState("");
 
   React.useEffect(() => {
