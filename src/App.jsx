@@ -18,6 +18,7 @@ import AdminLive from "./pages/AdminLive";
 import AdminInsights from "./pages/AdminInsights";
 import HubRota from "./pages/HubRota.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Prices from "./pages/Prices.jsx";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
 import AppointmentCustomersAdmin from "./pages/AppointmentCustomersAdmin.jsx";
@@ -235,6 +236,7 @@ function DesktopApp() {
         {/* Core */}
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="prices" element={<Prices />} />
         <Route path="rota" element={<HubRota />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="inbox" element={<Inbox />} />
@@ -277,6 +279,7 @@ export default function App() {
   const pathname = location.pathname || "/";
   const requiresDesktopShell =
     pathname === "/inbox" ||
+    pathname === "/prices" ||
     pathname === "/appointments" ||
     pathname.startsWith("/chat/") ||
     pathname.startsWith("/admin/") ||

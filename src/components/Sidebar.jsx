@@ -82,6 +82,7 @@ export default function Sidebar({
   const primaryItems = [
     { to: "/rota", label: "ROTA", code: "RT" },
     { to: "/appointments", label: "CALENDAR", code: "CA" },
+    { to: "/prices", label: "PRICES", code: "PR" },
     { to: "/inbox", label: "LIVE CHAT", code: "LC" },
   ];
 
@@ -139,7 +140,11 @@ export default function Sidebar({
           aria-label="Dashboard home"
           title="Dashboard"
         >
-          <img src={collapsed ? HubSmallIcon : HubLogo} alt="Hub" draggable={false} />
+          <img
+            src={collapsed ? HubSmallIcon : HubLogo}
+            alt="Hub"
+            draggable={false}
+          />
         </Link>
         <button
           type="button"

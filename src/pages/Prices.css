@@ -1,0 +1,438 @@
+.prices-page,
+.prices-page * {
+  box-sizing: border-box;
+}
+
+.prices-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: rgba(248, 250, 252, 0.92);
+  overflow: hidden;
+}
+
+.prices-element {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(4, 10, 24, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.prices-element::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(48, 199, 204, 0.16), transparent 34%);
+  opacity: 0.16;
+}
+
+.prices-element > * {
+  position: relative;
+  z-index: 1;
+}
+
+.prices-header {
+  min-height: 102px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(48, 199, 204, 0.11), rgba(124, 58, 237, 0.09)),
+    rgba(5, 12, 24, 0.68);
+}
+
+.prices-kicker,
+.prices-detail__title span,
+.prices-placeholder h4 {
+  color: rgba(125, 211, 252, 0.86);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.prices-header h2 {
+  margin: 6px 0 0;
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: 250;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.prices-header__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 8px;
+  color: rgba(204, 251, 241, 0.9);
+  background: rgba(20, 184, 166, 0.08);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.prices-header__status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  box-shadow: 0 0 16px rgba(45, 212, 191, 0.9);
+}
+
+.prices-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.prices-matrix {
+  min-width: 0;
+  min-height: 0;
+}
+
+.prices-matrix__scroll {
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.prices-matrix__scroll::-webkit-scrollbar,
+.prices-detail::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.prices-matrix__scroll::-webkit-scrollbar-track,
+.prices-detail::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.55);
+}
+
+.prices-matrix__scroll::-webkit-scrollbar-thumb,
+.prices-detail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(48, 199, 204, 0.82), rgba(124, 58, 237, 0.78));
+}
+
+.prices-matrix table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.prices-matrix th,
+.prices-matrix td {
+  height: 46px;
+  min-width: 92px;
+  border-right: 1px solid rgba(125, 211, 252, 0.1);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.1);
+  color: rgba(226, 232, 240, 0.82);
+  text-align: center;
+}
+
+.prices-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.11), rgba(124, 58, 237, 0.08)),
+    rgba(5, 12, 24, 0.96);
+}
+
+.prices-matrix thead tr:nth-child(2) th {
+  top: 46px;
+  z-index: 6;
+}
+
+.prices-product-heading,
+.prices-product-subheading,
+.prices-product-cell,
+.prices-section-row th {
+  position: sticky;
+  left: 0;
+  z-index: 7;
+  min-width: 245px !important;
+  max-width: 245px;
+  text-align: left !important;
+  background: rgba(4, 10, 24, 0.98) !important;
+}
+
+.prices-product-heading,
+.prices-product-subheading {
+  z-index: 9 !important;
+  padding: 0 14px;
+  color: rgba(125, 211, 252, 0.86) !important;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.prices-section-row th {
+  height: 36px;
+  padding: 0 14px;
+  color: rgba(196, 181, 253, 0.86);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: inset 3px 0 0 rgba(124, 58, 237, 0.65);
+}
+
+.prices-section-row th::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 245px;
+  width: 100vw;
+  height: 100%;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.12);
+  background: rgba(124, 58, 237, 0.08);
+  pointer-events: none;
+}
+
+.prices-product-cell button,
+.prices-supplier-heading button,
+.prices-range-heading button,
+.prices-matrix td button {
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.prices-product-cell button {
+  padding: 0 14px;
+  overflow: hidden;
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 13px;
+  font-weight: 350;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prices-supplier-heading button {
+  padding: 0 10px;
+  color: rgba(125, 211, 252, 0.88);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.prices-range-heading button {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 6px;
+}
+
+.prices-range-heading span {
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 12px;
+  font-weight: 350;
+  line-height: 1.1;
+}
+
+.prices-range-heading small {
+  color: rgba(203, 213, 225, 0.55);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 300;
+}
+
+.prices-matrix tbody tr:nth-child(odd) td,
+.prices-matrix tbody tr:nth-child(odd) .prices-product-cell {
+  background-color: rgba(5, 12, 24, 0.24) !important;
+}
+
+.prices-matrix td.has-price button {
+  color: rgba(204, 251, 241, 0.94);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.prices-matrix td.is-empty span {
+  color: rgba(148, 163, 184, 0.32);
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.prices-product-cell button:hover,
+.prices-product-cell button:focus-visible,
+.prices-supplier-heading button:hover,
+.prices-supplier-heading button:focus-visible,
+.prices-range-heading button:hover,
+.prices-range-heading button:focus-visible,
+.prices-matrix td.has-price button:hover,
+.prices-matrix td.has-price button:focus-visible {
+  outline: none;
+  background: rgba(48, 199, 204, 0.1);
+}
+
+.prices-matrix tr.is-row-selected .prices-product-cell,
+.prices-matrix tr.is-row-selected td.has-price {
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.14), rgba(124, 58, 237, 0.1)),
+    rgba(5, 12, 24, 0.66) !important;
+}
+
+.prices-matrix tr.is-row-selected .prices-product-cell {
+  box-shadow: inset 3px 0 0 rgba(48, 199, 204, 0.72);
+}
+
+.prices-supplier-heading.is-selected,
+.prices-range-heading.is-selected,
+.prices-matrix td.is-column-selected.has-price {
+  background:
+    linear-gradient(180deg, rgba(124, 58, 237, 0.22), rgba(48, 199, 204, 0.1)),
+    rgba(5, 12, 24, 0.74) !important;
+}
+
+.prices-matrix td.is-cell-selected {
+  box-shadow:
+    inset 0 0 0 1px rgba(45, 212, 191, 0.86),
+    inset 0 0 24px rgba(45, 212, 191, 0.16);
+  background: rgba(20, 184, 166, 0.18) !important;
+}
+
+.prices-detail {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.prices-detail__title h3 {
+  margin: 6px 0 0;
+  color: rgba(248, 250, 252, 0.94);
+  font-size: 24px;
+  font-weight: 320;
+  line-height: 1.15;
+}
+
+.prices-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
+  gap: 9px 12px;
+  margin: 0;
+}
+
+.prices-detail-grid dt {
+  color: rgba(125, 211, 252, 0.72);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.prices-detail-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.35;
+}
+
+.prices-detail__hint {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 12, 24, 0.38);
+  color: rgba(203, 213, 225, 0.68);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.45;
+}
+
+.prices-placeholder {
+  padding-top: 14px;
+  border-top: 1px solid rgba(125, 211, 252, 0.12);
+}
+
+.prices-placeholder h4 {
+  margin: 0;
+}
+
+.prices-placeholder ul {
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.prices-placeholder li {
+  padding: 9px 10px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 8px;
+  background: rgba(5, 12, 24, 0.36);
+  color: rgba(203, 213, 225, 0.68);
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.35;
+}
+
+.prices-placeholder--muted li {
+  opacity: 0.58;
+}
+
+@media (max-width: 1120px) {
+  .prices-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .prices-detail {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 720px) {
+  .prices-page {
+    overflow: visible;
+  }
+
+  .prices-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
