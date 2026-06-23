@@ -1,4 +1,5 @@
 import React from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
 import "./rota.css";
@@ -209,10 +210,12 @@ function startOfDayLocal(d) {
 }
 
 export default function Rota() {
+  const [searchParams] = useSearchParams();
   const [weekStart, setWeekStart] = React.useState(() => startOfWeek(new Date()));
   const [branch, setBranch] = React.useState("All");
   const [loading, setLoading] = React.useState(false);
   const [mobileView, setMobileView] = React.useState("today"); // "today" | "rota"
+  const highlightedStaffRef = React.useRef(null);
 
   const [shiftsWeek, setShiftsWeek] = React.useState([]);
   const [absencesWeek, setAbsencesWeek] = React.useState([]);
@@ -435,6 +438,36 @@ export default function Rota() {
     return t;
   }, []);
 
+  const highlightedStaff = React.useMemo(
+    () => searchParams.get("staff") || "",
+    [searchParams]
+  );
+  const highlightedDate = React.useMemo(
+    () => searchParams.get("date") || "",
+    [searchParams]
+  );
+
+  React.useEffect(() => {
+    if (highlightedDate !== "today" && !highlightedStaff) return;
+
+    setWeekStart(startOfWeek(new Date()));
+    setMobileView("rota");
+  }, [highlightedDate, highlightedStaff]);
+
+  React.useEffect(() => {
+    if (!highlightedStaff || loading) return;
+
+    const timer = window.setTimeout(() => {
+      highlightedStaffRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [highlightedStaff, loading, staff]);
+
   const labelFor = React.useCallback(
     (sageName) => nameMap[normName(sageName)] || sageName,
     [nameMap]
@@ -576,12 +609,17 @@ export default function Rota() {
                     <th className="rota-staffCol">Day</th>
                     {staff.map((s, i) => {
                       const bKey = normBranch(s.branch) || "unknown";
+                      const isHighlightedStaff =
+                        highlightedStaff &&
+                        (normName(s.key) === normName(highlightedStaff) ||
+                          normName(s.label) === normName(highlightedStaff));
                       return (
                         <th
                           key={s.key}
                           className={[
                             "rota-branch",
                             `rota-branch--${bKey}`,
+                            isHighlightedStaff ? "rota-highlightStaff" : "",
                             s.dividerBefore ? "rota-colDivider" : "",
                           ].join(" ").trim()}
                         >
@@ -601,12 +639,20 @@ export default function Rota() {
 
                       {staff.map((s, i) => {
                         const bKey = normBranch(s.branch) || "unknown";
+                        const isHighlightedStaff =
+                          highlightedStaff &&
+                          (normName(s.key) === normName(highlightedStaff) ||
+                            normName(s.label) === normName(highlightedStaff));
+                        const isHighlightedToday =
+                          isHighlightedStaff && sameDay(d, today);
                         return (
                           <td
                             key={s.key}
+                            ref={isHighlightedToday ? highlightedStaffRef : null}
                             className={[
                               "rota-branch",
                               `rota-branch--${bKey}`,
+                              isHighlightedToday ? "rota-highlightStaffToday" : "",
                               i === 0 ? "rota-afterDayDivider" : "",
                               s.dividerBefore ? "rota-colDivider" : "",
                             ].join(" ").trim()}

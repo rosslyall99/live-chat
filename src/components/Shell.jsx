@@ -3,766 +3,840 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { ui } from "../ui/tokens";
-import Lion from "../images/iconTransparent.png";
+import Lion from "../images/lion.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
 import HubLayout from "./HubLayout";
 
 function logShellAuth(step, details) {
-    console.debug(`[auth][shell] ${step}`, {
-        at: new Date().toISOString(),
-        ...details,
-    });
+  console.debug(`[auth][shell] ${step}`, {
+    at: new Date().toISOString(),
+    ...details,
+  });
 }
 
 function siteLetter(siteId) {
-    if (!siteId) return "?";
-    const map = { duke: "D", sten: "S", off: "O" };
-    return map[siteId] || String(siteId).slice(0, 1).toUpperCase();
+  if (!siteId) return "?";
+  const map = { duke: "D", sten: "S", off: "O" };
+  return map[siteId] || String(siteId).slice(0, 1).toUpperCase();
 }
 
 function prettySite(siteId) {
-    if (!siteId) return "—";
-    const map = { duke: "Duke Street", off: "Office", sten: "St Enoch" };
-    return map[siteId] || siteId;
+  if (!siteId) return "—";
+  const map = { duke: "Duke Street", off: "Office", sten: "St Enoch" };
+  return map[siteId] || siteId;
 }
 
 export default function Shell() {
-    const [me, setMe] = React.useState(null);
-    const [role, setRole] = React.useState("agent");
-    const [loading, setLoading] = React.useState(true);
-    const loc = useLocation();
-    const nav = useNavigate();
-    const [displayName, setDisplayName] = React.useState("");
-    const isWideAppointmentsRoute =
-        loc.pathname === "/appointments" ||
-        loc.pathname === "/admin/appointment-types" ||
-        loc.pathname === "/admin/appointment-customers" ||
-        loc.pathname === "/admin/appointment-emails";
+  const [me, setMe] = React.useState(null);
+  const [role, setRole] = React.useState("agent");
+  const [loading, setLoading] = React.useState(true);
+  const loc = useLocation();
+  const nav = useNavigate();
+  const [displayName, setDisplayName] = React.useState("");
+  const isWideAppointmentsRoute =
+    loc.pathname === "/appointments" ||
+    loc.pathname === "/admin/appointment-types" ||
+    loc.pathname === "/admin/appointment-customers" ||
+    loc.pathname === "/admin/appointment-emails";
 
-    // Kill switch state
-    const [siteId, setSiteId] = React.useState(null);
-    const [branchEnabled, setBranchEnabled] = React.useState(true);
-    const [globalEnabled, setGlobalEnabled] = React.useState(true);
-    const [switchLoading, setSwitchLoading] = React.useState(false);
-    const [switchError, setSwitchError] = React.useState("");
-    const aliveRef = React.useRef(true);
+  // Kill switch state
+  const [siteId, setSiteId] = React.useState(null);
+  const [branchEnabled, setBranchEnabled] = React.useState(true);
+  const [globalEnabled, setGlobalEnabled] = React.useState(true);
+  const [switchLoading, setSwitchLoading] = React.useState(false);
+  const [switchError, setSwitchError] = React.useState("");
+  const aliveRef = React.useRef(true);
 
-    const loginRedirectTarget = React.useMemo(() => {
-        const redirect = `${loc.pathname}${loc.search}${loc.hash}`;
-        return `/login?redirect=${encodeURIComponent(redirect)}`;
-    }, [loc.hash, loc.pathname, loc.search]);
+  const loginRedirectTarget = React.useMemo(() => {
+    const redirect = `${loc.pathname}${loc.search}${loc.hash}`;
+    return `/login?redirect=${encodeURIComponent(redirect)}`;
+  }, [loc.hash, loc.pathname, loc.search]);
 
-    React.useEffect(() => {
-        aliveRef.current = true;
-        return () => { aliveRef.current = false; };
-    }, []);
+  React.useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
-    const onBg = "rgba(22, 163, 74, 0.12)";
-    const onBorder = "rgba(22, 163, 74, 0.28)";
-    const offBg = "rgba(220, 38, 38, 0.10)";
-    const offBorder = "rgba(220, 38, 38, 0.26)";
+  const onBg = "rgba(22, 163, 74, 0.12)";
+  const onBorder = "rgba(22, 163, 74, 0.28)";
+  const offBg = "rgba(220, 38, 38, 0.10)";
+  const offBorder = "rgba(220, 38, 38, 0.26)";
 
-    function iconToggleStyle(isOn, disabled) {
-        return {
-            width: 38,
-            height: 34,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 12,
-            border: `1px solid ${isOn ? onBorder : offBorder}`,
-            background: isOn ? onBg : offBg,
-            color: "#111",
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.55 : 1,
-            boxSizing: "border-box",
-            transition: "transform 120ms ease, opacity 120ms ease",
-            padding: 0,
-            overflow: "hidden",
-        };
+  function iconToggleStyle(isOn, disabled) {
+    return {
+      width: 38,
+      height: 34,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 12,
+      border: `1px solid ${isOn ? onBorder : offBorder}`,
+      background: isOn ? onBg : offBg,
+      color: "#111",
+      cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.55 : 1,
+      boxSizing: "border-box",
+      transition: "transform 120ms ease, opacity 120ms ease",
+      padding: 0,
+      overflow: "hidden",
+    };
+  }
+
+  // ------------------------------------------------------------
+  // Tight "closed + 30s inactivity => sign out on next open"
+  // + Cross-tab sign out sync (sign out in one tab => others follow)
+  // ------------------------------------------------------------
+  React.useEffect(() => {
+    const CHANNEL = "crm-auth";
+    const STORAGE_LOGOUT_KEY = "crm:logout";
+    const STORAGE_LAST_ACTIVITY = "crm:lastActivityAt";
+    const STORAGE_LAST_CLOSED = "crm:lastClosedAt";
+    const INACTIVITY_MS = 30_000;
+
+    const bc =
+      "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL) : null;
+    let handled = false;
+
+    logShellAuth("logout-effect:mount", { pathname: loc.pathname });
+
+    const clearSessionNonce = () => {
+      try {
+        localStorage.removeItem("crm:session_nonce");
+      } catch {}
+    };
+
+    const goLogin = (reason) => {
+      logShellAuth("go-login", { reason, pathname: loc.pathname });
+      setMe(null);
+      setRole("agent");
+      setDisplayName("");
+      setSiteId(null);
+      setBranchEnabled(true);
+      setGlobalEnabled(true);
+      setSwitchError("");
+      clearSessionNonce();
+      nav(loginRedirectTarget, { replace: true });
+    };
+
+    const broadcastLogout = (reason) => {
+      const payload = {
+        type: "logout",
+        at: Date.now(),
+        reason: reason || "unknown",
+      };
+      try {
+        bc?.postMessage(payload);
+      } catch {}
+      try {
+        localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload));
+      } catch {}
+    };
+
+    const doLocalLogout = async (reason) => {
+      if (handled) return;
+      handled = true;
+      logShellAuth("do-local-logout", { reason, pathname: loc.pathname });
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      clearSessionNonce();
+      goLogin(reason);
+    };
+
+    const markActivity = () => {
+      try {
+        localStorage.setItem(STORAGE_LAST_ACTIVITY, String(Date.now()));
+      } catch {}
+    };
+
+    // --- record activity while the app is open
+    const activityEvents = [
+      "mousemove",
+      "keydown",
+      "mousedown",
+      "touchstart",
+      "scroll",
+      "click",
+    ];
+    activityEvents.forEach((ev) =>
+      window.addEventListener(ev, markActivity, { passive: true }),
+    );
+
+    // --- record close time when tab/window is actually going away
+    const onPageHide = (e) => {
+      if (e && e.persisted) return; // ignore BFCache
+      try {
+        localStorage.setItem(STORAGE_LAST_CLOSED, String(Date.now()));
+      } catch {}
+    };
+    window.addEventListener("pagehide", onPageHide);
+
+    // --- On startup: if we are reopening after a real close + idle > 30s, force logout
+    (async () => {
+      // Run this check only once per tab session
+      const STARTUP_CHECK_KEY = "crm:startupChecked";
+      try {
+        if (sessionStorage.getItem(STARTUP_CHECK_KEY) === "1") {
+          logShellAuth("startup-check:skip-existing-session");
+          markActivity();
+          return;
+        }
+        sessionStorage.setItem(STARTUP_CHECK_KEY, "1");
+      } catch {}
+
+      // Skip on reload / BFCache restores (these can look like “closed”)
+      try {
+        const nav = performance.getEntriesByType("navigation")?.[0];
+        const navType = nav?.type; // "navigate" | "reload" | "back_forward" | "prerender"
+        if (navType === "reload" || navType === "back_forward") {
+          logShellAuth("startup-check:skip-navigation-type", { navType });
+          markActivity();
+          return;
+        }
+      } catch {}
+
+      let lastActivityAt = 0;
+      let lastClosedAt = 0;
+
+      try {
+        lastActivityAt = Number(
+          localStorage.getItem(STORAGE_LAST_ACTIVITY) || "0",
+        );
+        lastClosedAt = Number(localStorage.getItem(STORAGE_LAST_CLOSED) || "0");
+      } catch {}
+
+      // Only enforce if we have BOTH timestamps
+      if (!lastClosedAt || !lastActivityAt) {
+        logShellAuth("startup-check:skip-missing-timestamps", {
+          lastActivityAt,
+          lastClosedAt,
+        });
+        markActivity();
+        return;
+      }
+
+      const now = Date.now();
+
+      // Must have closed AFTER the last activity (i.e. a real session ended)
+      const validClose = lastClosedAt >= lastActivityAt;
+      const closedLongEnough = now - lastClosedAt > INACTIVITY_MS;
+      const inactiveLongEnough = now - lastActivityAt > INACTIVITY_MS;
+
+      if (validClose && closedLongEnough && inactiveLongEnough) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          broadcastLogout("reopen_after_30s_closed");
+          logShellAuth("startup-check:logout", {
+            validClose,
+            closedLongEnough,
+            inactiveLongEnough,
+            userId: data.session.user?.id,
+          });
+          await doLocalLogout("reopen_after_30s_closed");
+          return;
+        }
+      }
+
+      // If we're not logging out, stamp activity for this session now
+      logShellAuth("startup-check:pass", {
+        validClose,
+        closedLongEnough,
+        inactiveLongEnough,
+      });
+      markActivity();
+    })();
+
+    // --- Cross-tab logout listeners
+    if (bc) {
+      bc.onmessage = (ev) => {
+        if (ev?.data?.type === "logout")
+          doLocalLogout(`broadcast:${ev.data.reason || "unknown"}`);
+      };
     }
 
-    // ------------------------------------------------------------
-    // Tight "closed + 30s inactivity => sign out on next open"
-    // + Cross-tab sign out sync (sign out in one tab => others follow)
-    // ------------------------------------------------------------
-    React.useEffect(() => {
-        const CHANNEL = "crm-auth";
-        const STORAGE_LOGOUT_KEY = "crm:logout";
-        const STORAGE_LAST_ACTIVITY = "crm:lastActivityAt";
-        const STORAGE_LAST_CLOSED = "crm:lastClosedAt";
-        const INACTIVITY_MS = 30_000;
+    const onStorage = (e) => {
+      if (e.key !== STORAGE_LOGOUT_KEY || !e.newValue) return;
+      try {
+        const msg = JSON.parse(e.newValue);
+        if (msg?.type === "logout")
+          doLocalLogout(`storage:${msg.reason || "unknown"}`);
+      } catch {
+        doLocalLogout("storage:parse-failed");
+      }
+    };
+    window.addEventListener("storage", onStorage);
 
-        const bc = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL) : null;
-        let handled = false;
+    // --- Supabase auth listener: sign out in one tab => others go too
+    const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+      logShellAuth("onAuthStateChange", { event, pathname: loc.pathname });
+      if (event === "SIGNED_OUT") {
+        broadcastLogout("signed_out");
+        clearSessionNonce();
+        goLogin("signed_out");
+      }
+      if (event === "SIGNED_IN") {
+        // record fresh activity, but DO NOT clear lastClosedAt (avoids racing the startup check)
+        markActivity();
+      }
+    });
 
-        logShellAuth("logout-effect:mount", { pathname: loc.pathname });
+    return () => {
+      activityEvents.forEach((ev) =>
+        window.removeEventListener(ev, markActivity),
+      );
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("storage", onStorage);
 
-        const clearSessionNonce = () => {
-            try { localStorage.removeItem("crm:session_nonce"); } catch { }
-        };
+      logShellAuth("logout-effect:unmount", { pathname: loc.pathname });
+      try {
+        authSub?.subscription?.unsubscribe();
+      } catch {}
+      try {
+        bc?.close();
+      } catch {}
+    };
+  }, [loc.pathname, loginRedirectTarget, nav]);
 
-        const goLogin = (reason) => {
-            logShellAuth("go-login", { reason, pathname: loc.pathname });
-            setMe(null);
-            setRole("agent");
-            setDisplayName("");
-            setSiteId(null);
-            setBranchEnabled(true);
-            setGlobalEnabled(true);
-            setSwitchError("");
-            clearSessionNonce();
-            nav(loginRedirectTarget, { replace: true });
-        };
+  // ------------------------------------------------------------
+  // Single-session enforcement (newest login wins)
+  // If session_nonce in DB changes, this tab signs out.
+  // ------------------------------------------------------------
+  React.useEffect(() => {
+    let stopped = false;
 
-        const broadcastLogout = (reason) => {
-            const payload = { type: "logout", at: Date.now(), reason: reason || "unknown" };
-            try { bc?.postMessage(payload); } catch { }
-            try { localStorage.setItem(STORAGE_LOGOUT_KEY, JSON.stringify(payload)); } catch { }
-        };
+    async function checkNonce() {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!sess?.session) return;
 
-        const doLocalLogout = async (reason) => {
-            if (handled) return;
-            handled = true;
-            logShellAuth("do-local-logout", { reason, pathname: loc.pathname });
-            try { await supabase.auth.signOut(); } catch { }
-            clearSessionNonce();
-            goLogin(reason);
-        };
-
-        const markActivity = () => {
-            try { localStorage.setItem(STORAGE_LAST_ACTIVITY, String(Date.now())); } catch { }
-        };
-
-        // --- record activity while the app is open
-        const activityEvents = ["mousemove", "keydown", "mousedown", "touchstart", "scroll", "click"];
-        activityEvents.forEach((ev) => window.addEventListener(ev, markActivity, { passive: true }));
-
-        // --- record close time when tab/window is actually going away
-        const onPageHide = (e) => {
-            if (e && e.persisted) return; // ignore BFCache
-            try { localStorage.setItem(STORAGE_LAST_CLOSED, String(Date.now())); } catch { }
-        };
-        window.addEventListener("pagehide", onPageHide);
-
-        // --- On startup: if we are reopening after a real close + idle > 30s, force logout
-        (async () => {
-            // Run this check only once per tab session
-            const STARTUP_CHECK_KEY = "crm:startupChecked";
-            try {
-                if (sessionStorage.getItem(STARTUP_CHECK_KEY) === "1") {
-                    logShellAuth("startup-check:skip-existing-session");
-                    markActivity();
-                    return;
-                }
-                sessionStorage.setItem(STARTUP_CHECK_KEY, "1");
-            } catch { }
-
-            // Skip on reload / BFCache restores (these can look like “closed”)
-            try {
-                const nav = performance.getEntriesByType("navigation")?.[0];
-                const navType = nav?.type; // "navigate" | "reload" | "back_forward" | "prerender"
-                if (navType === "reload" || navType === "back_forward") {
-                    logShellAuth("startup-check:skip-navigation-type", { navType });
-                    markActivity();
-                    return;
-                }
-            } catch { }
-
-            let lastActivityAt = 0;
-            let lastClosedAt = 0;
-
-            try {
-                lastActivityAt = Number(localStorage.getItem(STORAGE_LAST_ACTIVITY) || "0");
-                lastClosedAt = Number(localStorage.getItem(STORAGE_LAST_CLOSED) || "0");
-            } catch { }
-
-            // Only enforce if we have BOTH timestamps
-            if (!lastClosedAt || !lastActivityAt) {
-                logShellAuth("startup-check:skip-missing-timestamps", {
-                    lastActivityAt,
-                    lastClosedAt,
-                });
-                markActivity();
-                return;
-            }
-
-            const now = Date.now();
-
-            // Must have closed AFTER the last activity (i.e. a real session ended)
-            const validClose = lastClosedAt >= lastActivityAt;
-            const closedLongEnough = now - lastClosedAt > INACTIVITY_MS;
-            const inactiveLongEnough = now - lastActivityAt > INACTIVITY_MS;
-
-            if (validClose && closedLongEnough && inactiveLongEnough) {
-                const { data } = await supabase.auth.getSession();
-                if (data?.session) {
-                    broadcastLogout("reopen_after_30s_closed");
-                    logShellAuth("startup-check:logout", {
-                        validClose,
-                        closedLongEnough,
-                        inactiveLongEnough,
-                        userId: data.session.user?.id,
-                    });
-                    await doLocalLogout("reopen_after_30s_closed");
-                    return;
-                }
-            }
-
-            // If we're not logging out, stamp activity for this session now
-            logShellAuth("startup-check:pass", {
-                validClose,
-                closedLongEnough,
-                inactiveLongEnough,
-            });
-            markActivity();
-        })();
-
-        // --- Cross-tab logout listeners
-        if (bc) {
-            bc.onmessage = (ev) => {
-                if (ev?.data?.type === "logout") doLocalLogout(`broadcast:${ev.data.reason || "unknown"}`);
-            };
+        const local = localStorage.getItem("crm:session_nonce") || "";
+        if (!local) {
+          logShellAuth("nonce-check:missing-local", {
+            userId: sess.session.user.id,
+          });
+          return;
         }
 
-        const onStorage = (e) => {
-            if (e.key !== STORAGE_LOGOUT_KEY || !e.newValue) return;
-            try {
-                const msg = JSON.parse(e.newValue);
-                if (msg?.type === "logout") doLocalLogout(`storage:${msg.reason || "unknown"}`);
-            } catch {
-                doLocalLogout("storage:parse-failed");
-            }
-        };
-        window.addEventListener("storage", onStorage);
+        const { data: nonceRows, error: nonceErr } = await supabase.rpc(
+          "get_my_session_nonce",
+        );
 
-        // --- Supabase auth listener: sign out in one tab => others go too
-        const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
-            logShellAuth("onAuthStateChange", { event, pathname: loc.pathname });
-            if (event === "SIGNED_OUT") {
-                broadcastLogout("signed_out");
-                clearSessionNonce();
-                goLogin("signed_out");
-            }
-            if (event === "SIGNED_IN") {
-                // record fresh activity, but DO NOT clear lastClosedAt (avoids racing the startup check)
-                markActivity();
-            }
-        });
-
-        return () => {
-            activityEvents.forEach((ev) => window.removeEventListener(ev, markActivity));
-            window.removeEventListener("pagehide", onPageHide);
-            window.removeEventListener("storage", onStorage);
-
-            logShellAuth("logout-effect:unmount", { pathname: loc.pathname });
-            try { authSub?.subscription?.unsubscribe(); } catch { }
-            try { bc?.close(); } catch { }
-        };
-    }, [loc.pathname, loginRedirectTarget, nav]);
-
-    // ------------------------------------------------------------
-    // Single-session enforcement (newest login wins)
-    // If session_nonce in DB changes, this tab signs out.
-    // ------------------------------------------------------------
-    React.useEffect(() => {
-        let stopped = false;
-
-        async function checkNonce() {
-            try {
-                const { data: sess } = await supabase.auth.getSession();
-                if (!sess?.session) return;
-
-                const local = localStorage.getItem("crm:session_nonce") || "";
-                if (!local) {
-                    logShellAuth("nonce-check:missing-local", {
-                        userId: sess.session.user.id,
-                    });
-                    return;
-                }
-
-                const { data: nonceRows, error: nonceErr } = await supabase.rpc("get_my_session_nonce");
-
-                if (nonceErr) {
-                    console.error("get_my_session_nonce failed", nonceErr);
-                    return;
-                }
-
-                const nonceRow = Array.isArray(nonceRows) ? nonceRows[0] : nonceRows;
-                const server = nonceRow?.session_nonce || "";
-
-                if (server && local && server !== local) {
-                    logShellAuth("nonce-check:mismatch", {
-                        userId: sess.session.user.id,
-                        local,
-                        server,
-                    });
-                    await supabase.auth.signOut();
-                    return;
-                }
-            } catch {
-                // ignore transient errors
-            }
+        if (nonceErr) {
+          console.error("get_my_session_nonce failed", nonceErr);
+          return;
         }
 
+        const nonceRow = Array.isArray(nonceRows) ? nonceRows[0] : nonceRows;
+        const server = nonceRow?.session_nonce || "";
 
-        const onVis = () => {
-            if (!document.hidden) checkNonce();
-        };
-
-        document.addEventListener("visibilitychange", onVis);
-
-        const timer = setInterval(() => {
-            if (!stopped) checkNonce();
-        }, 10_000);
-
-        checkNonce();
-
-        return () => {
-            stopped = true;
-            clearInterval(timer);
-            document.removeEventListener("visibilitychange", onVis);
-        };
-    }, []);
-
-    async function refreshMeAndSettings() {
-        const safe = (fn) => { if (aliveRef.current) fn(); };
-
-        safe(() => {
-            setLoading(true);
-            setSwitchError("");
-        });
-
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user ?? null;
-
-        safe(() => setMe(user));
-
-        if (!user) {
-            safe(() => {
-                setRole("agent");
-                setDisplayName("");
-                setSiteId(null);
-                setBranchEnabled(true);
-                setGlobalEnabled(true);
-                setLoading(false);
-            });
-            return;
+        if (server && local && server !== local) {
+          logShellAuth("nonce-check:mismatch", {
+            userId: sess.session.user.id,
+            local,
+            server,
+          });
+          await supabase.auth.signOut();
+          return;
         }
-
-        const { data: profRows, error: profErr } = await supabase.rpc("get_my_staff_profile");
-
-        if (profErr) {
-            console.error("get_my_staff_profile failed", profErr);
-
-            const emailPrefix = user?.email ? user.email.split("@")[0] : "";
-
-            safe(() => {
-                setRole("agent");
-                setDisplayName(emailPrefix);
-                setSiteId(null);
-                setBranchEnabled(true);
-                setGlobalEnabled(true);
-                setLoading(false);
-            });
-            return;
-        }
-
-        const prof = Array.isArray(profRows) ? profRows[0] : profRows;
-
-        const nextRole = prof?.role ? String(prof.role).toLowerCase() : "agent";
-
-        const emailPrefix = user?.email ? user.email.split("@")[0] : "";
-        const bestName =
-            (prof?.display_name && prof.display_name.trim()) ||
-            (prof?.username && prof.username.trim()) ||
-            emailPrefix;
-
-        const nextSiteId = prof?.site_id || null;
-
-        safe(() => {
-            setRole(nextRole);
-            setDisplayName(bestName);
-            setSiteId(nextSiteId);
-        });
-
-        if (nextSiteId) {
-            const { data: cs } = await supabase
-                .from("chat_settings")
-                .select("enabled, global_enabled")
-                .eq("site_id", nextSiteId)
-                .maybeSingle();
-
-            if (cs) {
-                safe(() => {
-                    setBranchEnabled(cs.enabled !== false);
-                    setGlobalEnabled(cs.global_enabled !== false);
-                });
-            }
-        } else {
-            safe(() => {
-                setBranchEnabled(true);
-                setGlobalEnabled(true);
-            });
-        }
-
-        safe(() => setLoading(false));
+      } catch {
+        // ignore transient errors
+      }
     }
 
+    const onVis = () => {
+      if (!document.hidden) checkNonce();
+    };
 
-    React.useEffect(() => {
+    document.addEventListener("visibilitychange", onVis);
+
+    const timer = setInterval(() => {
+      if (!stopped) checkNonce();
+    }, 10_000);
+
+    checkNonce();
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  async function refreshMeAndSettings() {
+    const safe = (fn) => {
+      if (aliveRef.current) fn();
+    };
+
+    safe(() => {
+      setLoading(true);
+      setSwitchError("");
+    });
+
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData?.user ?? null;
+
+    safe(() => setMe(user));
+
+    if (!user) {
+      safe(() => {
+        setRole("agent");
+        setDisplayName("");
+        setSiteId(null);
+        setBranchEnabled(true);
+        setGlobalEnabled(true);
+        setLoading(false);
+      });
+      return;
+    }
+
+    const { data: profRows, error: profErr } = await supabase.rpc(
+      "get_my_staff_profile",
+    );
+
+    if (profErr) {
+      console.error("get_my_staff_profile failed", profErr);
+
+      const emailPrefix = user?.email ? user.email.split("@")[0] : "";
+
+      safe(() => {
+        setRole("agent");
+        setDisplayName(emailPrefix);
+        setSiteId(null);
+        setBranchEnabled(true);
+        setGlobalEnabled(true);
+        setLoading(false);
+      });
+      return;
+    }
+
+    const prof = Array.isArray(profRows) ? profRows[0] : profRows;
+
+    const nextRole = prof?.role ? String(prof.role).toLowerCase() : "agent";
+
+    const emailPrefix = user?.email ? user.email.split("@")[0] : "";
+    const bestName =
+      (prof?.display_name && prof.display_name.trim()) ||
+      (prof?.username && prof.username.trim()) ||
+      emailPrefix;
+
+    const nextSiteId = prof?.site_id || null;
+
+    safe(() => {
+      setRole(nextRole);
+      setDisplayName(bestName);
+      setSiteId(nextSiteId);
+    });
+
+    if (nextSiteId) {
+      const { data: cs } = await supabase
+        .from("chat_settings")
+        .select("enabled, global_enabled")
+        .eq("site_id", nextSiteId)
+        .maybeSingle();
+
+      if (cs) {
+        safe(() => {
+          setBranchEnabled(cs.enabled !== false);
+          setGlobalEnabled(cs.global_enabled !== false);
+        });
+      }
+    } else {
+      safe(() => {
+        setBranchEnabled(true);
+        setGlobalEnabled(true);
+      });
+    }
+
+    safe(() => setLoading(false));
+  }
+
+  React.useEffect(() => {
+    refreshMeAndSettings();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "USER_UPDATED"
+      ) {
         refreshMeAndSettings();
+      }
+      if (event === "SIGNED_OUT") {
+        // your other effect already handles redirect/reset
+        // but it doesn't hurt to sync UI state too
+        refreshMeAndSettings();
+      }
+    });
 
-        const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-                refreshMeAndSettings();
-            }
-            if (event === "SIGNED_OUT") {
-                // your other effect already handles redirect/reset
-                // but it doesn't hurt to sync UI state too
-                refreshMeAndSettings();
-            }
-        });
+    return () => {
+      try {
+        sub?.subscription?.unsubscribe();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-        return () => {
-            try { sub?.subscription?.unsubscribe(); } catch { }
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+  async function toggleBranch(next) {
+    setSwitchError("");
+    setSwitchLoading(true);
 
-    async function toggleBranch(next) {
-        setSwitchError("");
-        setSwitchLoading(true);
+    const prev = branchEnabled;
+    setBranchEnabled(next);
 
-        const prev = branchEnabled;
-        setBranchEnabled(next);
+    const { data, error } = await invokeAuthed("toggle_branch_chat", {
+      enabled: next,
+    });
 
-        const { data, error } = await invokeAuthed("toggle_branch_chat", {
-            enabled: next,
-        });
+    if (error || !data?.ok) {
+      setBranchEnabled(prev);
+      setSwitchError(
+        data?.error || error?.message || "Failed to update branch switch",
+      );
+    } else {
+      if (data?.updated?.enabled !== undefined)
+        setBranchEnabled(!!data.updated.enabled);
+    }
 
-        if (error || !data?.ok) {
-            setBranchEnabled(prev);
-            setSwitchError(data?.error || error?.message || "Failed to update branch switch");
-        } else {
-            if (data?.updated?.enabled !== undefined) setBranchEnabled(!!data.updated.enabled);
+    setSwitchLoading(false);
+  }
+
+  async function toggleGlobal(next) {
+    setSwitchError("");
+    setSwitchLoading(true);
+
+    const prev = globalEnabled;
+    setGlobalEnabled(next);
+
+    const { data, error } = await invokeAuthed("toggle_global_chat", {
+      global_enabled: next,
+    });
+
+    if (error || !data?.ok) {
+      setGlobalEnabled(prev);
+      setSwitchError(
+        data?.error || error?.message || "Failed to update global switch",
+      );
+    } else {
+      setGlobalEnabled(!!data.global_enabled);
+      await refreshMeAndSettings();
+    }
+
+    setSwitchLoading(false);
+  }
+
+  const isAdmin = role === "admin";
+  const isManager = role === "manager";
+
+  const canToggleBranch = !!siteId && !loading && !switchLoading;
+  const canToggleGlobal = (isAdmin || isManager) && !loading && !switchLoading;
+
+  const effectiveLive = globalEnabled && branchEnabled;
+  const effectiveBranchLive = globalEnabled && branchEnabled;
+
+  function pressDown(e) {
+    e.preventDefault();
+    e.currentTarget.style.transform = "translateY(1px)";
+  }
+  function pressUp(e) {
+    e.currentTarget.style.transform = "translateY(0px)";
+  }
+
+  const topControls = (
+    <div className="hub-status-controls">
+      <button
+        type="button"
+        className={`hub-status-button ${effectiveBranchLive ? "hub-status-button--online" : "hub-status-button--offline"}`}
+        title={
+          !globalEnabled
+            ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
+            : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
         }
+        onClick={() => {
+          if (!globalEnabled) return;
+          toggleBranch(!branchEnabled);
+        }}
+        disabled={!canToggleBranch || !globalEnabled}
+      >
+        {siteLetter(siteId)}
+      </button>
 
-        setSwitchLoading(false);
-    }
+      {(isAdmin || isManager) && (
+        <button
+          type="button"
+          className={`hub-status-button ${globalEnabled ? "hub-status-button--online" : "hub-status-button--offline"}`}
+          disabled={!canToggleGlobal}
+          onClick={() => toggleGlobal(!globalEnabled)}
+          title={`Global (${globalEnabled ? "Online" : "Offline"})`}
+        >
+          <img
+            src={Lion}
+            alt=""
+            style={{
+              width: 17,
+              height: 17,
+              objectFit: "contain",
+              display: "block",
+              filter: "grayscale(100%) contrast(130%) invert(1)",
+              opacity: 0.82,
+            }}
+          />
+        </button>
+      )}
 
-    async function toggleGlobal(next) {
-        setSwitchError("");
-        setSwitchLoading(true);
+      {switchError ? (
+        <span className="hub-status-error">{switchError}</span>
+      ) : null}
+    </div>
+  );
 
-        const prev = globalEnabled;
-        setGlobalEnabled(next);
+  const userActions = (
+    <button
+      type="button"
+      className="hub-signout-button"
+      onClick={async () => {
+        await supabase.auth.signOut();
+      }}
+    >
+      Sign out
+    </button>
+  );
 
-        const { data, error } = await invokeAuthed("toggle_global_chat", {
-            global_enabled: next,
-        });
+  return (
+    <HubLayout
+      role={role}
+      displayName={displayName}
+      email={me?.email}
+      branchName={prettySite(siteId)}
+      liveStatus={effectiveLive ? "Online" : "Offline"}
+      loading={loading}
+      topControls={topControls}
+      userActions={userActions}
+    />
+  );
 
-        if (error || !data?.ok) {
-            setGlobalEnabled(prev);
-            setSwitchError(data?.error || error?.message || "Failed to update global switch");
-        } else {
-            setGlobalEnabled(!!data.global_enabled);
-            await refreshMeAndSettings();
-        }
+  return (
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        height: "100vh",
+        width: "100%",
+        fontFamily: ui.font.ui,
+        background: ui.colors.pageBg,
+        overflow: "hidden",
+      }}
+    >
+      <Sidebar role={role} />
 
-        setSwitchLoading(false);
-    }
+      <main
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          background: ui.colors.pageBg,
+          overflow: "hidden",
+        }}
+      >
+        {/* Top bar */}
+        <div
+          style={{
+            height: 64,
+            flex: "0 0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 18px",
+            background: ui.colors.cardBg,
+            borderBottom: `1px solid ${ui.colors.border}`,
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ color: ui.colors.text, fontWeight: 800 }}>
+              {role === "admin"
+                ? "Admin Portal"
+                : role === "manager"
+                  ? "Manager Console"
+                  : "Agent Console"}
+            </div>
 
-    const isAdmin = role === "admin";
-    const isManager = role === "manager";
-
-    const canToggleBranch = !!siteId && !loading && !switchLoading;
-    const canToggleGlobal = (isAdmin || isManager) && !loading && !switchLoading;
-
-    const effectiveLive = globalEnabled && branchEnabled;
-    const effectiveBranchLive = globalEnabled && branchEnabled;
-
-    function pressDown(e) {
-        e.preventDefault();
-        e.currentTarget.style.transform = "translateY(1px)";
-    }
-    function pressUp(e) {
-        e.currentTarget.style.transform = "translateY(0px)";
-    }
-
-    const topControls = (
-        <div className="hub-status-controls">
-            <button
-                type="button"
-                className={`hub-status-button ${effectiveBranchLive ? "hub-status-button--online" : "hub-status-button--offline"}`}
+            {/* Kill switch buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
                 title={
-                    !globalEnabled
-                        ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
-                        : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
+                  !globalEnabled
+                    ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
+                    : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
                 }
+                style={iconToggleStyle(
+                  effectiveBranchLive,
+                  !canToggleBranch || !globalEnabled,
+                )}
                 onClick={() => {
-                    if (!globalEnabled) return;
-                    toggleBranch(!branchEnabled);
+                  if (!globalEnabled) return; // don't allow branch toggles while global is off
+                  toggleBranch(!branchEnabled);
                 }}
                 disabled={!canToggleBranch || !globalEnabled}
-            >
-                {siteLetter(siteId)}
-            </button>
+                onMouseDown={pressDown}
+                onMouseUp={pressUp}
+                onMouseLeave={pressUp}
+              >
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 950,
+                    letterSpacing: "0.02em",
+                    fontFamily: ui.font.ui,
+                  }}
+                >
+                  {siteLetter(siteId)}
+                </span>
+              </button>
 
-            {(isAdmin || isManager) && (
+              {(isAdmin || isManager) && (
                 <button
-                    type="button"
-                    className={`hub-status-button ${globalEnabled ? "hub-status-button--online" : "hub-status-button--offline"}`}
-                    disabled={!canToggleGlobal}
-                    onClick={() => toggleGlobal(!globalEnabled)}
-                    title={`Global (${globalEnabled ? "Online" : "Offline"})`}
+                  disabled={!canToggleGlobal}
+                  onClick={() => toggleGlobal(!globalEnabled)}
+                  title={`Global (${globalEnabled ? "Online" : "Offline"})`}
+                  style={iconToggleStyle(globalEnabled, !canToggleGlobal)}
+                  onMouseDown={pressDown}
+                  onMouseUp={pressUp}
+                  onMouseLeave={pressUp}
                 >
-                    <img
-                        src={Lion}
-                        alt=""
-                        style={{
-                            width: 17,
-                            height: 17,
-                            objectFit: "contain",
-                            display: "block",
-                            filter: "grayscale(100%) contrast(130%) invert(1)",
-                            opacity: 0.82,
-                        }}
-                    />
+                  <img
+                    src={Lion}
+                    alt=""
+                    style={{
+                      width: 18,
+                      height: 18,
+                      objectFit: "contain",
+                      display: "block",
+                      filter: "grayscale(100%) contrast(120%)",
+                      opacity: 0.9,
+                    }}
+                  />
                 </button>
-            )}
+              )}
 
-            {switchError ? <span className="hub-status-error">{switchError}</span> : null}
-        </div>
-    );
-
-    const userActions = (
-        <button
-            type="button"
-            className="hub-signout-button"
-            onClick={async () => {
-                await supabase.auth.signOut();
-            }}
-        >
-            Sign out
-        </button>
-    );
-
-    return (
-        <HubLayout
-            role={role}
-            displayName={displayName}
-            email={me?.email}
-            branchName={prettySite(siteId)}
-            liveStatus={effectiveLive ? "Online" : "Offline"}
-            loading={loading}
-            topControls={topControls}
-            userActions={userActions}
-        />
-    );
-
-    return (
-        <div
-            style={{
-                display: "flex",
-                minHeight: "100vh",
-                height: "100vh",
-                width: "100%",
-                fontFamily: ui.font.ui,
-                background: ui.colors.pageBg,
-                overflow: "hidden",
-            }}
-        >
-            <Sidebar role={role} />
-
-            <main
+              <span
                 style={{
-                    flex: 1,
-                    minWidth: 0,
-                    minHeight: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    background: ui.colors.pageBg,
-                    overflow: "hidden",
+                  marginLeft: 6,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: ui.colors.muted,
                 }}
+                title="Effective status = Global AND Branch"
+              >
+                {effectiveLive ? "Online" : "Offline"}
+              </span>
+
+              {!!switchError && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#B42318",
+                    marginLeft: 10,
+                  }}
+                >
+                  {switchError}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{ fontSize: 12, fontWeight: 800, color: ui.colors.text }}
             >
-                {/* Top bar */}
-                <div
-                    style={{
-                        height: 64,
-                        flex: "0 0 auto",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "0 18px",
-                        background: ui.colors.cardBg,
-                        borderBottom: `1px solid ${ui.colors.border}`,
-                        width: "100%",
-                        boxSizing: "border-box",
-                    }}
-                >
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ color: ui.colors.text, fontWeight: 800 }}>
-                            {role === "admin"
-                                ? "Admin Portal"
-                                : role === "manager"
-                                    ? "Manager Console"
-                                    : "Agent Console"}
-                        </div>
+              {loading ? "Loading…" : displayName || me?.email || "—"}
+            </span>
 
-                        {/* Kill switch buttons */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <button
-                                title={
-                                    !globalEnabled
-                                        ? `Branch: ${prettySite(siteId)} (Overridden by Global: Offline)`
-                                        : `Branch: ${prettySite(siteId)} (${branchEnabled ? "Online" : "Offline"})`
-                                }
-                                style={iconToggleStyle(effectiveBranchLive, !canToggleBranch || !globalEnabled)}
-                                onClick={() => {
-                                    if (!globalEnabled) return; // don't allow branch toggles while global is off
-                                    toggleBranch(!branchEnabled);
-                                }}
-                                disabled={!canToggleBranch || !globalEnabled}
-                                onMouseDown={pressDown}
-                                onMouseUp={pressUp}
-                                onMouseLeave={pressUp}
-                            >
-                                <span style={{ fontSize: 13, fontWeight: 950, letterSpacing: "0.02em", fontFamily: ui.font.ui }}>
-                                    {siteLetter(siteId)}
-                                </span>
-                            </button>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: ui.colors.brandSoft,
+                border: `1px solid ${ui.colors.border}`,
+                color: ui.colors.text,
+                textTransform: "capitalize",
+              }}
+            >
+              {role}
+            </span>
 
-                            {(isAdmin || isManager) && (
-                                <button
-                                    disabled={!canToggleGlobal}
-                                    onClick={() => toggleGlobal(!globalEnabled)}
-                                    title={`Global (${globalEnabled ? "Online" : "Offline"})`}
-                                    style={iconToggleStyle(globalEnabled, !canToggleGlobal)}
-                                    onMouseDown={pressDown}
-                                    onMouseUp={pressUp}
-                                    onMouseLeave={pressUp}
-                                >
-                                    <img
-                                        src={Lion}
-                                        alt=""
-                                        style={{
-                                            width: 18,
-                                            height: 18,
-                                            objectFit: "contain",
-                                            display: "block",
-                                            filter: "grayscale(100%) contrast(120%)",
-                                            opacity: 0.9,
-                                        }}
-                                    />
-                                </button>
-                            )}
-
-                            <span
-                                style={{
-                                    marginLeft: 6,
-                                    fontSize: 12,
-                                    fontWeight: 800,
-                                    color: ui.colors.muted,
-                                }}
-                                title="Effective status = Global AND Branch"
-                            >
-                                {effectiveLive ? "Online" : "Offline"}
-                            </span>
-
-                            {!!switchError && (
-                                <span style={{ fontSize: 12, fontWeight: 800, color: "#B42318", marginLeft: 10 }}>
-                                    {switchError}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: ui.colors.text }}>
-                            {loading ? "Loading…" : displayName || me?.email || "—"}
-                        </span>
-
-                        <span
-                            style={{
-                                fontSize: 12,
-                                fontWeight: 800,
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                background: ui.colors.brandSoft,
-                                border: `1px solid ${ui.colors.border}`,
-                                color: ui.colors.text,
-                                textTransform: "capitalize",
-                            }}
-                        >
-                            {role}
-                        </span>
-
-                        <button
-                            onClick={async () => {
-                                await supabase.auth.signOut(); // cross-tab propagation handled by listener
-                            }}
-                            style={{
-                                padding: "8px 12px",
-                                borderRadius: 12,
-                                border: `1px solid ${ui.colors.border}`,
-                                background: ui.colors.cardBg,
-                                cursor: "pointer",
-                                fontWeight: 700,
-                                color: ui.colors.text,
-                            }}
-                        >
-                            Sign out
-                        </button>
-                    </div>
-                </div>
-
-                {/* Page content */}
-                <div
-                    style={{
-                        flex: 1,
-                        background: ui.colors.pageBg,
-                        padding: 18,
-                        boxSizing: "border-box",
-                        display: isWideAppointmentsRoute ? "flex" : undefined,
-                        flexDirection: isWideAppointmentsRoute ? "column" : undefined,
-                        minHeight: isWideAppointmentsRoute ? 0 : undefined,
-                        overflow: isWideAppointmentsRoute ? "hidden" : undefined,
-                    }}
-                >
-                    <div
-                        style={{
-                            maxWidth: isWideAppointmentsRoute ? "none" : 1100,
-                            margin: isWideAppointmentsRoute ? 0 : "0 auto",
-                            width: "100%",
-                            flex: isWideAppointmentsRoute ? 1 : undefined,
-                            display: isWideAppointmentsRoute ? "flex" : undefined,
-                            flexDirection: isWideAppointmentsRoute ? "column" : undefined,
-                            minHeight: isWideAppointmentsRoute ? 0 : undefined,
-                            overflow: isWideAppointmentsRoute ? "hidden" : undefined,
-                        }}
-                    >
-                        <div
-                            style={{
-                                background: ui.colors.cardBg,
-                                border: `1px solid ${ui.colors.border}`,
-                                borderRadius: ui.radius.lg,
-                                boxShadow: ui.shadow.card,
-                                padding: 16,
-                                boxSizing: "border-box",
-                                minHeight: isWideAppointmentsRoute ? 0 : "100%",
-                                width: "100%",
-                                flex: isWideAppointmentsRoute ? 1 : undefined,
-                                display: isWideAppointmentsRoute ? "flex" : undefined,
-                                flexDirection: isWideAppointmentsRoute ? "column" : undefined,
-                                overflow: isWideAppointmentsRoute ? "hidden" : undefined,
-                            }}
-                        >
-                            <Outlet />
-                        </div>
-                    </div>
-                </div>
-            </main>
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut(); // cross-tab propagation handled by listener
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 12,
+                border: `1px solid ${ui.colors.border}`,
+                background: ui.colors.cardBg,
+                cursor: "pointer",
+                fontWeight: 700,
+                color: ui.colors.text,
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
-    );
+
+        {/* Page content */}
+        <div
+          style={{
+            flex: 1,
+            background: ui.colors.pageBg,
+            padding: 18,
+            boxSizing: "border-box",
+            display: isWideAppointmentsRoute ? "flex" : undefined,
+            flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+            minHeight: isWideAppointmentsRoute ? 0 : undefined,
+            overflow: isWideAppointmentsRoute ? "hidden" : undefined,
+          }}
+        >
+          <div
+            style={{
+              maxWidth: isWideAppointmentsRoute ? "none" : 1100,
+              margin: isWideAppointmentsRoute ? 0 : "0 auto",
+              width: "100%",
+              flex: isWideAppointmentsRoute ? 1 : undefined,
+              display: isWideAppointmentsRoute ? "flex" : undefined,
+              flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+              minHeight: isWideAppointmentsRoute ? 0 : undefined,
+              overflow: isWideAppointmentsRoute ? "hidden" : undefined,
+            }}
+          >
+            <div
+              style={{
+                background: ui.colors.cardBg,
+                border: `1px solid ${ui.colors.border}`,
+                borderRadius: ui.radius.lg,
+                boxShadow: ui.shadow.card,
+                padding: 16,
+                boxSizing: "border-box",
+                minHeight: isWideAppointmentsRoute ? 0 : "100%",
+                width: "100%",
+                flex: isWideAppointmentsRoute ? 1 : undefined,
+                display: isWideAppointmentsRoute ? "flex" : undefined,
+                flexDirection: isWideAppointmentsRoute ? "column" : undefined,
+                overflow: isWideAppointmentsRoute ? "hidden" : undefined,
+              }}
+            >
+              <Outlet />
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
 }

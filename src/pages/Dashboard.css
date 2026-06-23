@@ -103,7 +103,9 @@
 .hub-dashboard-element__header,
 .hub-dashboard-element h3,
 .hub-dashboard-element__value,
-.hub-dashboard-element__lines {
+.hub-dashboard-element__lines,
+.hub-dashboard-rota-panel,
+.hub-dashboard-rota-groups {
   position: relative;
   z-index: 1;
 }
@@ -160,6 +162,10 @@
 
 .hub-dashboard-element--calendar {
   min-height: 286px;
+}
+
+.hub-dashboard-element--rota {
+  min-height: 430px;
 }
 
 .hub-dashboard-element--upcoming {
@@ -322,6 +328,210 @@
   width: 76%;
 }
 
+.hub-dashboard-rota-panel {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.hub-dashboard-rota-groups {
+  display: grid;
+  gap: 9px;
+}
+
+.hub-dashboard-rota-absences {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(125, 211, 252, 0.12);
+}
+
+.hub-dashboard-rota-group {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 12, 24, 0.42);
+}
+
+.hub-dashboard-rota-group--stenoch {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(56, 120, 248, 0.12);
+}
+
+.hub-dashboard-rota-group--duke {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.hub-dashboard-rota-group--hire {
+  border-color: rgba(249, 115, 22, 0.4);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.hub-dashboard-rota-group--office {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.hub-dashboard-rota-group--holiday {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.hub-dashboard-rota-group--sick {
+  border-color: rgba(234, 179, 8, 0.45);
+  background: rgba(234, 179, 8, 0.14);
+}
+
+.hub-dashboard-rota-group__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(125, 211, 252, 0.86);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.hub-dashboard-rota-group__title small {
+  color: rgba(196, 181, 253, 0.74);
+  font-size: 10px;
+  font-weight: 300;
+}
+
+.hub-dashboard-staff-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.hub-dashboard-staff-chip {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.14);
+  color: rgba(248, 250, 252, 0.9);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.hub-dashboard-staff-chip:hover,
+.hub-dashboard-staff-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(48, 199, 204, 0.52);
+  box-shadow: 0 0 18px rgba(48, 199, 204, 0.11);
+  outline: none;
+}
+
+.hub-dashboard-staff-chip__avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(2, 6, 23, 0.1);
+  border-radius: 50%;
+  background: rgba(5, 12, 24, 0.52);
+  color: rgba(226, 232, 240, 0.92);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+}
+
+.hub-dashboard-staff-chip__copy {
+  min-width: 0;
+  text-align: left;
+}
+
+.hub-dashboard-staff-chip__copy strong {
+  max-width: 162px;
+  overflow: hidden;
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hub-dashboard-staff-chip--stenoch {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.hub-dashboard-staff-chip--stenoch .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.hub-dashboard-staff-chip--duke {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.18);
+}
+
+.hub-dashboard-staff-chip--duke .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.hub-dashboard-staff-chip--hire {
+  border-color: rgba(249, 115, 22, 0.4);
+  background: rgba(249, 115, 22, 0.2);
+}
+
+.hub-dashboard-staff-chip--hire .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.hub-dashboard-staff-chip--office {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.hub-dashboard-staff-chip--office .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.hub-dashboard-staff-chip--holiday {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.2);
+}
+
+.hub-dashboard-staff-chip--holiday .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.hub-dashboard-staff-chip--sick {
+  border-color: rgba(234, 179, 8, 0.45);
+  background: rgba(234, 179, 8, 0.22);
+}
+
+.hub-dashboard-staff-chip--sick .hub-dashboard-staff-chip__avatar {
+  border-color: rgba(234, 179, 8, 0.45);
+}
+
+.hub-dashboard-rota-empty {
+  margin: 8px 0 0;
+  color: rgba(203, 213, 225, 0.46);
+  font-size: 12px;
+  font-weight: 300;
+}
+
 @keyframes hubDashboardPulse {
   0% {
     background-position: 0% 50%;
@@ -345,6 +555,10 @@
   }
 
   .hub-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hub-dashboard-rota-absences {
     grid-template-columns: 1fr;
   }
 }
