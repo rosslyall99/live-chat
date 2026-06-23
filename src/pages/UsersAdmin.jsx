@@ -134,6 +134,7 @@ export default function UsersAdmin() {
 
   const [rotaNamesLoading, setRotaNamesLoading] = React.useState(false);
   const [rotaNames, setRotaNames] = React.useState([]);
+  const [rotaNamesError, setRotaNamesError] = React.useState("");
 
   const loadSeq = React.useRef(0);
 
@@ -185,7 +186,7 @@ export default function UsersAdmin() {
 
   async function loadRotaNames() {
     setRotaNamesLoading(true);
-    setError("");
+    setRotaNamesError("");
 
     try {
       const res = await invokeAdmin("admin_list_rota_staff_names", {});
@@ -197,7 +198,12 @@ export default function UsersAdmin() {
       setRotaNames(res?.data?.names || []);
     } catch (e) {
       console.error(e);
-      setError(String(e.message || e));
+      setRotaNamesError(
+        String(
+          e.message ||
+            "Sage HR names could not be loaded. Refresh Sage names to try again.",
+        ),
+      );
       setRotaNames([]);
     } finally {
       setRotaNamesLoading(false);
@@ -300,7 +306,7 @@ export default function UsersAdmin() {
     setMode("new");
     setSelectedUserId("");
     setError("");
-    if (rotaNames.length === 0 && !rotaNamesLoading) await loadRotaNames();
+    if (rotaNames.length === 0 && !rotaNamesLoading) loadRotaNames();
   }
 
   function cancelNewStaff() {
@@ -667,6 +673,12 @@ export default function UsersAdmin() {
                         </option>
                       ))}
                     </select>
+                    {rotaNamesError ? (
+                      <small className="users-admin-inline-warning">
+                        Sage HR names could not be loaded. Refresh Sage names to
+                        try again.
+                      </small>
+                    ) : null}
                   </label>
                 </div>
 
@@ -826,6 +838,12 @@ export default function UsersAdmin() {
                         </option>
                       ))}
                     </select>
+                    {rotaNamesError ? (
+                      <small className="users-admin-inline-warning">
+                        Sage HR names could not be loaded. Refresh Sage names to
+                        try again.
+                      </small>
+                    ) : null}
                   </label>
                 </div>
 
