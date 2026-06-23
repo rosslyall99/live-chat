@@ -178,10 +178,13 @@ export default function AppointmentCustomersAdmin() {
     }
 
     setToast({ type, message });
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-      toastTimerRef.current = null;
-    }, timeoutMs ?? (type === "error" ? 9000 : 4500));
+    toastTimerRef.current = window.setTimeout(
+      () => {
+        setToast(null);
+        toastTimerRef.current = null;
+      },
+      timeoutMs ?? (type === "error" ? 9000 : 4500),
+    );
   }, []);
 
   React.useEffect(() => {
@@ -461,7 +464,10 @@ export default function AppointmentCustomersAdmin() {
       setSelectedCustomer(null);
       setDraft(blankDraft());
       setHistoryRows([]);
-      showToast("success", isNewCustomer ? "Customer created." : "Customer saved.");
+      showToast(
+        "success",
+        isNewCustomer ? "Customer created." : "Customer saved.",
+      );
 
       if (nextCustomers.length === 0 && search.trim()) {
         await loadCustomers("", { quiet: true });
@@ -490,9 +496,12 @@ export default function AppointmentCustomersAdmin() {
 
     setActionSaving(true);
     try {
-      const { error } = await supabase.rpc("cancel_customer_appointment_staff", {
-        p_appointment_id: appointment.id,
-      });
+      const { error } = await supabase.rpc(
+        "cancel_customer_appointment_staff",
+        {
+          p_appointment_id: appointment.id,
+        },
+      );
 
       if (error) throw error;
       await loadSelectedCustomer(selectedCustomerId);
@@ -515,9 +524,12 @@ export default function AppointmentCustomersAdmin() {
 
     setActionSaving(true);
     try {
-      const { error } = await supabase.rpc("archive_appointment_customer_staff", {
-        p_customer_id: selectedCustomerId,
-      });
+      const { error } = await supabase.rpc(
+        "archive_appointment_customer_staff",
+        {
+          p_customer_id: selectedCustomerId,
+        },
+      );
 
       if (error) throw error;
       setSelectedCustomerId("");
@@ -542,7 +554,9 @@ export default function AppointmentCustomersAdmin() {
       return;
     }
 
-    const duplicate = mergeCandidates.find((item) => item.id === mergeDuplicateId);
+    const duplicate = mergeCandidates.find(
+      (item) => item.id === mergeDuplicateId,
+    );
     const duplicateLabel = duplicate?.full_name || "the duplicate customer";
     if (
       !window.confirm(
@@ -554,10 +568,13 @@ export default function AppointmentCustomersAdmin() {
 
     setActionSaving(true);
     try {
-      const { error } = await supabase.rpc("merge_appointment_customers_staff", {
-        p_primary_customer_id: selectedCustomerId,
-        p_duplicate_customer_id: mergeDuplicateId,
-      });
+      const { error } = await supabase.rpc(
+        "merge_appointment_customers_staff",
+        {
+          p_primary_customer_id: selectedCustomerId,
+          p_duplicate_customer_id: mergeDuplicateId,
+        },
+      );
 
       if (error) throw error;
       setMergeOpen(false);
@@ -588,7 +605,7 @@ export default function AppointmentCustomersAdmin() {
 
   return (
     <div
-      className="appointment-types-admin"
+      className="appointment-types-admin appointment-customers-admin-page"
       style={{
         width: "100%",
         height: "100%",
@@ -602,6 +619,7 @@ export default function AppointmentCustomersAdmin() {
       }}
     >
       <div
+        className="appointment-admin-header"
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -612,12 +630,12 @@ export default function AppointmentCustomersAdmin() {
       >
         <div>
           <h2 style={{ margin: 0 }}>Customers</h2>
-          <div style={ui.text.subtitle}>
-            Manage appointment customer records without changing old appointment
-            snapshots.
-          </div>
         </div>
-        <button type="button" onClick={beginNewCustomer} style={primaryButtonStyle}>
+        <button
+          type="button"
+          onClick={beginNewCustomer}
+          style={primaryButtonStyle}
+        >
           New customer
         </button>
       </div>
@@ -626,7 +644,7 @@ export default function AppointmentCustomersAdmin() {
         className="appointment-admin-layout"
         style={{
           marginTop: 18,
-          gridTemplateColumns: "minmax(340px, 0.52fr) minmax(420px, 0.48fr)",
+          gridTemplateColumns: "minmax(340px, 1fr) minmax(520px, 2fr)",
           flex: "1 1 auto",
           minHeight: 0,
           alignItems: "stretch",
@@ -638,39 +656,25 @@ export default function AppointmentCustomersAdmin() {
           style={{ minHeight: 0, display: "flex" }}
         >
           <div
-            className="appointment-admin-main-card"
+            className="appointment-admin-main-card appointment-customers-list-stack"
             style={{
-              ...cardStyle,
-              padding: 16,
               width: "100%",
               height: "100%",
               minHeight: 0,
               gridTemplateRows: "auto minmax(0, 1fr)",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                fontSize: 13,
-                fontWeight: 900,
-              }}
-            >
-              <span>Search</span>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "stretch",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
+            <div className="appointment-admin-selector-card appointment-customers-search-card">
+              <label>Search</label>
+
+              <div className="appointment-customers-search-row">
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, email, or phone"
-                  style={{ ...inputStyle, flex: "1 1 260px" }}
+                  style={inputStyle}
                 />
+
                 <label className="appointment-customer-archive-toggle">
                   <input
                     className="appointment-confirm-checkbox"
@@ -809,7 +813,9 @@ export default function AppointmentCustomersAdmin() {
                           >
                             Last app:{" "}
                             {customer.last_appointment_at
-                              ? formatShortDateTime(customer.last_appointment_at)
+                              ? formatShortDateTime(
+                                  customer.last_appointment_at,
+                                )
                               : "None"}
                           </div>
                         </div>
@@ -882,7 +888,9 @@ export default function AppointmentCustomersAdmin() {
                     </div>
                   ) : (
                     <>
-                      <label style={{ display: "grid", gap: 8, fontWeight: 800 }}>
+                      <label
+                        style={{ display: "grid", gap: 8, fontWeight: 800 }}
+                      >
                         <span>Full name</span>
                         <input
                           value={draft.fullName}
@@ -893,7 +901,9 @@ export default function AppointmentCustomersAdmin() {
                         />
                       </label>
 
-                      <label style={{ display: "grid", gap: 8, fontWeight: 800 }}>
+                      <label
+                        style={{ display: "grid", gap: 8, fontWeight: 800 }}
+                      >
                         <span>Email</span>
                         <input
                           type="email"
@@ -903,7 +913,9 @@ export default function AppointmentCustomersAdmin() {
                         />
                       </label>
 
-                      <label style={{ display: "grid", gap: 8, fontWeight: 800 }}>
+                      <label
+                        style={{ display: "grid", gap: 8, fontWeight: 800 }}
+                      >
                         <span>Phone</span>
                         <input
                           value={draft.phone}
@@ -912,14 +924,15 @@ export default function AppointmentCustomersAdmin() {
                         />
                       </label>
 
-                      {!isNewCustomer && selectedCustomer?.is_active !== false ? (
+                      {!isNewCustomer &&
+                      selectedCustomer?.is_active !== false ? (
                         <div
                           style={{
                             display: "flex",
                             gap: 8,
                             flexWrap: "wrap",
                             paddingTop: 8,
-                            borderTop: `1px solid ${ui.colors.border}`,
+                            justifyContent: "flex-end",
                           }}
                         >
                           <button
@@ -939,8 +952,6 @@ export default function AppointmentCustomersAdmin() {
                             disabled={actionSaving}
                             style={{
                               ...buttonStyle,
-                              border: "1px solid rgba(239,68,68,0.30)",
-                              background: "rgba(239,68,68,0.07)",
                             }}
                           >
                             Archive customer
@@ -974,7 +985,9 @@ export default function AppointmentCustomersAdmin() {
                           />
                           <select
                             value={mergeDuplicateId}
-                            onChange={(e) => setMergeDuplicateId(e.target.value)}
+                            onChange={(e) =>
+                              setMergeDuplicateId(e.target.value)
+                            }
                             style={inputStyle}
                           >
                             <option value="">
@@ -1028,7 +1041,6 @@ export default function AppointmentCustomersAdmin() {
                           display: "grid",
                           gap: 10,
                           paddingTop: 8,
-                          borderTop: `1px solid ${ui.colors.border}`,
                         }}
                       >
                         <div style={{ fontSize: 15, fontWeight: 900 }}>
@@ -1056,146 +1068,147 @@ export default function AppointmentCustomersAdmin() {
                                 feedbackEmailStatusLabel(appointment);
 
                               return (
-                              <div
-                                key={appointment.id}
-                                className={
-                                  isCancelledAppointment
-                                    ? "customer-appointment-row customer-appointment-row--cancelled"
-                                    : "customer-appointment-row"
-                                }
-                                style={{
-                                  display: "grid",
-                                  gap: isCancelledAppointment ? 3 : 4,
-                                  padding: isCancelledAppointment ? 8 : 10,
-                                  borderRadius: ui.radius.md,
-                                  border: isCancelledAppointment
-                                    ? "1px solid rgba(203, 213, 225, 0.8)"
-                                    : `1px solid ${ui.colors.border}`,
-                                  background: isCancelledAppointment
-                                    ? "rgba(241, 245, 249, 0.82)"
-                                    : "rgba(248, 250, 252, 0.75)",
-                                  color: isCancelledAppointment
-                                    ? "#64748b"
-                                    : "inherit",
-                                  opacity: isCancelledAppointment ? 0.72 : 1,
-                                }}
-                              >
                                 <div
+                                  key={appointment.id}
+                                  className={
+                                    isCancelledAppointment
+                                      ? "customer-appointment-row customer-appointment-row--cancelled"
+                                      : "customer-appointment-row"
+                                  }
                                   style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    alignItems: "start",
+                                    display: "grid",
+                                    gap: isCancelledAppointment ? 3 : 4,
+                                    padding: isCancelledAppointment ? 8 : 10,
+                                    borderRadius: ui.radius.md,
+                                    border: isCancelledAppointment
+                                      ? "1px solid rgba(203, 213, 225, 0.8)"
+                                      : `1px solid ${ui.colors.border}`,
+                                    background: isCancelledAppointment
+                                      ? "rgba(241, 245, 249, 0.82)"
+                                      : "rgba(248, 250, 252, 0.75)",
+                                    color: isCancelledAppointment
+                                      ? "#64748b"
+                                      : "inherit",
+                                    opacity: isCancelledAppointment ? 0.72 : 1,
                                   }}
                                 >
-                                  <strong
+                                  <div
                                     style={{
-                                      fontSize: isCancelledAppointment
-                                        ? 13
-                                        : "inherit",
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      alignItems: "start",
                                     }}
                                   >
-                                    {formatDateTime(appointment.start_at)}
-                                  </strong>
-                                  <span
+                                    <strong
+                                      style={{
+                                        fontSize: isCancelledAppointment
+                                          ? 13
+                                          : "inherit",
+                                      }}
+                                    >
+                                      {formatDateTime(appointment.start_at)}
+                                    </strong>
+                                    <span
+                                      style={{
+                                        fontSize: isCancelledAppointment
+                                          ? 11
+                                          : 12,
+                                        fontWeight: 900,
+                                        textTransform: "capitalize",
+                                        color: isCancelledAppointment
+                                          ? "#475569"
+                                          : ui.colors.muted,
+                                      }}
+                                    >
+                                      {appointment.status}
+                                    </span>
+                                  </div>
+                                  <div
                                     style={{
                                       fontSize: isCancelledAppointment
-                                        ? 11
-                                        : 12,
-                                      fontWeight: 900,
-                                      textTransform: "capitalize",
+                                        ? 12
+                                        : 13,
+                                      fontWeight: 700,
                                       color: isCancelledAppointment
-                                        ? "#475569"
+                                        ? "#64748b"
                                         : ui.colors.muted,
                                     }}
                                   >
-                                    {appointment.status}
-                                  </span>
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: isCancelledAppointment ? 12 : 13,
-                                    fontWeight: 700,
-                                    color: isCancelledAppointment
-                                      ? "#64748b"
-                                      : ui.colors.muted,
-                                  }}
-                                >
-                                  {appointment.appointment_type_name ||
-                                    "Appointment"}{" "}
-                                  - {branchLabel(appointment.branch)}
-                                  {attendanceLabel ? (
-                                    <span
-                                      style={{
-                                        marginLeft: 8,
-                                        fontSize: isCancelledAppointment
-                                          ? 11
-                                          : 12,
-                                        fontWeight: 900,
-                                        color:
-                                          appointment.attendance_status ===
-                                          "no_show"
-                                            ? "#64748b"
-                                            : "#047857",
-                                      }}
-                                    >
-                                      {attendanceLabel}
-                                    </span>
-                                  ) : null}
-                                  {feedbackLabel ? (
-                                    <span
-                                      style={{
-                                        marginLeft: 8,
-                                        fontSize: isCancelledAppointment
-                                          ? 11
-                                          : 12,
-                                        fontWeight: 900,
-                                        color:
-                                          appointment.feedback_email_status ===
-                                          "failed"
-                                            ? "#92400e"
-                                            : "#64748b",
-                                      }}
-                                    >
-                                      {feedbackLabel}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "flex-end",
-                                    gap: 8,
-                                    flexWrap: "wrap",
-                                    marginTop: 4,
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => openAppointment(appointment)}
-                                    style={buttonStyle}
+                                    {appointment.appointment_type_name ||
+                                      "Appointment"}{" "}
+                                    - {branchLabel(appointment.branch)}
+                                    {attendanceLabel ? (
+                                      <span
+                                        style={{
+                                          marginLeft: 8,
+                                          fontSize: isCancelledAppointment
+                                            ? 11
+                                            : 12,
+                                          fontWeight: 900,
+                                          color:
+                                            appointment.attendance_status ===
+                                            "no_show"
+                                              ? "#64748b"
+                                              : "#047857",
+                                        }}
+                                      >
+                                        {attendanceLabel}
+                                      </span>
+                                    ) : null}
+                                    {feedbackLabel ? (
+                                      <span
+                                        style={{
+                                          marginLeft: 8,
+                                          fontSize: isCancelledAppointment
+                                            ? 11
+                                            : 12,
+                                          fontWeight: 900,
+                                          color:
+                                            appointment.feedback_email_status ===
+                                            "failed"
+                                              ? "#92400e"
+                                              : "#64748b",
+                                        }}
+                                      >
+                                        {feedbackLabel}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "flex-end",
+                                      gap: 8,
+                                      flexWrap: "wrap",
+                                      marginTop: 4,
+                                    }}
                                   >
-                                    Open
-                                  </button>
-                                  {canCancelAppointment(appointment) ? (
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        cancelAppointment(appointment)
+                                        openAppointment(appointment)
                                       }
-                                      disabled={actionSaving}
-                                      style={{
-                                        ...buttonStyle,
-                                        border:
-                                          "1px solid rgba(239,68,68,0.30)",
-                                        background: "rgba(239,68,68,0.07)",
-                                      }}
+                                      style={buttonStyle}
                                     >
-                                      Cancel appointment
+                                      Open
                                     </button>
-                                  ) : null}
+                                    {canCancelAppointment(appointment) ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          cancelAppointment(appointment)
+                                        }
+                                        disabled={actionSaving}
+                                        style={{
+                                          ...buttonStyle,
+                                        }}
+                                      >
+                                        Cancel appointment
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 </div>
-                              </div>
                               );
                             })}
                           </div>

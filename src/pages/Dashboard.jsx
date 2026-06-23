@@ -1,7 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { prettySiteName, siteIdToAppointmentBranch } from "../lib/branches";
+import {
+  appointmentBranchToSiteId,
+  prettySiteName,
+  siteIdToAppointmentBranch,
+} from "../lib/branches";
 import "./Dashboard.css";
 
 const CALENDAR_BRANCHES = [
@@ -183,6 +187,52 @@ function formatTime(startAt) {
   });
 }
 
+function normalizeHexColor(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = raw.startsWith("#") ? raw : `#${raw}`;
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized)
+    ? normalized
+    : "";
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return "";
+
+  let value = normalized.slice(1);
+  if (value.length === 3) {
+    value = value
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+  }
+
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function appointmentColorStyle(item) {
+  const typeColor = normalizeHexColor(item?.appointment_type_color);
+  const textColor = normalizeHexColor(item?.appointment_type_text_color);
+  const style = {};
+
+  if (typeColor) {
+    style["--hub-dashboard-appointment-bg"] = hexToRgba(typeColor, 0.16);
+    style["--hub-dashboard-appointment-border"] = hexToRgba(typeColor, 0.42);
+    style["--hub-dashboard-appointment-accent"] = typeColor;
+  }
+
+  if (textColor) {
+    style["--hub-dashboard-appointment-text"] = textColor;
+    style["--hub-dashboard-appointment-muted"] = textColor;
+  }
+
+  return Object.keys(style).length ? style : undefined;
+}
+
 function appointmentTypeLabel(item) {
   return item?.appointment_type_name || item?.type_name || "Calendar booking";
 }
@@ -298,7 +348,7 @@ function useDashboardCalendarData() {
         const todayByBranch = Object.fromEntries(todayEntries);
         const upcoming = [];
 
-        for (let offset = 0; offset < 45 && upcoming.length < 10; offset += 1) {
+        for (let offset = 0; offset < 45 && upcoming.length < 20; offset += 1) {
           const day = shiftInputDateValue(today, offset);
           const dayAppointments = await loadCalendarDay(
             nextEffectiveBranch,
@@ -318,7 +368,7 @@ function useDashboardCalendarData() {
           error: "",
           effectiveBranch: nextEffectiveBranch,
           todayByBranch,
-          upcoming: upcoming.slice(0, 10),
+          upcoming: upcoming.slice(0, 20),
         });
       } catch (err) {
         console.error("dashboard: calendar elements failed", err);
@@ -592,7 +642,7 @@ function WorkingTodayElement({ rotaState }) {
         <span>Rota</span>
         <small>{formatSummaryDate(ymdLocal(rotaState.today))}</small>
       </div>
-      <h3>Who is working today</h3>
+      <h3>On shift</h3>
       <div className="hub-dashboard-element__value">
         {rotaState.loading ? "Loading" : `${workingCount} active`}
       </div>
@@ -711,11 +761,24 @@ function TodayCalendarSummaryElement({ calendarState }) {
 }
 
 function UpcomingCalendarElement({ calendarState }) {
+  const navigate = useNavigate();
   let lastDate = "";
   const effectiveSite =
     CALENDAR_BRANCHES.find(
       (site) => site.branch === calendarState.effectiveBranch,
     ) || CALENDAR_BRANCHES[0];
+
+  function openAppointment(item) {
+    const dateValue = inputDateValueFromIso(item.start_at);
+    const siteId = appointmentBranchToSiteId(item.branch) || effectiveSite.siteId;
+    const params = new URLSearchParams({
+      date: dateValue,
+      appointment: item.id,
+    });
+
+    if (siteId) params.set("site", siteId);
+    navigate(`/appointments?${params.toString()}`);
+  }
 
   return (
     <article className="hub-dashboard-element hub-dashboard-element--calendar hub-dashboard-element--upcoming">
@@ -739,7 +802,7 @@ function UpcomingCalendarElement({ calendarState }) {
           No upcoming appointments
         </p>
       ) : (
-        <div className="hub-dashboard-calendar-list">
+        <div className="hub-dashboard-calendar-list hub-dashboard-calendar-list--scroll">
           {calendarState.upcoming.map((item) => {
             const areaLabel = appointmentAreaLabel(item);
             const dateValue = inputDateValueFromIso(item.start_at);
@@ -753,7 +816,12 @@ function UpcomingCalendarElement({ calendarState }) {
                     {formatDateDivider(item.start_at)}
                   </div>
                 ) : null}
-                <div className="hub-dashboard-calendar-item">
+                <button
+                  type="button"
+                  className="hub-dashboard-calendar-item"
+                  onClick={() => openAppointment(item)}
+                  style={appointmentColorStyle(item)}
+                >
                   <div className="hub-dashboard-calendar-item__time">
                     {formatTime(item.start_at)}
                   </div>
@@ -764,7 +832,7 @@ function UpcomingCalendarElement({ calendarState }) {
                       {areaLabel ? ` / ${areaLabel}` : ""}
                     </span>
                   </div>
-                </div>
+                </button>
               </React.Fragment>
             );
           })}

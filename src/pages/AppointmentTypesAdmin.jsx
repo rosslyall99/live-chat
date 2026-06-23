@@ -134,7 +134,12 @@ const RULE_BY_RAW_NAME = new Map(
 );
 
 const RULE_BY_CODE = new Map(
-  WIZARD_TYPE_RULES.map((rule) => [String(rule.code || "").trim().toLowerCase(), rule]),
+  WIZARD_TYPE_RULES.map((rule) => [
+    String(rule.code || "")
+      .trim()
+      .toLowerCase(),
+    rule,
+  ]),
 );
 
 function normalizeText(value) {
@@ -224,10 +229,7 @@ function composeStoredTypeName(editorName, category) {
   const categoryCode = normalizeCode(category?.code);
   const categoryName = String(category?.name || "").trim();
 
-  if (
-    categoryCode === CATEGORY_CODES.purchase ||
-    categoryName === "Purchase"
-  ) {
+  if (categoryCode === CATEGORY_CODES.purchase || categoryName === "Purchase") {
     return `Retail Purchase - ${trimmed}`;
   }
 
@@ -517,7 +519,9 @@ export default function AppointmentTypesAdmin() {
       const [categoriesRes, typesRes] = await Promise.all([
         supabase
           .from("appointment_categories")
-          .select("id, name, code, sort_order, is_active, created_at, updated_at")
+          .select(
+            "id, name, code, sort_order, is_active, created_at, updated_at",
+          )
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true }),
         supabase
@@ -1005,7 +1009,11 @@ export default function AppointmentTypesAdmin() {
         overflowX: "hidden",
       }}
     >
-      <h2 style={{ margin: 0 }}>Appointment Types</h2>
+      <div>
+        <div style={{ fontSize: 28, fontWeight: 900, color: ui.colors.text }}>
+          Appointment Types
+        </div>
+      </div>
 
       <div className="appointment-admin-layout" style={{ marginTop: 18 }}>
         <section className="appointment-admin-column appointment-admin-column--categories">

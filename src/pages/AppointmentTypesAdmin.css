@@ -68,7 +68,9 @@
 }
 
 .customer-appointment-row {
-  transition: background-color 0.15s ease, border-color 0.15s ease,
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
     opacity 0.15s ease;
 }
 
@@ -114,7 +116,8 @@
   box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
 }
 
-.appointment-customer-archive-toggle .appointment-confirm-checkbox:focus-visible {
+.appointment-customer-archive-toggle
+  .appointment-confirm-checkbox:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(48, 199, 204, 0.22);
 }
@@ -124,7 +127,8 @@
   border-color: #111827;
 }
 
-.appointment-customer-archive-toggle .appointment-confirm-checkbox:checked::after {
+.appointment-customer-archive-toggle
+  .appointment-confirm-checkbox:checked::after {
   content: "";
   width: 4px;
   height: 8px;
@@ -385,4 +389,515 @@
 .appointment-types-admin input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* HUB appointment admin skin shared by Customers, Emails, Types, and Hours. */
+/* HUB appointment admin skin shared by Customers, Emails, Types, and Hours. */
+.appointment-types-admin {
+  min-height: 100%;
+  box-sizing: border-box;
+  background: transparent !important;
+  color: rgba(248, 250, 252, 0.92) !important;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.appointment-types-admin,
+.appointment-types-admin * {
+  box-sizing: border-box;
+}
+
+.appointment-types-admin h1,
+.appointment-types-admin h2,
+.appointment-types-admin h3,
+.appointment-types-admin strong,
+.appointment-types-admin label,
+.appointment-types-admin [style*="color: rgb(17, 24, 39)"],
+.appointment-types-admin [style*="color: ui.colors.text"] {
+  color: rgba(248, 250, 252, 0.94) !important;
+}
+
+.appointment-types-admin h2 {
+  color: #ffffff !important;
+  font-size: 30px !important;
+  font-weight: 250 !important;
+  letter-spacing: 0 !important;
+  line-height: 1 !important;
+}
+
+.appointment-types-admin .appointment-admin-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(48, 199, 204, 0.1), rgba(124, 58, 237, 0.08)),
+    rgba(5, 12, 24, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 24px 62px rgba(0, 0, 0, 0.18);
+}
+
+.appointment-types-admin > div:first-child:not(.appointment-admin-header),
+.appointment-hours-admin-page > div:first-child {
+  padding: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(48, 199, 204, 0.1), rgba(124, 58, 237, 0.08)),
+    rgba(5, 12, 24, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 24px 62px rgba(0, 0, 0, 0.18);
+}
+
+.appointment-types-admin [style*="color: rgb(100, 116, 139)"],
+.appointment-types-admin [style*="color: #64748b"],
+.appointment-types-admin [style*="color: rgba(17,24,39,0.55)"],
+.appointment-types-admin [style*="opacity: 0.75"],
+.appointment-types-admin [style*="opacity: 0.8"],
+.appointment-types-admin .appointment-email-field-helper,
+.appointment-types-admin .appointment-email-template-meta {
+  color: rgba(203, 213, 225, 0.66) !important;
+  font-weight: 300 !important;
+}
+
+.appointment-admin-selector-card,
+.appointment-admin-detail-card,
+.appointment-admin-main-card,
+.appointment-email-template-empty,
+.appointment-types-admin form,
+.appointment-hours-admin-page form,
+.appointment-types-admin [style*="background: rgb(255, 255, 255)"],
+.appointment-types-admin [style*="background: #fff"],
+.appointment-types-admin [style*="background: rgba(248, 250, 252"] {
+  border-color: rgba(125, 211, 252, 0.18) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045),
+      rgba(255, 255, 255, 0.018)
+    ),
+    rgba(4, 10, 24, 0.72) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 18px 48px rgba(0, 0, 0, 0.18) !important;
+}
+
+.appointment-admin-main-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.appointment-admin-selector-card,
+.appointment-admin-detail-card {
+  position: relative;
+}
+
+.appointment-admin-selector-card::before,
+.appointment-admin-detail-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(48, 199, 204, 0.13), transparent 34%);
+  opacity: 0.16;
+}
+
+.appointment-admin-selector-card > *,
+.appointment-admin-detail-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.appointment-types-admin label,
+.appointment-types-admin .appointment-email-template-status,
+.appointment-types-admin [style*="font-size: 13"][style*="font-weight: 700"],
+.appointment-types-admin [style*="font-size: 13"][style*="font-weight: 800"] {
+  color: rgba(125, 211, 252, 0.86) !important;
+  font-family: "SFMono-Regular", Consolas, monospace !important;
+  font-size: 11px !important;
+  font-weight: 300 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase;
+}
+
+.appointment-types-admin input:not([type="checkbox"]):not([type="color"]),
+.appointment-types-admin select,
+.appointment-types-admin textarea {
+  border: 1px solid rgba(125, 211, 252, 0.2) !important;
+  border-radius: 8px !important;
+  background: rgba(5, 12, 24, 0.72) !important;
+  color: rgba(248, 250, 252, 0.92) !important;
+  font-weight: 300 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.appointment-types-admin textarea {
+  line-height: 1.45 !important;
+}
+
+.appointment-types-admin input:not([type="checkbox"]):not([type="color"]):focus,
+.appointment-types-admin select:focus,
+.appointment-types-admin textarea:focus {
+  border-color: rgba(48, 199, 204, 0.58) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 3px rgba(48, 199, 204, 0.12) !important;
+  outline: none !important;
+}
+
+.appointment-types-admin select option {
+  background: #050c18;
+  color: #f8fafc;
+}
+
+.appointment-types-admin input[type="color"] {
+  width: 100% !important;
+  min-height: 40px;
+  padding: 4px !important;
+  border: 1px solid rgba(125, 211, 252, 0.2) !important;
+  border-radius: 8px !important;
+  background: rgba(5, 12, 24, 0.72) !important;
+}
+
+.appointment-types-admin input[type="checkbox"],
+.appointment-customer-archive-toggle .appointment-confirm-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #30c7cc;
+  border-color: rgba(125, 211, 252, 0.42) !important;
+  background: rgba(5, 12, 24, 0.82) !important;
+}
+
+.appointment-types-admin button,
+.appointment-types-admin a[style] {
+  border-color: rgba(125, 211, 252, 0.22) !important;
+  border-radius: 8px !important;
+  background: rgba(5, 12, 24, 0.76) !important;
+  color: rgba(226, 232, 240, 0.9) !important;
+  font-weight: 300 !important;
+  letter-spacing: 0.02em;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+
+.appointment-types-admin button:hover:not(:disabled),
+.appointment-types-admin button:focus-visible,
+.appointment-types-admin a[style]:hover,
+.appointment-types-admin a[style]:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(48, 199, 204, 0.58) !important;
+  background: rgba(8, 20, 38, 0.92) !important;
+  box-shadow: 0 0 20px rgba(48, 199, 204, 0.11) !important;
+}
+
+.appointment-types-admin button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.appointment-types-admin button[type="submit"],
+.appointment-types-admin [style*="brandSoft"] {
+  border-color: rgba(196, 181, 253, 0.42) !important;
+  background: rgba(124, 58, 237, 0.18) !important;
+  color: #ede9fe !important;
+}
+
+.appointment-types-admin button[style*="239,68,68"],
+.appointment-types-admin button[style*="239, 68, 68"] {
+  border-color: rgba(248, 113, 113, 0.38) !important;
+  background: rgba(248, 113, 113, 0.1) !important;
+  color: #fecaca !important;
+}
+
+.appointment-admin-selector-card button,
+.appointment-admin-row-list button,
+.appointment-email-template-card,
+.customer-appointment-row {
+  border-color: rgba(125, 211, 252, 0.14) !important;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.055), rgba(124, 58, 237, 0.04)),
+    rgba(5, 12, 24, 0.46) !important;
+  color: rgba(248, 250, 252, 0.9) !important;
+}
+
+.appointment-admin-selector-card button:hover,
+.appointment-admin-row-list button:hover,
+.appointment-email-template-card:hover,
+.customer-appointment-row:hover {
+  border-color: rgba(48, 199, 204, 0.42) !important;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.1), rgba(124, 58, 237, 0.075)),
+    rgba(8, 20, 38, 0.72) !important;
+}
+
+.appointment-email-template-card--selected,
+.appointment-admin-selector-card button[style*="168,85,247"],
+.appointment-admin-selector-card button[style*="168, 85, 247"],
+.appointment-admin-row-list button[style*="168,85,247"],
+.appointment-admin-row-list button[style*="168, 85, 247"],
+.appointment-admin-selector-card button[style*="48, 199, 204"],
+.appointment-admin-row-list button[style*="48, 199, 204"] {
+  border-color: rgba(48, 199, 204, 0.62) !important;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.16), rgba(124, 58, 237, 0.12)),
+    rgba(5, 12, 24, 0.68) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(48, 199, 204, 0.7),
+    0 0 22px rgba(48, 199, 204, 0.12) !important;
+}
+
+.appointment-email-template-card-title,
+.appointment-types-admin [style*="font-weight: 900"],
+.appointment-types-admin [style*="font-weight: 800"] {
+  color: rgba(248, 250, 252, 0.92) !important;
+}
+
+.appointment-email-template-status,
+.appointment-types-admin [style*="borderRadius: 999"],
+.appointment-types-admin [style*="border-radius: 999"] {
+  border-color: rgba(196, 181, 253, 0.3) !important;
+  background: rgba(124, 58, 237, 0.12) !important;
+  color: #ede9fe !important;
+}
+
+.appointment-email-editor-card [style*="Supported placeholders"],
+.appointment-email-editor-card [style*="Preview"],
+.appointment-types-admin [style*="rgba(245, 158, 11, 0.08)"] {
+  border-color: rgba(125, 211, 252, 0.16) !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(48, 199, 204, 0.065),
+      rgba(124, 58, 237, 0.045)
+    ),
+    rgba(5, 12, 24, 0.42) !important;
+}
+
+.appointment-admin-sticky-footer {
+  border-top: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(3, 7, 18, 0.76) !important;
+  backdrop-filter: blur(14px);
+}
+
+.appointment-admin-scroll,
+.appointment-email-editor-card {
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.appointment-admin-scroll::-webkit-scrollbar,
+.appointment-email-editor-card::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-track,
+.appointment-email-editor-card::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.55);
+  border-radius: 999px;
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-thumb,
+.appointment-email-editor-card::-webkit-scrollbar-thumb {
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 0.82),
+    rgba(124, 58, 237, 0.78)
+  );
+}
+
+.appointment-admin-scroll::-webkit-scrollbar-thumb:hover,
+.appointment-email-editor-card::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 1),
+    rgba(196, 181, 253, 0.9)
+  );
+}
+
+.customer-appointment-row--cancelled {
+  box-shadow:
+    inset 3px 0 0 rgba(148, 163, 184, 0.5),
+    inset 0 0 0 999px rgba(100, 116, 139, 0.08) !important;
+}
+
+.appointment-admin-state {
+  min-height: 100%;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  color: rgba(203, 213, 225, 0.72) !important;
+}
+
+.appointment-hours-admin-page form {
+  max-width: 980px !important;
+}
+
+.appointment-hours-admin-page form > div[style*="grid"] {
+  border-color: rgba(125, 211, 252, 0.16) !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(48, 199, 204, 0.065),
+      rgba(124, 58, 237, 0.045)
+    ),
+    rgba(5, 12, 24, 0.42) !important;
+}
+
+.appointment-hours-admin-page form > div[style*="grid"] > div {
+  padding: 9px 10px;
+  border: 1px solid rgba(125, 211, 252, 0.1);
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.28);
+}
+
+@media (max-width: 760px) {
+  .appointment-types-admin {
+    padding: 14px !important;
+  }
+
+  .appointment-types-admin .appointment-admin-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .appointment-hours-admin-page form > div[style*="grid"] > div {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.appointment-types-admin .appointment-admin-main-card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Appointment Types page: make Categories and Types panels equal full height */
+.appointment-types-admin .appointment-admin-layout {
+  align-items: stretch !important;
+  min-height: calc(100vh - 190px);
+}
+
+.appointment-types-admin .appointment-admin-column {
+  display: flex;
+  min-height: 0;
+}
+
+.appointment-types-admin
+  .appointment-admin-column
+  > .appointment-admin-main-card {
+  width: 100%;
+  height: calc(100vh - 190px) !important;
+  min-height: 520px;
+}
+
+/* Two-row state: header + list/panel */
+.appointment-types-admin .appointment-admin-main-card--categories,
+.appointment-types-admin .appointment-admin-main-card--categories-empty,
+.appointment-types-admin .appointment-admin-main-card--types-empty {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+/* Three-row state when a type has been selected: header + list + editor */
+.appointment-types-admin .appointment-admin-main-card--types {
+  grid-template-rows: auto minmax(180px, 0.9fr) minmax(0, 1.1fr) !important;
+}
+
+/* Let the actual inner Elements fill the available grid space */
+.appointment-types-admin
+  .appointment-admin-main-card--categories
+  > .appointment-admin-selector-card,
+.appointment-types-admin
+  .appointment-admin-main-card--categories-empty
+  > .appointment-admin-selector-card,
+.appointment-types-admin
+  .appointment-admin-main-card--types
+  > .appointment-admin-selector-card,
+.appointment-types-admin
+  .appointment-admin-main-card--types-empty
+  > .appointment-admin-selector-card,
+.appointment-types-admin
+  .appointment-admin-main-card--categories
+  > .appointment-admin-detail-card,
+.appointment-types-admin
+  .appointment-admin-main-card--types
+  > .appointment-admin-detail-card {
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+/* Appointment Emails: match Appointment Types title styling */
+.appointment-email-admin-page .appointment-admin-header {
+  align-items: center !important;
+  justify-content: flex-start !important;
+}
+
+.appointment-email-admin-page .appointment-admin-header h1,
+.appointment-email-admin-page .appointment-admin-header h2,
+.appointment-email-admin-page .appointment-admin-header > div:first-child {
+  margin: 0 !important;
+  color: rgba(248, 250, 252, 0.94) !important;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif !important;
+  font-size: 28px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.1 !important;
+  padding: 8px 0px;
+}
+
+/* Hide the right-hand description so the header matches Types */
+.appointment-email-admin-page .appointment-admin-header > div:not(:first-child),
+.appointment-email-admin-page .appointment-admin-header > p,
+.appointment-email-admin-page .appointment-admin-header small {
+  display: none !important;
+}
+
+/* Customers: match Appointment Types page header title */
+.appointment-customers-admin-page .appointment-admin-header h1,
+.appointment-customers-admin-page .appointment-admin-header h2,
+.appointment-customers-admin-page .appointment-admin-header > div:first-child {
+  margin: 0 !important;
+  color: rgba(248, 250, 252, 0.94) !important;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif !important;
+  font-size: 28px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.1 !important;
 }

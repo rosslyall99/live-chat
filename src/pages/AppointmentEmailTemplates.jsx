@@ -106,7 +106,7 @@ export default function AppointmentEmailTemplates() {
       boxSizing: "border-box",
       fontFamily: ui.font.ui,
     }),
-    []
+    [],
   );
 
   const appointmentTypeOptions = React.useMemo(() => {
@@ -125,7 +125,9 @@ export default function AppointmentEmailTemplates() {
       }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [appointmentTypes, templates]);
 
   const filteredTemplates = React.useMemo(() => {
@@ -135,17 +137,18 @@ export default function AppointmentEmailTemplates() {
 
   const selectedTemplate = React.useMemo(
     () => templates.find((item) => item.id === selectedTemplateId) || null,
-    [selectedTemplateId, templates]
+    [selectedTemplateId, templates],
   );
 
   const previewSubject = React.useMemo(
     () => applyPlaceholders(draft.subject, SAMPLE_VALUES) || "No subject set",
-    [draft.subject]
+    [draft.subject],
   );
 
   const previewBody = React.useMemo(
-    () => applyPlaceholders(draft.body_text, SAMPLE_VALUES) || "No body text set",
-    [draft.body_text]
+    () =>
+      applyPlaceholders(draft.body_text, SAMPLE_VALUES) || "No body text set",
+    [draft.body_text],
   );
 
   const loadAll = React.useCallback(async () => {
@@ -168,7 +171,8 @@ export default function AppointmentEmailTemplates() {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      if (!profile?.is_active) throw new Error("Your staff profile is inactive or missing.");
+      if (!profile?.is_active)
+        throw new Error("Your staff profile is inactive or missing.");
 
       const nextRole = String(profile.role || "").toLowerCase();
       setRole(nextRole);
@@ -242,7 +246,11 @@ export default function AppointmentEmailTemplates() {
   function resetChanges() {
     setError("");
     setSuccessMessage("");
-    setDraft(selectedTemplateId === "__new__" ? blankDraft() : toDraft(selectedTemplate));
+    setDraft(
+      selectedTemplateId === "__new__"
+        ? blankDraft()
+        : toDraft(selectedTemplate),
+    );
   }
 
   async function saveTemplate(e) {
@@ -297,7 +305,9 @@ export default function AppointmentEmailTemplates() {
       if (savedTemplate?.id) {
         setSelectedTemplateId(savedTemplate.id);
       }
-      setSuccessMessage(isNewTemplate ? "Template created." : "Template saved.");
+      setSuccessMessage(
+        isNewTemplate ? "Template created." : "Template saved.",
+      );
     } catch (err) {
       console.error("appointment email templates: save failed", err);
       setError(err?.message || "Could not save the template.");
@@ -315,9 +325,12 @@ export default function AppointmentEmailTemplates() {
     setSuccessMessage("");
 
     try {
-      const { error: rpcError } = await supabase.rpc("deactivate_appointment_email_template_staff", {
-        p_template_id: draft.id,
-      });
+      const { error: rpcError } = await supabase.rpc(
+        "deactivate_appointment_email_template_staff",
+        {
+          p_template_id: draft.id,
+        },
+      );
 
       if (rpcError) throw rpcError;
 
@@ -354,7 +367,9 @@ export default function AppointmentEmailTemplates() {
         </div>
       </div>
 
-      {loading ? <div style={{ marginTop: 16 }}>Loading templates...</div> : null}
+      {loading ? (
+        <div style={{ marginTop: 16 }}>Loading templates...</div>
+      ) : null}
 
       {!loading && !canView ? (
         <div
@@ -404,326 +419,357 @@ export default function AppointmentEmailTemplates() {
           style={{ marginTop: 18 }}
         >
           <section className="appointment-admin-column">
-          <div className="appointment-admin-selector-card appointment-email-list-card">
-            <div
-              style={{
-                padding: "0 0 12px",
-                borderBottom: `1px solid ${ui.colors.border}`,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div style={{ fontWeight: 900 }}>Templates</div>
-
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Filter
-                <select
-                  value={selectedFilter}
-                  onChange={(e) => setSelectedFilter(e.target.value)}
-                  style={{ ...inputStyle, marginTop: 6 }}
-                >
-                  {TEMPLATE_KIND_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={beginNewTemplate}
-                disabled={!isAdmin}
+            <div className="appointment-admin-selector-card appointment-email-list-card">
+              <div
                 style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: `1px solid rgba(168,85,247,0.35)`,
-                  background: ui.colors.brandSoft,
-                  color: ui.colors.text,
-                  cursor: !isAdmin ? "not-allowed" : "pointer",
-                  fontWeight: 900,
-                  opacity: !isAdmin ? 0.6 : 1,
+                  padding: "0 0 12px",
+                  borderBottom: `1px solid ${ui.colors.border}`,
+                  display: "grid",
+                  gap: 10,
                 }}
               >
-                New template
-              </button>
-            </div>
+                <div style={{ fontWeight: 900 }}>Templates</div>
 
-            <div className="appointment-admin-scroll appointment-email-template-list">
-              {filteredTemplates.length === 0 ? (
-                <div className="appointment-email-template-empty">
-                  No templates match this filter.
-                </div>
-              ) : (
-                filteredTemplates.map((template) => {
-                  const isSelected = selectedTemplateId === template.id;
-                  return (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className={`appointment-email-template-card ${
-                        isSelected ? "appointment-email-template-card--selected" : ""
-                      }`}
-                      onClick={() => {
-                        setSelectedTemplateId(template.id);
-                        setError("");
-                        setSuccessMessage("");
-                      }}
-                    >
-                      <div className="appointment-email-template-card-header">
-                        <div className="appointment-email-template-card-title">
-                          {template.name}
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Filter
+                  <select
+                    value={selectedFilter}
+                    onChange={(e) => setSelectedFilter(e.target.value)}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                  >
+                    {TEMPLATE_KIND_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={beginNewTemplate}
+                  disabled={!isAdmin}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: `1px solid rgba(168,85,247,0.35)`,
+                    background: ui.colors.brandSoft,
+                    color: ui.colors.text,
+                    cursor: !isAdmin ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    opacity: !isAdmin ? 0.6 : 1,
+                  }}
+                >
+                  New template
+                </button>
+              </div>
+
+              <div className="appointment-admin-scroll appointment-email-template-list">
+                {filteredTemplates.length === 0 ? (
+                  <div className="appointment-email-template-empty">
+                    No templates match this filter.
+                  </div>
+                ) : (
+                  filteredTemplates.map((template) => {
+                    const isSelected = selectedTemplateId === template.id;
+                    return (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className={`appointment-email-template-card ${
+                          isSelected
+                            ? "appointment-email-template-card--selected"
+                            : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedTemplateId(template.id);
+                          setError("");
+                          setSuccessMessage("");
+                        }}
+                      >
+                        <div className="appointment-email-template-card-header">
+                          <div className="appointment-email-template-card-title">
+                            {template.name}
+                          </div>
+                          <div className="appointment-email-template-status">
+                            {template.is_active ? "Active" : "Inactive"}
+                          </div>
                         </div>
-                        <div className="appointment-email-template-status">
-                          {template.is_active ? "Active" : "Inactive"}
+                        <div className="appointment-email-template-meta">
+                          <span>{template.template_type}</span>
+                          <span>{formatTemplateScope(template)}</span>
                         </div>
-                      </div>
-                      <div className="appointment-email-template-meta">
-                        <span>{template.template_type}</span>
-                        <span>{formatTemplateScope(template)}</span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
           </section>
 
           <section className="appointment-admin-column">
-          <form
-            onSubmit={saveTemplate}
-            className="appointment-admin-detail-card appointment-email-editor-card appointment-admin-scroll"
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>
-                  {isNewTemplate ? "New template" : draft.name || "Template editor"}
-                </div>
-                <div style={ui.text.subtitle}>
-                  {isAdmin
-                    ? "Create, edit, and deactivate appointment email templates."
-                    : "Managers can view templates but cannot edit them."}
-                </div>
-              </div>
-              {!isNewTemplate ? (
-                <div style={{ fontSize: 12, fontWeight: 800, color: draft.is_active ? ui.colors.text : ui.colors.muted }}>
-                  {draft.is_active ? "Active" : "Inactive"}
-                </div>
-              ) : null}
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-              }}
+            <form
+              onSubmit={saveTemplate}
+              className="appointment-admin-detail-card appointment-email-editor-card appointment-admin-scroll"
             >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>
+                    {isNewTemplate
+                      ? "New template"
+                      : draft.name || "Template editor"}
+                  </div>
+                  <div style={ui.text.subtitle}>
+                    {isAdmin
+                      ? "Create, edit, and deactivate appointment email templates."
+                      : "Managers can view templates but cannot edit them."}
+                  </div>
+                </div>
+                {!isNewTemplate ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: draft.is_active ? ui.colors.text : ui.colors.muted,
+                    }}
+                  >
+                    {draft.is_active ? "Active" : "Inactive"}
+                  </div>
+                ) : null}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Name
+                  <input
+                    value={draft.name}
+                    onChange={(e) => updateDraft("name", e.target.value)}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    readOnly={!isAdmin}
+                  />
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Template type
+                  <select
+                    value={draft.template_type}
+                    onChange={(e) =>
+                      updateDraft("template_type", e.target.value)
+                    }
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    disabled={!isAdmin}
+                  >
+                    {EDITOR_KIND_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Appointment type scope
+                  <select
+                    value={draft.appointment_type_id}
+                    onChange={(e) =>
+                      updateDraft("appointment_type_id", e.target.value)
+                    }
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    disabled={!isAdmin}
+                  >
+                    <option value="">General / default</option>
+                    {appointmentTypeOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Active
+                  <select
+                    value={draft.is_active ? "active" : "inactive"}
+                    onChange={(e) =>
+                      updateDraft("is_active", e.target.value === "active")
+                    }
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    disabled={!isAdmin}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </label>
+              </div>
+
               <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Name
+                Subject
                 <input
-                  value={draft.name}
-                  onChange={(e) => updateDraft("name", e.target.value)}
+                  value={draft.subject}
+                  onChange={(e) => updateDraft("subject", e.target.value)}
                   style={{ ...inputStyle, marginTop: 6 }}
                   readOnly={!isAdmin}
                 />
               </label>
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Template type
-                <select
-                  value={draft.template_type}
-                  onChange={(e) => updateDraft("template_type", e.target.value)}
-                  style={{ ...inputStyle, marginTop: 6 }}
-                  disabled={!isAdmin}
-                >
-                  {EDITOR_KIND_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                Body text
+                <textarea
+                  rows={12}
+                  value={draft.body_text}
+                  onChange={(e) => updateDraft("body_text", e.target.value)}
+                  style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
+                  readOnly={!isAdmin}
+                />
               </label>
 
               <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Appointment type scope
-                <select
-                  value={draft.appointment_type_id}
-                  onChange={(e) => updateDraft("appointment_type_id", e.target.value)}
-                  style={{ ...inputStyle, marginTop: 6 }}
-                  disabled={!isAdmin}
-                >
-                  <option value="">General / default</option>
-                  {appointmentTypeOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="appointment-email-field-helper">
-                  General/default templates are used unless a more specific
-                  active template exists for the appointment type.
-                </div>
+                Body HTML (optional)
+                <textarea
+                  rows={8}
+                  value={draft.body_html}
+                  onChange={(e) => updateDraft("body_html", e.target.value)}
+                  style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
+                  readOnly={!isAdmin}
+                />
               </label>
 
-              <label style={{ fontSize: 13, fontWeight: 700 }}>
-                Active
-                <select
-                  value={draft.is_active ? "active" : "inactive"}
-                  onChange={(e) => updateDraft("is_active", e.target.value === "active")}
-                  style={{ ...inputStyle, marginTop: 6 }}
-                  disabled={!isAdmin}
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
-            </div>
-
-            <label style={{ fontSize: 13, fontWeight: 700 }}>
-              Subject
-              <input
-                value={draft.subject}
-                onChange={(e) => updateDraft("subject", e.target.value)}
-                style={{ ...inputStyle, marginTop: 6 }}
-                readOnly={!isAdmin}
-              />
-            </label>
-
-            <label style={{ fontSize: 13, fontWeight: 700 }}>
-              Body text
-              <div className="appointment-email-field-helper">
-                Plain text version used as the fallback email body.
-              </div>
-              <textarea
-                rows={12}
-                value={draft.body_text}
-                onChange={(e) => updateDraft("body_text", e.target.value)}
-                style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
-                readOnly={!isAdmin}
-              />
-            </label>
-
-            <label style={{ fontSize: 13, fontWeight: 700 }}>
-              Body HTML (optional)
-              <div className="appointment-email-field-helper">
-                Optional designed HTML version. If left blank, the plain text
-                body will be used.
-              </div>
-              <textarea
-                rows={8}
-                value={draft.body_html}
-                onChange={(e) => updateDraft("body_html", e.target.value)}
-                style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
-                readOnly={!isAdmin}
-              />
-            </label>
-
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${ui.colors.border}`,
-                background: "rgba(2, 6, 23, 0.02)",
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 900 }}>Supported placeholders</div>
               <div
                 style={{
-                  marginTop: 10,
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 8,
-                }}
-              >
-                {PLACEHOLDERS.map((placeholder) => (
-                  <div key={placeholder} style={{ color: ui.colors.text }}>
-                    {placeholder}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${ui.colors.border}`,
-                background: "rgba(2, 6, 23, 0.02)",
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 900 }}>Preview</div>
-              <div style={{ marginTop: 10, fontWeight: 800 }}>{previewSubject}</div>
-              <div
-                style={{
-                  marginTop: 10,
                   padding: 12,
-                  borderRadius: 10,
-                  background: ui.colors.cardBg,
+                  borderRadius: 12,
                   border: `1px solid ${ui.colors.border}`,
-                  whiteSpace: "pre-wrap",
+                  background: "rgba(2, 6, 23, 0.02)",
                 }}
               >
-                {previewBody}
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  Supported placeholders
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {PLACEHOLDERS.map((placeholder) => (
+                    <div
+                      key={placeholder}
+                      style={{ color: ui.colors.sidebarText }}
+                    >
+                      {placeholder}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="appointment-email-editor-actions">
-              <button
-                type="button"
-                onClick={resetChanges}
+              <div
                 style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
+                  padding: 12,
+                  borderRadius: 12,
                   border: `1px solid ${ui.colors.border}`,
-                  background: ui.colors.cardBg,
-                  color: ui.colors.text,
-                  cursor: "pointer",
-                  fontWeight: 800,
+                  background: "rgba(2, 6, 23, 0.02)",
                 }}
               >
-                Cancel / reset
-              </button>
+                <div style={{ fontSize: 14, fontWeight: 900 }}>Preview</div>
+                <div style={{ marginTop: 10, fontWeight: 800 }}>
+                  {previewSubject}
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 12,
+                    borderRadius: 10,
+                    background: ui.colors.cardBg,
+                    border: `1px solid ${ui.colors.border}`,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {previewBody}
+                </div>
+              </div>
 
-              {!isNewTemplate ? (
+              <div className="appointment-email-editor-actions">
                 <button
                   type="button"
-                  onClick={deactivateTemplate}
-                  disabled={!isAdmin || saving || !draft.is_active}
+                  onClick={resetChanges}
                   style={{
                     padding: "9px 12px",
                     borderRadius: ui.radius.md,
-                    border: "1px solid rgba(239,68,68,0.35)",
-                    background: "rgba(239,68,68,0.12)",
+                    border: `1px solid ${ui.colors.border}`,
+                    background: ui.colors.cardBg,
                     color: ui.colors.text,
-                    cursor: !isAdmin || saving || !draft.is_active ? "not-allowed" : "pointer",
-                    fontWeight: 900,
-                    opacity: !isAdmin || saving || !draft.is_active ? 0.6 : 1,
+                    cursor: "pointer",
+                    fontWeight: 800,
                   }}
                 >
-                  Deactivate
+                  Cancel / reset
                 </button>
-              ) : null}
 
-              <button
-                type="submit"
-                disabled={!isAdmin || saving}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: ui.radius.md,
-                  border: "1px solid rgba(168,85,247,0.35)",
-                  background: ui.colors.brandSoft,
-                  color: ui.colors.text,
-                  cursor: !isAdmin || saving ? "not-allowed" : "pointer",
-                  fontWeight: 900,
-                  opacity: !isAdmin || saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? "Saving..." : isNewTemplate ? "Create template" : "Save template"}
-              </button>
-            </div>
-          </form>
+                {!isNewTemplate ? (
+                  <button
+                    type="button"
+                    onClick={deactivateTemplate}
+                    disabled={!isAdmin || saving || !draft.is_active}
+                    style={{
+                      padding: "9px 12px",
+                      borderRadius: ui.radius.md,
+                      border: "1px solid rgba(239,68,68,0.35)",
+                      background: "rgba(239,68,68,0.12)",
+                      color: ui.colors.text,
+                      cursor:
+                        !isAdmin || saving || !draft.is_active
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: 900,
+                      opacity: !isAdmin || saving || !draft.is_active ? 0.6 : 1,
+                    }}
+                  >
+                    Deactivate
+                  </button>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={!isAdmin || saving}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: ui.radius.md,
+                    border: "1px solid rgba(168,85,247,0.35)",
+                    background: ui.colors.brandSoft,
+                    color: ui.colors.text,
+                    cursor: !isAdmin || saving ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    opacity: !isAdmin || saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving
+                    ? "Saving..."
+                    : isNewTemplate
+                      ? "Create template"
+                      : "Save template"}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       ) : null}

@@ -6,6 +6,7 @@ import {
   buildOpeningHoursSavePayload,
   normalizeOpeningHours,
 } from "../lib/appointmentHours";
+import "./AppointmentTypesAdmin.css";
 
 function blankHours() {
   return normalizeOpeningHours(null, "sten").hours;
@@ -85,10 +86,8 @@ export default function AppointmentHoursAdmin() {
 
       const nextSites = (data || []).map((site) => ({
         ...site,
-        opening_hours: normalizeOpeningHours(
-          site.opening_hours,
-          site.site_id,
-        ).hours,
+        opening_hours: normalizeOpeningHours(site.opening_hours, site.site_id)
+          .hours,
       }));
 
       setSites(nextSites);
@@ -177,12 +176,16 @@ export default function AppointmentHoursAdmin() {
   }
 
   if (loading) {
-    return <div style={{ padding: 24 }}>Loading appointment hours...</div>;
+    return (
+      <div className="appointment-types-admin appointment-hours-admin-page appointment-admin-state">
+        Loading appointment hours...
+      </div>
+    );
   }
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: 24, color: ui.colors.text }}>
+      <div className="appointment-types-admin appointment-hours-admin-page appointment-admin-state">
         Only admins can manage appointment hours.
       </div>
     );
@@ -190,11 +193,12 @@ export default function AppointmentHoursAdmin() {
 
   return (
     <div
+      className="appointment-types-admin appointment-hours-admin-page"
       style={{
-        padding: 24,
+        padding: 0,
         display: "grid",
         gap: 18,
-        background: ui.colors.pageBg,
+        background: "transparent",
         minHeight: "100%",
         boxSizing: "border-box",
       }}
@@ -202,9 +206,6 @@ export default function AppointmentHoursAdmin() {
       <div>
         <div style={{ fontSize: 28, fontWeight: 900, color: ui.colors.text }}>
           Appointment Hours
-        </div>
-        <div style={ui.text.subtitle}>
-          Manage bookable opening hours for appointment sites.
         </div>
       </div>
 
@@ -221,7 +222,14 @@ export default function AppointmentHoursAdmin() {
           boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
         }}
       >
-        <label style={{ display: "grid", gap: 8, fontWeight: 800, color: ui.colors.text }}>
+        <label
+          style={{
+            display: "grid",
+            gap: 8,
+            fontWeight: 800,
+            color: ui.colors.text,
+          }}
+        >
           <span>Site</span>
           <select
             value={selectedSiteId}
@@ -259,12 +267,15 @@ export default function AppointmentHoursAdmin() {
                 key={dayKey}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "180px 120px minmax(120px, 160px) minmax(120px, 160px)",
+                  gridTemplateColumns:
+                    "180px 120px minmax(120px, 160px) minmax(120px, 160px)",
                   gap: 12,
                   alignItems: "center",
                 }}
               >
-                <div style={{ fontWeight: 800, color: ui.colors.text }}>{day.label}</div>
+                <div style={{ fontWeight: 800, color: ui.colors.text }}>
+                  {day.label}
+                </div>
 
                 <label
                   style={{
@@ -282,8 +293,12 @@ export default function AppointmentHoursAdmin() {
                     onChange={(e) =>
                       updateDay(dayKey, {
                         is_closed: e.target.checked,
-                        open_time: e.target.checked ? "" : value.open_time || "09:30",
-                        close_time: e.target.checked ? "" : value.close_time || "17:30",
+                        open_time: e.target.checked
+                          ? ""
+                          : value.open_time || "09:30",
+                        close_time: e.target.checked
+                          ? ""
+                          : value.close_time || "17:30",
                       })
                     }
                   />
@@ -294,7 +309,9 @@ export default function AppointmentHoursAdmin() {
                   type="time"
                   value={value.open_time || ""}
                   disabled={value.is_closed}
-                  onChange={(e) => updateDay(dayKey, { open_time: e.target.value })}
+                  onChange={(e) =>
+                    updateDay(dayKey, { open_time: e.target.value })
+                  }
                   style={inputStyle}
                 />
 
@@ -302,7 +319,9 @@ export default function AppointmentHoursAdmin() {
                   type="time"
                   value={value.close_time || ""}
                   disabled={value.is_closed}
-                  onChange={(e) => updateDay(dayKey, { close_time: e.target.value })}
+                  onChange={(e) =>
+                    updateDay(dayKey, { close_time: e.target.value })
+                  }
                   style={inputStyle}
                 />
               </div>

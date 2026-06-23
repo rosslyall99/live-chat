@@ -169,7 +169,8 @@
 }
 
 .hub-dashboard-element--upcoming {
-  min-height: 360px;
+  height: 430px;
+  min-height: 430px;
 }
 
 .hub-dashboard-calendar-summary,
@@ -239,6 +240,40 @@
   gap: 8px;
 }
 
+.hub-dashboard-calendar-list--scroll {
+  max-height: 252px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.hub-dashboard-calendar-list--scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.hub-dashboard-calendar-list--scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(3, 7, 18, 0.55);
+}
+
+.hub-dashboard-calendar-list--scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 0.82),
+    rgba(124, 58, 237, 0.78)
+  );
+}
+
+.hub-dashboard-calendar-list--scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 199, 204, 1),
+    rgba(196, 181, 253, 0.9)
+  );
+}
+
 .hub-dashboard-calendar-date {
   padding-top: 4px;
   color: rgba(196, 181, 253, 0.78);
@@ -250,20 +285,40 @@
 }
 
 .hub-dashboard-calendar-item {
+  appearance: none;
+  width: 100%;
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 10px;
-  border: 1px solid rgba(125, 211, 252, 0.14);
+  border: 1px solid var(--hub-dashboard-appointment-border, rgba(125, 211, 252, 0.14));
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(48, 199, 204, 0.09), rgba(124, 58, 237, 0.06)),
+    linear-gradient(
+      90deg,
+      var(--hub-dashboard-appointment-bg, rgba(48, 199, 204, 0.09)),
+      rgba(124, 58, 237, 0.06)
+    ),
     rgba(5, 12, 24, 0.48);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.hub-dashboard-calendar-item:hover,
+.hub-dashboard-calendar-item:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--hub-dashboard-appointment-accent, rgba(48, 199, 204, 0.56));
+  box-shadow: 0 0 20px rgba(48, 199, 204, 0.11);
+  outline: none;
 }
 
 .hub-dashboard-calendar-item__time {
-  color: rgba(125, 211, 252, 0.86);
+  color: var(--hub-dashboard-appointment-accent, rgba(125, 211, 252, 0.86));
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
   font-weight: 300;
@@ -279,7 +334,7 @@
 .hub-dashboard-calendar-item__main strong {
   min-width: 0;
   overflow: hidden;
-  color: rgba(248, 250, 252, 0.92);
+  color: var(--hub-dashboard-appointment-text, rgba(248, 250, 252, 0.92));
   font-size: 13px;
   font-weight: 400;
   line-height: 1.2;
@@ -290,7 +345,7 @@
 .hub-dashboard-calendar-item__main span,
 .hub-dashboard-calendar-message,
 .hub-dashboard-calendar-more {
-  color: rgba(203, 213, 225, 0.68);
+  color: var(--hub-dashboard-appointment-muted, rgba(203, 213, 225, 0.68));
   font-size: 12px;
   font-weight: 300;
   line-height: 1.35;
