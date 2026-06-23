@@ -1,11 +1,12 @@
 import React from "react";
 import { supabase } from "../supabaseClient";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import PhilLogo from "../images/logoTransparent.png";
 import { invokeAuthed } from "../lib/invokeAuthed";
 import "./Login.css";
 
 const LAST_BRANCH_KEY = "hub:lastBranch";
+const LOGIN_SUCCESS_TARGET = "/dashboard";
 const BRANCHES = ["St Enoch", "Duke Street", "Hire", "Office"];
 const BRANCH_FIELDS = [
   "login_branch",
@@ -38,16 +39,6 @@ function logLogin(step, details) {
 
 function usernameToEmail(username) {
   return `${username.trim().toLowerCase()}@staff.slanj`;
-}
-
-function getSafeRedirectTarget(rawValue) {
-  const fallback = "/dashboard";
-  if (!rawValue) return fallback;
-
-  const value = String(rawValue).trim();
-  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
-
-  return value;
 }
 
 function normaliseText(value) {
@@ -318,11 +309,6 @@ function LoginQuoteTerminal() {
 
 export default function Login() {
   const nav = useNavigate();
-  const [searchParams] = useSearchParams();
-  const redirectTarget = React.useMemo(
-    () => getSafeRedirectTarget(searchParams.get("redirect")),
-    [searchParams],
-  );
 
   const [staff, setStaff] = React.useState([]);
   const [selectedBranch, setSelectedBranch] = React.useState(() => {
@@ -356,9 +342,9 @@ export default function Login() {
         logLogin("mount:session-present", {
           userId: sessionData.session.user?.id,
           email: sessionData.session.user?.email,
-          redirectTarget,
+          redirectTarget: LOGIN_SUCCESS_TARGET,
         });
-        nav(redirectTarget, { replace: true });
+        nav(LOGIN_SUCCESS_TARGET, { replace: true });
         return;
       }
 
@@ -387,7 +373,7 @@ export default function Login() {
       cancelled = true;
       logLogin("unmount");
     };
-  }, [nav, redirectTarget]);
+  }, [nav]);
 
   React.useEffect(() => {
     if (selectedBranch && selectedUsername) {
@@ -463,6 +449,7 @@ export default function Login() {
       localStorage.setItem("crm:lastActivityAt", String(now));
       localStorage.setItem("crm:lastClosedAt", String(now));
       sessionStorage.setItem("crm:startupChecked", "1");
+      sessionStorage.setItem("hub_just_logged_in", "1");
     } catch {}
 
     // NEW: stamp this as the newest active session
@@ -484,8 +471,11 @@ export default function Login() {
     }
 
     setLoadingLogin(false);
-    logLogin("submit:navigate", { to: redirectTarget, selectedUsername });
-    nav(redirectTarget, { replace: true });
+    logLogin("submit:navigate", {
+      to: LOGIN_SUCCESS_TARGET,
+      selectedUsername,
+    });
+    nav(LOGIN_SUCCESS_TARGET, { replace: true });
   }
 
   function selectBranch(branch) {

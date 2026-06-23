@@ -1,5 +1,11 @@
 import React from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
 import Login from "./pages/Login.jsx";
@@ -32,6 +38,7 @@ function RequireAuth({ children }) {
   const [ready, setReady] = React.useState(false);
   const [session, setSession] = React.useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     let mounted = true;
@@ -104,7 +111,7 @@ function RequireAuth({ children }) {
         if (!mounted || hydratedRef.current || initialEventSeen) return;
         finishHydration(null, "getSession:null-fallback");
       }, 0);
-    });
+    })();
 
     return () => {
       mounted = false;
@@ -113,12 +120,44 @@ function RequireAuth({ children }) {
     };
   }, []);
 
-  if (!ready) return <div style={{ padding: 16 }}>Loading…</div>;
+  React.useEffect(() => {
+    if (!ready || !session) return;
+
+    try {
+      if (sessionStorage.getItem("hub_just_logged_in") !== "1") return;
+      sessionStorage.removeItem("hub_just_logged_in");
+    } catch {
+      return;
+    }
+
+    if (location.pathname !== "/dashboard") {
+      logAuthGuard("fresh-login:dashboard", { from: location.pathname });
+      navigate("/dashboard", { replace: true });
+    }
+  }, [location.pathname, navigate, ready, session]);
+
+  if (!ready) return <div style={{ padding: 16 }}>Loading...</div>;
   if (!session) {
     const redirect = `${location.pathname}${location.search}${location.hash}`;
     logAuthGuard("redirect:login", { redirect });
-    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
+    return (
+      <Navigate
+        to={`/login?redirect=${encodeURIComponent(redirect)}`}
+        replace
+      />
+    );
   }
+  try {
+    if (
+      sessionStorage.getItem("hub_just_logged_in") === "1" &&
+      location.pathname !== "/dashboard"
+    ) {
+      logAuthGuard("fresh-login:dashboard-render", {
+        from: location.pathname,
+      });
+      return <Navigate to="/dashboard" replace />;
+    }
+  } catch {}
   return children;
 }
 
@@ -132,7 +171,12 @@ function useIsMobile(breakpointPx = 900) {
   const [isMobile, setIsMobile] = React.useState(get);
 
   React.useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return;
+    }
 
     const mq = window.matchMedia(`(max-width: ${breakpointPx}px)`);
     const onChange = () => setIsMobile(mq.matches);
@@ -179,6 +223,7 @@ function DesktopApp() {
       <Route path="/login" element={<Login />} />
       <Route path="/today-rota" element={<StaffView />} />
       <Route path="/staff-view" element={<StaffView />} />
+
       {/* Protected app (with Shell) */}
       <Route
         element={
@@ -201,10 +246,22 @@ function DesktopApp() {
         <Route path="admin/users" element={<UsersAdmin />} />
         <Route path="admin/live" element={<AdminLive />} />
         <Route path="admin/insights" element={<AdminInsights />} />
-        <Route path="admin/appointment-customers" element={<AppointmentCustomersAdmin />} />
-        <Route path="admin/appointment-emails" element={<AppointmentEmailTemplates />} />
-        <Route path="admin/appointment-hours" element={<AppointmentHoursAdmin />} />
-        <Route path="admin/appointment-types" element={<AppointmentTypesAdmin />} />
+        <Route
+          path="admin/appointment-customers"
+          element={<AppointmentCustomersAdmin />}
+        />
+        <Route
+          path="admin/appointment-emails"
+          element={<AppointmentEmailTemplates />}
+        />
+        <Route
+          path="admin/appointment-hours"
+          element={<AppointmentHoursAdmin />}
+        />
+        <Route
+          path="admin/appointment-types"
+          element={<AppointmentTypesAdmin />}
+        />
       </Route>
 
       {/* Fallback */}
@@ -216,7 +273,7 @@ function DesktopApp() {
 /* -------------------- APP ROOT -------------------- */
 export default function App() {
   const location = useLocation();
-  const isMobile = useIsMobile(900); // adjust if you want (e.g. 820/780)
+  const isMobile = useIsMobile(900);
   const pathname = location.pathname || "/";
   const requiresDesktopShell =
     pathname === "/inbox" ||

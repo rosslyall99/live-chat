@@ -5404,7 +5404,7 @@ export default function Appointments() {
                               >
                                 {attendanceSaving === "checked_in"
                                   ? "Saving..."
-                                  : "Checked in"}
+                                  : "Check in"}
                               </button>
                               <button
                                 className="appointment-drawer-action-button appointment-drawer-action-button--attendance-late"
@@ -5416,7 +5416,7 @@ export default function Appointments() {
                               >
                                 {attendanceSaving === "checked_in_late"
                                   ? "Saving..."
-                                  : "Checked in late"}
+                                  : "Check in late"}
                               </button>
                               <button
                                 className="appointment-drawer-action-button appointment-drawer-action-button--attendance-no-show"
