@@ -481,10 +481,6 @@ export default function Prices() {
       <header className="prices-header prices-element">
         <div>
           <h2>Prices</h2>
-          <p>
-            Read-only supplier matrix with stable focus states for quick staff
-            lookup.
-          </p>
         </div>
         <div className="prices-header__controls">
           <div className="prices-header__status">
