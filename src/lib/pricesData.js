@@ -1,3 +1,5 @@
+import { supabase } from "../supabaseClient";
+
 const SAMPLE_PRICES_MATRIX = {
   version: "2026-01",
   columns: [
@@ -81,6 +83,22 @@ function compareBySortOrder(a, b) {
   return aOrder - bOrder;
 }
 
+function normalizeColumn(column) {
+  if (!column || !column.id || !column.supplier || !column.range) {
+    throw new Error(
+      "Prices data contract error: each column needs stable id, supplier, and range.",
+    );
+  }
+
+  return {
+    id: String(column.id),
+    supplier: String(column.supplier),
+    range: String(column.range),
+    width: column.width == null ? null : String(column.width),
+    weight: column.weight,
+  };
+}
+
 function normalizeSectionProduct(product, columns) {
   if (!product || !product.id || !product.name) {
     throw new Error("Prices data contract error: each product needs stable id and name.");
@@ -122,13 +140,7 @@ function normalizeSectionProduct(product, columns) {
 export function normalizePricesData(raw) {
   const columns = [...(raw?.columns || [])]
     .sort(compareBySortOrder)
-    .map((column) => ({
-      id: column.id,
-      supplier: column.supplier,
-      range: column.range,
-      width: column.width,
-      weight: column.weight,
-    }));
+    .map((column) => normalizeColumn(column));
 
   const sections = [...(raw?.sections || [])]
     .sort(compareBySortOrder)
@@ -150,8 +162,38 @@ export function getLocalPricesData() {
   return normalizePricesData(SAMPLE_PRICES_MATRIX);
 }
 
-// The UI only consumes normalized columns/sections. Later we can swap this
-// local source for an authenticated Supabase RPC like get_prices_matrix_staff().
+async function getRemotePricesData() {
+  const { data, error } = await supabase.rpc("get_prices_matrix_staff");
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizePricesData(data);
+}
+
+export async function loadPricesData() {
+  const fallbackData = getLocalPricesData();
+
+  try {
+    const data = await getRemotePricesData();
+
+    return {
+      data,
+      source: "supabase",
+      error: null,
+    };
+  } catch (error) {
+    console.error("prices: falling back to local sample data", error);
+
+    return {
+      data: fallbackData,
+      source: "local",
+      error,
+    };
+  }
+}
+
 export function getPricesData() {
   return getLocalPricesData();
 }

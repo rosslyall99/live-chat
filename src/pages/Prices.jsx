@@ -1,10 +1,8 @@
 import React from "react";
-import { getPricesData } from "../lib/pricesData";
+import { getPricesData, loadPricesData } from "../lib/pricesData";
 import "./Prices.css";
 
 const SHOW_PRICES_DEBUG = false;
-
-const { columns: priceColumns, sections: priceSections } = getPricesData();
 
 const categoryThemes = [
   {
@@ -39,80 +37,18 @@ const categoryThemes = [
   },
 ];
 
-const supplierGroups = priceColumns.reduce((groups, column) => {
-  const last = groups[groups.length - 1];
-  if (last?.supplier === column.supplier) {
-    last.columns.push(column);
-  } else {
-    groups.push({ supplier: column.supplier, columns: [column] });
-  }
-  return groups;
-}, []);
-
-const productLookup = new Map();
-const categoryLookup = new Map();
-
-const themedSections = priceSections.map((section, index) => {
-  const theme = categoryThemes[index % categoryThemes.length];
-  categoryLookup.set(section.name, section);
-  section.products.forEach((product) => {
-    productLookup.set(product.id, { ...product, section: section.name });
-  });
-  return {
-    ...section,
-    themeStyle: {
-      "--prices-category-accent": theme.accent,
-      "--prices-category-border": theme.border,
-      "--prices-category-fill": theme.fill,
-      "--prices-category-strong": theme.strong,
-    },
-  };
-});
-
 const gbp = new Intl.NumberFormat("en-GB", {
   style: "currency",
   currency: "GBP",
   maximumFractionDigits: 0,
 });
 
-function getProduct(productId) {
-  return productLookup.get(productId) || null;
-}
-
-function getColumn(columnId) {
-  return priceColumns.find((column) => column.id === columnId) || null;
-}
-
-function getRangeById(rangeId) {
-  return getColumn(rangeId);
-}
-
-function getRangeSupplier(rangeId) {
-  return getRangeById(rangeId)?.supplier || null;
-}
-
-function getProductCategory(productId) {
-  return getProduct(productId)?.section || null;
-}
-
-function hasPrice(productId, rangeId) {
-  const product = getProduct(productId);
-  return Boolean(product && Number.isFinite(product.prices[rangeId]));
-}
-
-function buildSelectedCell(productId, rangeId) {
-  return hasPrice(productId, rangeId) ? { productId, columnId: rangeId } : null;
-}
-
 function formatWeight(weight) {
   return typeof weight === "number" ? `${weight} oz` : String(weight);
 }
 
-function DetailPanel({ selectedCell, onClose, isOpen }) {
-  const product = getProduct(selectedCell?.productId);
-  const column = getColumn(selectedCell?.columnId);
-  const hasContent = Boolean(selectedCell && product && column);
-
+function DetailPanel({ product, column, onClose, isOpen }) {
+  const hasContent = Boolean(isOpen && product && column);
   const value = hasContent ? product.prices[column.id] : null;
 
   return (
@@ -210,6 +146,10 @@ function PlaceholderList({ title, items, muted = false }) {
 }
 
 export default function Prices() {
+  const [pricesData, setPricesData] = React.useState(() => getPricesData());
+  const [dataSource, setDataSource] = React.useState("local");
+  const [isLoadingData, setIsLoadingData] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
   const [rowScope, setRowScope] = React.useState(null);
   const [columnScope, setColumnScope] = React.useState(null);
   const [selectedCell, setSelectedCell] = React.useState(null);
@@ -217,6 +157,103 @@ export default function Prices() {
     React.useState(null);
   const matrixScrollRef = React.useRef(null);
   const priceCellRefs = React.useRef(new Map());
+
+  const { priceColumns, supplierGroups, categoryLookup, themedSections, getProduct, getColumn, getRangeSupplier, getProductCategory, hasPrice, buildSelectedCell } =
+    React.useMemo(() => {
+      const priceColumns = pricesData?.columns || [];
+      const priceSections = pricesData?.sections || [];
+      const supplierGroups = priceColumns.reduce((groups, column) => {
+        const last = groups[groups.length - 1];
+        if (last?.supplier === column.supplier) {
+          last.columns.push(column);
+        } else {
+          groups.push({ supplier: column.supplier, columns: [column] });
+        }
+        return groups;
+      }, []);
+
+      const productLookup = new Map();
+      const categoryLookup = new Map();
+
+      const themedSections = priceSections.map((section, index) => {
+        const theme = categoryThemes[index % categoryThemes.length];
+        categoryLookup.set(section.name, section);
+        section.products.forEach((product) => {
+          productLookup.set(product.id, { ...product, section: section.name });
+        });
+        return {
+          ...section,
+          themeStyle: {
+            "--prices-category-accent": theme.accent,
+            "--prices-category-border": theme.border,
+            "--prices-category-fill": theme.fill,
+            "--prices-category-strong": theme.strong,
+          },
+        };
+      });
+
+      function getProduct(productId) {
+        return productLookup.get(productId) || null;
+      }
+
+      function getColumn(columnId) {
+        return priceColumns.find((column) => column.id === columnId) || null;
+      }
+
+      function getRangeSupplier(rangeId) {
+        return getColumn(rangeId)?.supplier || null;
+      }
+
+      function getProductCategory(productId) {
+        return getProduct(productId)?.section || null;
+      }
+
+      function hasPrice(productId, rangeId) {
+        const product = getProduct(productId);
+        return Boolean(product && Number.isFinite(product.prices[rangeId]));
+      }
+
+      function buildSelectedCell(productId, rangeId) {
+        return hasPrice(productId, rangeId)
+          ? { productId, columnId: rangeId }
+          : null;
+      }
+
+      return {
+        priceColumns,
+        supplierGroups,
+        categoryLookup,
+        themedSections,
+        getProduct,
+        getColumn,
+        getRangeSupplier,
+        getProductCategory,
+        hasPrice,
+        buildSelectedCell,
+      };
+    }, [pricesData]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function hydratePricesData() {
+      setIsLoadingData(true);
+
+      const result = await loadPricesData();
+      if (cancelled) return;
+
+      setPricesData(result.data);
+      setDataSource(result.source);
+      setLoadError(result.error?.message || "");
+      setIsLoadingData(false);
+    }
+
+    hydratePricesData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const derivedCell = React.useMemo(() => {
     if (rowScope?.type !== "product" || columnScope?.type !== "range")
@@ -244,7 +281,16 @@ export default function Prices() {
     (derivedCellKey && dismissedDerivedCellKey !== derivedCellKey
       ? derivedCell
       : null);
-  const detailCell = finalSelectedCell;
+  const detailProduct = finalSelectedCell
+    ? getProduct(finalSelectedCell.productId)
+    : null;
+  const detailColumn = finalSelectedCell
+    ? getColumn(finalSelectedCell.columnId)
+    : null;
+  const detailCell =
+    finalSelectedCell && detailProduct && detailColumn
+      ? finalSelectedCell
+      : null;
   const isDetailOpen = Boolean(detailCell);
   const hasFinalCellSelection = Boolean(finalSelectedCell);
   const isManualCellSelected = Boolean(selectedCell);
@@ -476,6 +522,15 @@ export default function Prices() {
     setDismissedDerivedCellKey(null);
   }
 
+  const statusLabel =
+    dataSource === "supabase"
+      ? "Live Supabase matrix"
+      : isLoadingData
+        ? "Loading staff price list..."
+        : loadError
+          ? "Sample local matrix fallback"
+          : "Sample local matrix";
+
   return (
     <div className="prices-page">
       <header className="prices-header prices-element">
@@ -483,9 +538,13 @@ export default function Prices() {
           <h2>Prices</h2>
         </div>
         <div className="prices-header__controls">
-          <div className="prices-header__status">
+          <div
+            className="prices-header__status"
+            aria-live="polite"
+            title={loadError || statusLabel}
+          >
             <span />
-            Sample local matrix
+            {statusLabel}
           </div>
           {SHOW_PRICES_DEBUG && (
             <div
@@ -746,7 +805,8 @@ export default function Prices() {
         </section>
 
         <DetailPanel
-          selectedCell={detailCell}
+          product={detailProduct}
+          column={detailColumn}
           onClose={clearSelectedCell}
           isOpen={isDetailOpen}
         />
