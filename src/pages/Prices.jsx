@@ -43,13 +43,28 @@ const gbp = new Intl.NumberFormat("en-GB", {
   maximumFractionDigits: 0,
 });
 
+function formatDetailValue(value, fallback = "Not set") {
+  if (value == null) return fallback;
+  if (typeof value === "string" && value.trim() === "") return fallback;
+  return String(value);
+}
+
 function formatWeight(weight) {
   return typeof weight === "number" ? `${weight} oz` : String(weight);
 }
 
-function DetailPanel({ product, column, onClose, isOpen }) {
+function DetailPanel({ product, column, version, onClose, isOpen }) {
   const hasContent = Boolean(isOpen && product && column);
   const value = hasContent ? product.prices[column.id] : null;
+  const deliveryWindow = hasContent
+    ? product.deliveryWeeksMin != null && product.deliveryWeeksMax != null
+      ? `${product.deliveryWeeksMin}-${product.deliveryWeeksMax} weeks`
+      : product.deliveryWeeksMin != null
+        ? `${product.deliveryWeeksMin} weeks`
+        : product.deliveryWeeksMax != null
+          ? `${product.deliveryWeeksMax} weeks`
+          : null
+    : null;
 
   return (
     <aside
@@ -69,37 +84,49 @@ function DetailPanel({ product, column, onClose, isOpen }) {
               Close
             </button>
           </div>
-          <DetailGrid
+          <div className="prices-detail__hero">
+            <div className="prices-detail__hero-block">
+              <span className="prices-detail__hero-label">Retail price</span>
+              <strong className="prices-detail__hero-value">
+                {Number.isFinite(value) ? gbp.format(value) : "Unavailable"}
+              </strong>
+            </div>
+            <div className="prices-detail__hero-block prices-detail__hero-block--meta">
+              <span className="prices-detail__hero-label">Price list</span>
+              <strong className="prices-detail__hero-meta">
+                {formatDetailValue(version)}
+              </strong>
+            </div>
+          </div>
+          <DetailSection
+            title="Selection"
             items={[
               ["Product", product.name],
               ["Category", product.section],
               ["Supplier", column.supplier],
               ["Range", column.range],
-              ["Width", column.width],
-              ["Weight", formatWeight(column.weight)],
+              ["Width", formatDetailValue(column.width)],
+              ["Weight", formatDetailValue(formatWeight(column.weight))],
+            ]}
+          />
+          <DetailSection
+            title="Quote context"
+            items={[
+              ["Cloth required", formatDetailValue(product.clothRequired)],
               [
-                "Retail price",
-                Number.isFinite(value) ? gbp.format(value) : "Unavailable",
+                "CMT price",
+                product.cmtPrice != null ? gbp.format(product.cmtPrice) : "Not set",
               ],
+              ["Delivery window", formatDetailValue(deliveryWindow)],
+              ["Product notes", formatDetailValue(product.notes)],
             ]}
           />
-          <PlaceholderList
-            title="Later data"
-            items={[
-              "Cloth required - coming later",
-              "Approx. lead/make time - coming later",
-              "Supplier contact details - coming later",
-              "Internal notes - coming later",
-            ]}
-          />
-          <PlaceholderList
-            title="Future actions"
-            muted
-            items={[
-              "Customer quote email - coming later",
-              "Supplier enquiry email - coming later",
-              "Tartan selector - coming later",
-              "Sync/CMS tools - coming later",
+          <ActionSection
+            title="Future tools"
+            actions={[
+              "Generate quote email",
+              "Check tartan availability",
+              "Supplier enquiry",
             ]}
           />
         </>
@@ -123,24 +150,38 @@ function DetailGrid({ items }) {
       {items.map(([label, value]) => (
         <React.Fragment key={label}>
           <dt>{label}</dt>
-          <dd>{value}</dd>
+          <dd className={value === "Not set" ? "is-muted" : ""}>{value}</dd>
         </React.Fragment>
       ))}
     </dl>
   );
 }
 
-function PlaceholderList({ title, items, muted = false }) {
+function DetailSection({ title, items }) {
   return (
-    <section
-      className={`prices-placeholder ${muted ? "prices-placeholder--muted" : ""}`}
-    >
+    <section className="prices-detail-section">
       <h4>{title}</h4>
-      <ul>
-        {items.map((item) => (
-          <li key={item}>{item}</li>
+      <DetailGrid items={items} />
+    </section>
+  );
+}
+
+function ActionSection({ title, actions }) {
+  return (
+    <section className="prices-detail-section prices-detail-section--actions">
+      <h4>{title}</h4>
+      <div className="prices-detail-actions-grid">
+        {actions.map((action) => (
+          <button
+            key={action}
+            type="button"
+            className="prices-detail-action"
+            disabled
+          >
+            {action}
+          </button>
         ))}
-      </ul>
+      </div>
     </section>
   );
 }
@@ -807,6 +848,7 @@ export default function Prices() {
         <DetailPanel
           product={detailProduct}
           column={detailColumn}
+          version={pricesData?.version}
           onClose={clearSelectedCell}
           isOpen={isDetailOpen}
         />

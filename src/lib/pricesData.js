@@ -104,6 +104,18 @@ function normalizeSectionProduct(product, columns) {
     throw new Error("Prices data contract error: each product needs stable id and name.");
   }
 
+  const normalizedMeta = {
+    clothRequired: product.cloth_required == null ? null : String(product.cloth_required),
+    cmtPrice: Number.isFinite(product.cmt_price) ? product.cmt_price : null,
+    deliveryWeeksMin: Number.isFinite(product.delivery_weeks_min)
+      ? product.delivery_weeks_min
+      : null,
+    deliveryWeeksMax: Number.isFinite(product.delivery_weeks_max)
+      ? product.delivery_weeks_max
+      : null,
+    notes: product.notes == null ? null : String(product.notes),
+  };
+
   if (product.prices && typeof product.prices === "object" && !Array.isArray(product.prices)) {
     const prices = Object.fromEntries(
       Object.entries(product.prices).filter(([, value]) => Number.isFinite(value))
@@ -113,6 +125,7 @@ function normalizeSectionProduct(product, columns) {
       id: product.id,
       name: product.name,
       prices,
+      ...normalizedMeta,
     };
   }
 
@@ -127,6 +140,7 @@ function normalizeSectionProduct(product, columns) {
       id: product.id,
       name: product.name,
       prices,
+      ...normalizedMeta,
     };
   }
 
@@ -134,6 +148,7 @@ function normalizeSectionProduct(product, columns) {
     id: product.id,
     name: product.name,
     prices: {},
+    ...normalizedMeta,
   };
 }
 
