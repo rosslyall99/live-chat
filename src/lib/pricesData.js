@@ -76,6 +76,18 @@ function sparseRow(id, name, prices) {
   return { id, name, prices };
 }
 
+function normalizeOptionalString(value) {
+  return value == null ? null : String(value);
+}
+
+function normalizeFiniteNumber(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function filterFinitePriceEntries(entries) {
+  return Object.fromEntries(entries.filter(([, value]) => Number.isFinite(value)));
+}
+
 function compareBySortOrder(a, b) {
   const aOrder = Number.isFinite(a?.sort_order) ? a.sort_order : Number.MAX_SAFE_INTEGER;
   const bOrder = Number.isFinite(b?.sort_order) ? b.sort_order : Number.MAX_SAFE_INTEGER;
@@ -93,7 +105,7 @@ function normalizeColumn(column) {
     id: String(column.id),
     supplier: String(column.supplier),
     range: String(column.range),
-    width: column.width == null ? null : String(column.width),
+    width: normalizeOptionalString(column.width),
     weight: column.weight,
   };
 }
@@ -104,21 +116,15 @@ function normalizeSectionProduct(product, columns) {
   }
 
   const normalizedMeta = {
-    clothRequired: product.cloth_required == null ? null : String(product.cloth_required),
-    cmtPrice: Number.isFinite(product.cmt_price) ? product.cmt_price : null,
-    deliveryWeeksMin: Number.isFinite(product.delivery_weeks_min)
-      ? product.delivery_weeks_min
-      : null,
-    deliveryWeeksMax: Number.isFinite(product.delivery_weeks_max)
-      ? product.delivery_weeks_max
-      : null,
-    notes: product.notes == null ? null : String(product.notes),
+    clothRequired: normalizeOptionalString(product.cloth_required),
+    cmtPrice: normalizeFiniteNumber(product.cmt_price),
+    deliveryWeeksMin: normalizeFiniteNumber(product.delivery_weeks_min),
+    deliveryWeeksMax: normalizeFiniteNumber(product.delivery_weeks_max),
+    notes: normalizeOptionalString(product.notes),
   };
 
   if (product.prices && typeof product.prices === "object" && !Array.isArray(product.prices)) {
-    const prices = Object.fromEntries(
-      Object.entries(product.prices).filter(([, value]) => Number.isFinite(value))
-    );
+    const prices = filterFinitePriceEntries(Object.entries(product.prices));
 
     return {
       id: product.id,
@@ -129,10 +135,9 @@ function normalizeSectionProduct(product, columns) {
   }
 
   if (Array.isArray(product.values)) {
-    const prices = Object.fromEntries(
+    const prices = filterFinitePriceEntries(
       columns
         .map((column, index) => [column.id, product.values[index]])
-        .filter(([, value]) => value != null)
     );
 
     return {
@@ -212,14 +217,9 @@ function normalizeExternalRangeLink(link) {
   if (!link || !link.external_range_id) return null;
 
   return {
-    externalWeaverId: Number.isFinite(link.external_weaver_id)
-      ? link.external_weaver_id
-      : null,
-    externalRangeId: Number.isFinite(link.external_range_id)
-      ? link.external_range_id
-      : null,
-    externalRangeLabel:
-      link.external_range_label == null ? null : String(link.external_range_label),
+    externalWeaverId: normalizeFiniteNumber(link.external_weaver_id),
+    externalRangeId: normalizeFiniteNumber(link.external_range_id),
+    externalRangeLabel: normalizeOptionalString(link.external_range_label),
     sortOrder: Number.isFinite(link.sort_order) ? link.sort_order : 0,
   };
 }
@@ -237,12 +237,8 @@ function normalizePriceColumnMappingRow(row) {
 
   return {
     matrixKey: String(row.matrix_key),
-    externalWeaverId: Number.isFinite(row.external_weaver_id)
-      ? row.external_weaver_id
-      : null,
-    externalRangeId: Number.isFinite(row.external_range_id)
-      ? row.external_range_id
-      : null,
+    externalWeaverId: normalizeFiniteNumber(row.external_weaver_id),
+    externalRangeId: normalizeFiniteNumber(row.external_range_id),
     externalMappingCount: Number.isFinite(row.external_mapping_count)
       ? row.external_mapping_count
       : externalRanges.length,
