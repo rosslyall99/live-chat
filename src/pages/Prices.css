@@ -397,7 +397,7 @@
 .prices-category-merged-cell {
   width: auto !important;
   min-width: calc(
-    var(--prices-product-col-width) + (var(--prices-price-col-width) * 16)
+    var(--prices-product-col-width) + (var(--prices-price-col-width) * 15)
   ) !important;
   max-width: none !important;
   padding: 0;
@@ -692,6 +692,18 @@
     rgba(5, 12, 24, 0.48);
 }
 
+.prices-detail-section--connected {
+  border-color: rgba(45, 212, 191, 0.18);
+  background:
+    linear-gradient(135deg, rgba(45, 212, 191, 0.08), rgba(124, 58, 237, 0.03)),
+    rgba(5, 12, 24, 0.5);
+}
+
+.prices-detail-section--muted,
+.prices-detail-section--unavailable {
+  border-color: rgba(125, 211, 252, 0.08);
+}
+
 .prices-detail-section h4 {
   margin: 0 0 10px;
   color: rgba(125, 211, 252, 0.86);
@@ -729,6 +741,15 @@
 
 .prices-detail-grid dd.is-muted {
   color: rgba(148, 163, 184, 0.7);
+}
+
+.prices-detail-section--connected .prices-detail-grid dd:first-of-type {
+  color: rgba(204, 251, 241, 0.94);
+}
+
+.prices-detail-section--unavailable .prices-detail-grid dd:first-of-type,
+.prices-detail-section--muted .prices-detail-grid dd:first-of-type {
+  color: rgba(148, 163, 184, 0.78);
 }
 
 .prices-detail-actions-grid {

@@ -1,5 +1,9 @@
 import React from "react";
-import { getPricesData, loadPricesData } from "../lib/pricesData";
+import {
+  getPricesData,
+  loadPriceColumnMappings,
+  loadPricesData,
+} from "../lib/pricesData";
 import "./Prices.css";
 
 const SHOW_PRICES_DEBUG = false;
@@ -53,7 +57,46 @@ function formatWeight(weight) {
   return typeof weight === "number" ? `${weight} oz` : String(weight);
 }
 
-function DetailPanel({ product, column, version, onClose, isOpen }) {
+function getMappingDisplay(mappingSource, columnMapping) {
+  if (mappingSource !== "supabase") {
+    return {
+      tone: "unavailable",
+      summary: "Mapping unavailable",
+      detail: null,
+    };
+  }
+
+  if (!columnMapping || columnMapping.externalMappingCount < 1) {
+    return {
+      tone: "unmapped",
+      summary: "Not mapped yet",
+      detail: null,
+    };
+  }
+
+  const labels = columnMapping.externalRanges
+    .map((link) => link.externalRangeLabel || `Range ${link.externalRangeId}`)
+    .filter(Boolean);
+
+  return {
+    tone: "connected",
+    summary: "Connected",
+    detail:
+      labels.length > 1
+        ? `External ranges: ${labels.join(", ")}`
+        : `External range: ${labels[0] || `Range ${columnMapping.externalRangeId}`}`,
+  };
+}
+
+function DetailPanel({
+  product,
+  column,
+  version,
+  columnMapping,
+  mappingSource,
+  onClose,
+  isOpen,
+}) {
   const hasContent = Boolean(isOpen && product && column);
   const value = hasContent ? product.prices[column.id] : null;
   const deliveryWindow = hasContent
@@ -65,6 +108,7 @@ function DetailPanel({ product, column, version, onClose, isOpen }) {
           ? `${product.deliveryWeeksMax} weeks`
           : null
     : null;
+  const mappingDisplay = getMappingDisplay(mappingSource, columnMapping);
 
   return (
     <aside
@@ -121,6 +165,17 @@ function DetailPanel({ product, column, version, onClose, isOpen }) {
               ["Product notes", formatDetailValue(product.notes)],
             ]}
           />
+          <DetailSection
+            title="Tartan link"
+            tone={mappingDisplay.tone}
+            items={[
+              ["Tartan link", mappingDisplay.summary],
+              [
+                "External link",
+                mappingDisplay.detail || "Not set",
+              ],
+            ]}
+          />
           <ActionSection
             title="Future tools"
             actions={[
@@ -157,9 +212,19 @@ function DetailGrid({ items }) {
   );
 }
 
-function DetailSection({ title, items }) {
+function DetailSection({ title, items, tone = "default" }) {
   return (
-    <section className="prices-detail-section">
+    <section
+      className={`prices-detail-section ${
+        tone === "connected"
+          ? "prices-detail-section--connected"
+          : tone === "unmapped"
+            ? "prices-detail-section--muted"
+            : tone === "unavailable"
+              ? "prices-detail-section--unavailable"
+              : ""
+      }`}
+    >
       <h4>{title}</h4>
       <DetailGrid items={items} />
     </section>
@@ -191,6 +256,8 @@ export default function Prices() {
   const [dataSource, setDataSource] = React.useState("local");
   const [isLoadingData, setIsLoadingData] = React.useState(true);
   const [loadError, setLoadError] = React.useState("");
+  const [columnMappings, setColumnMappings] = React.useState([]);
+  const [mappingSource, setMappingSource] = React.useState("unavailable");
   const [rowScope, setRowScope] = React.useState(null);
   const [columnScope, setColumnScope] = React.useState(null);
   const [selectedCell, setSelectedCell] = React.useState(null);
@@ -296,6 +363,24 @@ export default function Prices() {
     };
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function hydratePriceMappings() {
+      const result = await loadPriceColumnMappings();
+      if (cancelled) return;
+
+      setColumnMappings(result.data);
+      setMappingSource(result.source);
+    }
+
+    hydratePriceMappings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const derivedCell = React.useMemo(() => {
     if (rowScope?.type !== "product" || columnScope?.type !== "range")
       return null;
@@ -327,6 +412,10 @@ export default function Prices() {
     : null;
   const detailColumn = finalSelectedCell
     ? getColumn(finalSelectedCell.columnId)
+    : null;
+  const detailColumnMapping = detailColumn
+    ? columnMappings.find((mapping) => mapping.matrixKey === detailColumn.id) ||
+      null
     : null;
   const detailCell =
     finalSelectedCell && detailProduct && detailColumn
@@ -848,6 +937,8 @@ export default function Prices() {
         <DetailPanel
           product={detailProduct}
           column={detailColumn}
+          columnMapping={detailColumnMapping}
+          mappingSource={mappingSource}
           version={pricesData?.version}
           onClose={clearSelectedCell}
           isOpen={isDetailOpen}
