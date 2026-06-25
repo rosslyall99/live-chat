@@ -340,14 +340,6 @@
   line-height: 1.35;
 }
 
-.hub-pad-button:hover,
-.hub-pad-button:focus-visible {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(48, 199, 204, 0.28);
-  box-shadow: 0 0 0 3px rgba(48, 199, 204, 0.13);
-  transform: translateY(-1px);
-}
-
 .hub-quote-terminal {
   position: fixed;
   left: clamp(24px, 6vw, 104px);

@@ -343,8 +343,7 @@
 }
 
 .hub-dashboard-calendar-item__main span,
-.hub-dashboard-calendar-message,
-.hub-dashboard-calendar-more {
+.hub-dashboard-calendar-message {
   color: var(--hub-dashboard-appointment-muted, rgba(203, 213, 225, 0.68));
   font-size: 12px;
   font-weight: 300;
@@ -353,14 +352,6 @@
 
 .hub-dashboard-calendar-message {
   margin: 16px 0 0;
-}
-
-.hub-dashboard-calendar-more {
-  padding: 2px 4px;
-  color: rgba(196, 181, 253, 0.78);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .hub-dashboard-calendar-skeleton {
