@@ -697,6 +697,9 @@ export default function Prices() {
 
       <div
         className={`prices-layout ${isDetailOpen ? "prices-layout--detail-open" : "prices-layout--detail-closed"}`}
+        style={{
+          "--prices-column-count": priceColumns.length,
+        }}
       >
         <section
           className={`prices-matrix prices-element ${hasFinalCellSelection ? "prices-matrix--cell-selected" : ""} ${isManualCellSelected ? "prices-matrix--manual-cell-selected" : ""}`}
