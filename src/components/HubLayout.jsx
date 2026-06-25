@@ -17,13 +17,17 @@ export default function HubLayout({
   const location = useLocation();
   const isAppointmentsRoute = location.pathname === "/appointments";
   const isPricesRoute = location.pathname === "/prices";
+  const layoutClassName = [
+    "hub-layout",
+    consoleCollapsed ? "hub-layout--console-collapsed" : "",
+    isAppointmentsRoute ? "hub-layout--appointments" : "",
+    isPricesRoute ? "hub-layout--prices" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div
-      className={`hub-layout ${consoleCollapsed ? "hub-layout--console-collapsed" : ""} ${
-        isAppointmentsRoute ? "hub-layout--appointments" : ""
-      } ${isPricesRoute ? "hub-layout--prices" : ""}`}
-    >
+    <div className={layoutClassName}>
       <Sidebar
         role={role}
         collapsed={consoleCollapsed}
