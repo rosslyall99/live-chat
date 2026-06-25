@@ -6,8 +6,6 @@ import {
 } from "../lib/pricesData";
 import "./Prices.css";
 
-const SHOW_PRICES_DEBUG = false;
-
 const categoryThemes = [
   {
     accent: "rgba(45, 212, 191, 0.82)",
@@ -266,7 +264,16 @@ export default function Prices() {
   const matrixScrollRef = React.useRef(null);
   const priceCellRefs = React.useRef(new Map());
 
-  const { priceColumns, supplierGroups, categoryLookup, themedSections, getProduct, getColumn, getRangeSupplier, getProductCategory, hasPrice, buildSelectedCell } =
+  const {
+    priceColumns,
+    supplierGroups,
+    themedSections,
+    getProduct,
+    getColumn,
+    getRangeSupplier,
+    getProductCategory,
+    buildSelectedCell,
+  } =
     React.useMemo(() => {
       const priceColumns = pricesData?.columns || [];
       const priceSections = pricesData?.sections || [];
@@ -281,11 +288,9 @@ export default function Prices() {
       }, []);
 
       const productLookup = new Map();
-      const categoryLookup = new Map();
 
       const themedSections = priceSections.map((section, index) => {
         const theme = categoryThemes[index % categoryThemes.length];
-        categoryLookup.set(section.name, section);
         section.products.forEach((product) => {
           productLookup.set(product.id, { ...product, section: section.name });
         });
@@ -316,13 +321,9 @@ export default function Prices() {
         return getProduct(productId)?.section || null;
       }
 
-      function hasPrice(productId, rangeId) {
-        const product = getProduct(productId);
-        return Boolean(product && Number.isFinite(product.prices[rangeId]));
-      }
-
       function buildSelectedCell(productId, rangeId) {
-        return hasPrice(productId, rangeId)
+        const product = getProduct(productId);
+        return product && Number.isFinite(product.prices[rangeId])
           ? { productId, columnId: rangeId }
           : null;
       }
@@ -330,13 +331,11 @@ export default function Prices() {
       return {
         priceColumns,
         supplierGroups,
-        categoryLookup,
         themedSections,
         getProduct,
         getColumn,
         getRangeSupplier,
         getProductCategory,
-        hasPrice,
         buildSelectedCell,
       };
     }, [pricesData]);
@@ -516,15 +515,6 @@ export default function Prices() {
     return true;
   }
 
-  function formatScope(scope) {
-    return scope ? `${scope.type} ${scope.value}` : "none";
-  }
-
-  const debugCellLabel = finalSelectedCell
-    ? `${finalSelectedCell.productId}/${finalSelectedCell.columnId}`
-    : "none";
-  const scopeDebugText = `Row: ${formatScope(rowScope)} | Column: ${formatScope(columnScope)} | Cell: ${debugCellLabel}`;
-
   React.useEffect(() => {
     if (!finalSelectedCell) return;
 
@@ -676,14 +666,6 @@ export default function Prices() {
             <span />
             {statusLabel}
           </div>
-          {SHOW_PRICES_DEBUG && (
-            <div
-              className="prices-scope-debug"
-              aria-label="Temporary Prices selection debug"
-            >
-              {scopeDebugText}
-            </div>
-          )}
           <button
             type="button"
             className="prices-header__clear"
@@ -743,10 +725,6 @@ export default function Prices() {
                   </th>
                   {supplierGroups.flatMap((group) =>
                     group.columns.map((column) => {
-                      const supplierFocused =
-                        columnScope?.type === "weaver" &&
-                        columnScope.value === column.supplier &&
-                        !hasFinalCellSelection;
                       const rangeFocused =
                         columnScope?.type === "range" &&
                         columnScope.value === column.id &&
@@ -754,7 +732,6 @@ export default function Prices() {
                       const rangeDimmed =
                         (hasBroadFocus || hasFinalCellSelection) &&
                         !isRangeLabelRelevant(column.id);
-                      const selectedOrImpliedCellColumn = false;
                       const selectionDimmed = rangeDimmed;
 
                       return (
@@ -762,10 +739,8 @@ export default function Prices() {
                           key={column.id}
                           className={[
                             "prices-range-heading",
-                            supplierFocused ? "is-supplier-focused" : "",
                             rangeFocused ? "is-range-focused" : "",
                             rangeDimmed ? "is-range-dimmed" : "",
-                            selectedOrImpliedCellColumn ? "is-cell-column" : "",
                             selectionDimmed ? "is-selection-dimmed" : "",
                           ]
                             .filter(Boolean)
@@ -828,7 +803,6 @@ export default function Prices() {
                         const productDimmed =
                           (hasBroadFocus || hasFinalCellSelection) &&
                           !isProductLabelRelevant(product.id);
-                        const cellInFocusedRow = false;
                         const productSelectionDimmed = productDimmed;
 
                         return (
@@ -840,7 +814,6 @@ export default function Prices() {
                               categoryDimmed ? "is-category-dimmed" : "",
                               productFocused ? "is-product-focused" : "",
                               productDimmed ? "is-product-dimmed" : "",
-                              cellInFocusedRow ? "is-cell-row" : "",
                               productSelectionDimmed
                                 ? "is-selection-dimmed"
                                 : "",

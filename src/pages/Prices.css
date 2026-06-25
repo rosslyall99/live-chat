@@ -80,17 +80,7 @@
   line-height: 1;
 }
 
-.prices-header p {
-  margin: 6px 0 0;
-  max-width: 520px;
-  color: rgba(203, 213, 225, 0.7);
-  font-size: 12px;
-  font-weight: 300;
-  line-height: 1.4;
-}
-
 .prices-detail__title span,
-.prices-placeholder h4,
 .prices-header__status,
 .prices-product-subheading,
 .prices-corner-heading {
@@ -152,20 +142,6 @@
   border-radius: 50%;
   background: #2dd4bf;
   box-shadow: 0 0 16px rgba(45, 212, 191, 0.9);
-}
-
-.prices-scope-debug {
-  max-width: min(520px, 100%);
-  padding: 6px 9px;
-  border: 1px solid rgba(125, 211, 252, 0.14);
-  border-radius: 7px;
-  background: rgba(5, 12, 24, 0.42);
-  color: rgba(203, 213, 225, 0.62);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  font-weight: 300;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
 }
 
 .prices-layout {
@@ -372,8 +348,7 @@
   line-height: 1.05;
 }
 
-.prices-range-heading.is-range-focused,
-.prices-range-heading.is-cell-column {
+.prices-range-heading.is-range-focused {
   box-shadow:
     inset 0 0 0 1px rgba(125, 211, 252, 0.18),
     inset 0 -2px 0 rgba(45, 212, 191, 0.3),
