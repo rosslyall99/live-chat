@@ -313,6 +313,8 @@ function TartanLookupSection({
   pagination,
   selectedTartanId,
   onSelectTartan,
+  canSubmitSearch,
+  helperText,
 }) {
   const isNotMapped = mapping?.status === "not_mapped";
   const hasResults = Array.isArray(results) && results.length > 0;
@@ -342,10 +344,16 @@ function TartanLookupSection({
             placeholder="Name, clan, or variation"
           />
         </label>
-        <button type="submit" className="prices-lookup-form__submit">
+        <button
+          type="submit"
+          className="prices-lookup-form__submit"
+          disabled={!canSubmitSearch || isLoading}
+        >
           {isLoading ? "Searching..." : "Search"}
         </button>
       </form>
+
+      <p className="prices-lookup-helper">{helperText}</p>
 
       {error ? <p className="prices-lookup-banner is-error">{error}</p> : null}
 
@@ -481,6 +489,8 @@ export default function Prices() {
   const [tartanMapping, setTartanMapping] = React.useState(null);
   const [tartanPagination, setTartanPagination] = React.useState(null);
   const [selectedTartanId, setSelectedTartanId] = React.useState(null);
+  const latestTartanRequestRef = React.useRef(0);
+  const lastExecutedLookupKeyRef = React.useRef("");
   const matrixScrollRef = React.useRef(null);
   const priceCellRefs = React.useRef(new Map());
 
@@ -799,6 +809,8 @@ export default function Prices() {
     setTartanMapping(null);
     setTartanPagination(null);
     setSelectedTartanId(null);
+    latestTartanRequestRef.current += 1;
+    lastExecutedLookupKeyRef.current = "";
   }, []);
 
   React.useEffect(() => {
@@ -877,8 +889,52 @@ export default function Prices() {
     setDismissedDerivedCellKey(null);
   }
 
-  async function runTartanLookup({ offset = 0, append = false } = {}) {
+  const trimmedTartanQuery = tartanQuery.trim();
+  const canRunDefaultLookup = trimmedTartanQuery.length === 0;
+  const meetsTypedSearchThreshold = trimmedTartanQuery.length >= 3;
+  const canSubmitTartanSearch =
+    canRunDefaultLookup || meetsTypedSearchThreshold;
+  const hasActiveTartanLookupState =
+    tartanSearchLoading ||
+    Boolean(tartanSearchError) ||
+    tartanResults.length > 0 ||
+    Boolean(tartanMapping) ||
+    Boolean(tartanPagination) ||
+    selectedTartanId != null;
+  const tartanLookupHelperText = canRunDefaultLookup
+    ? "Search all mapped tartans or type at least 3 characters to narrow the catalogue."
+    : meetsTypedSearchThreshold
+      ? "Searching tartans as you type."
+      : "Type at least 3 characters to search tartans.";
+
+  const clearActiveTartanResults = React.useCallback(() => {
+    latestTartanRequestRef.current += 1;
+    lastExecutedLookupKeyRef.current = "";
+    setTartanSearchLoading(false);
+    setTartanSearchError("");
+    setTartanResults([]);
+    setTartanMapping(null);
+    setTartanPagination(null);
+    setSelectedTartanId(null);
+  }, []);
+
+  async function runTartanLookup({
+    offset = 0,
+    append = false,
+    query = trimmedTartanQuery,
+    force = false,
+  } = {}) {
     if (!detailColumn?.id) return;
+
+    const normalizedQuery = query.trim();
+    const lookupKey = `${detailColumn.id}::${normalizedQuery}::${offset}`;
+
+    if (!force && !append && lastExecutedLookupKeyRef.current === lookupKey) {
+      return;
+    }
+
+    const requestId = latestTartanRequestRef.current + 1;
+    latestTartanRequestRef.current = requestId;
 
     setTartanSearchLoading(true);
     setTartanSearchError("");
@@ -887,13 +943,18 @@ export default function Prices() {
       "search_tartans_for_price_column",
       {
         column_id: detailColumn.id,
-        query: tartanQuery.trim(),
+        query: normalizedQuery,
         limit: 24,
         offset,
       },
     );
 
+    if (latestTartanRequestRef.current !== requestId) {
+      return;
+    }
+
     if (error) {
+      lastExecutedLookupKeyRef.current = lookupKey;
       setTartanSearchError(
         error.message || "Could not search the tartan catalogue.",
       );
@@ -908,6 +969,7 @@ export default function Prices() {
     }
 
     const incomingResults = Array.isArray(data?.results) ? data.results : [];
+    lastExecutedLookupKeyRef.current = lookupKey;
 
     setTartanMapping(data?.mapping || null);
     setTartanPagination(data?.pagination || null);
@@ -925,17 +987,48 @@ export default function Prices() {
     setTartanSearchLoading(false);
   }
 
+  React.useEffect(() => {
+    if (!isTartanLookupOpen || !detailColumn?.id) return;
+
+    if (trimmedTartanQuery.length === 0) {
+      if (hasActiveTartanLookupState) {
+        clearActiveTartanResults();
+      }
+      return;
+    }
+
+    if (trimmedTartanQuery.length < 3) {
+      if (hasActiveTartanLookupState) {
+        clearActiveTartanResults();
+      }
+      return;
+    }
+
+    const debounceId = window.setTimeout(() => {
+      runTartanLookup({
+        offset: 0,
+        append: false,
+        query: trimmedTartanQuery,
+      });
+    }, 350);
+
+    return () => {
+      window.clearTimeout(debounceId);
+    };
+  }, [
+    clearActiveTartanResults,
+    detailColumn?.id,
+    hasActiveTartanLookupState,
+    isTartanLookupOpen,
+    trimmedTartanQuery,
+  ]);
+
   function handleToggleTartanLookup() {
     setIsTartanLookupOpen((current) => {
       const next = !current;
       if (!next) {
-        setTartanSearchLoading(false);
-        setTartanSearchError("");
-        setTartanResults([]);
-        setTartanMapping(null);
-        setTartanPagination(null);
-        setSelectedTartanId(null);
         setTartanQuery("");
+        clearActiveTartanResults();
       }
       return next;
     });
@@ -943,13 +1036,23 @@ export default function Prices() {
 
   async function handleTartanSearch(event) {
     event.preventDefault();
-    await runTartanLookup({ offset: 0, append: false });
+    if (!canSubmitTartanSearch) return;
+    await runTartanLookup({
+      offset: 0,
+      append: false,
+      query: trimmedTartanQuery,
+      force: true,
+    });
   }
 
   async function handleTartanLoadMore() {
     const nextOffset =
       (tartanPagination?.offset || 0) + (tartanPagination?.returned || 0);
-    await runTartanLookup({ offset: nextOffset, append: true });
+    await runTartanLookup({
+      offset: nextOffset,
+      append: true,
+      query: trimmedTartanQuery,
+    });
   }
 
   const statusLabel =
@@ -1241,6 +1344,8 @@ export default function Prices() {
           tartanPagination={tartanPagination}
           selectedTartanId={selectedTartanId}
           onSelectTartan={setSelectedTartanId}
+          canSubmitSearch={canSubmitTartanSearch}
+          helperText={tartanLookupHelperText}
         />
       </div>
     </div>
