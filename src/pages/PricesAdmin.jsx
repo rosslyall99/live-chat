@@ -154,8 +154,16 @@ function getMatrixSummary(matrix) {
 
 function buildAdminMatrixModel(matrixData) {
   const normalized = normalizePricesData(matrixData || {});
+  const rawColumns = Array.isArray(matrixData?.columns) ? matrixData.columns : [];
   const rawSections = Array.isArray(matrixData?.sections) ? matrixData.sections : [];
   const rawProductLookup = new Map();
+  const rawColumnLookup = new Map();
+
+  rawColumns.forEach((column) => {
+    rawColumnLookup.set(String(column?.id || ""), {
+      recordId: column?.record_id ? String(column.record_id) : "",
+    });
+  });
 
   rawSections.forEach((section) => {
     (section?.products || []).forEach((product) => {
@@ -166,6 +174,12 @@ function buildAdminMatrixModel(matrixData) {
       });
     });
   });
+
+  const columns = (normalized.columns || []).map((column) => ({
+    ...column,
+    publicId: column.id,
+    recordId: rawColumnLookup.get(String(column.id))?.recordId || "",
+  }));
 
   const sections = (normalized.sections || []).map((section) => ({
     ...section,
@@ -183,7 +197,7 @@ function buildAdminMatrixModel(matrixData) {
 
   return {
     version: normalized.version,
-    columns: normalized.columns || [],
+    columns,
     sections,
   };
 }
@@ -270,6 +284,31 @@ function getProductValidationHints(formState) {
   return hints;
 }
 
+function buildCellFormState(cellDetails) {
+  return {
+    retailPrice:
+      cellDetails?.retailPrice != null && Number.isFinite(cellDetails.retailPrice)
+        ? String(cellDetails.retailPrice)
+        : "",
+    reason: "",
+  };
+}
+
+function getCellValidationHints(formState) {
+  const hints = [];
+  const retailPrice = parseOptionalNumber(formState?.retailPrice);
+
+  if (retailPrice == null) {
+    hints.push("Retail price is required.");
+  } else if (Number.isNaN(retailPrice)) {
+    hints.push("Retail price must be a valid number.");
+  } else if (retailPrice < 0) {
+    hints.push("Retail price cannot be negative.");
+  }
+
+  return hints;
+}
+
 function PriceListCard({ list, isSelected, onSelect }) {
   const tone = getListTone(list);
   const previewState = getPreviewState(list);
@@ -321,7 +360,9 @@ function PriceMatrixPreview({
   matrixData,
   matrixModel,
   selectedProductId,
+  selectedCellKey,
   onSelectProduct,
+  onSelectCell,
 }) {
   const matrix = matrixModel;
   const summary = React.useMemo(() => getMatrixSummary(matrixData), [matrixData]);
@@ -487,9 +528,48 @@ function PriceMatrixPreview({
                         </th>
                         {columns.map((column) => {
                           const value = product.prices?.[column.id];
+                          const cellKey = `${product.recordId}:${column.recordId}`;
+                          const isSelectedCell = selectedCellKey === cellKey;
 
                           return (
-                            <td key={`${product.id}:${column.id}`}>
+                            <td
+                              key={`${product.id}:${column.id}`}
+                              className={`prices-admin-matrix__price-cell ${
+                                isSelectedCell
+                                  ? "prices-admin-matrix__price-cell--selected"
+                                  : ""
+                              }`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onSelectCell({
+                                  productRecordId: product.recordId,
+                                  productName: product.name,
+                                  productMatrixKey: product.id,
+                                  columnRecordId: column.recordId,
+                                  columnPublicId: column.id,
+                                  columnLabel: `${column.supplier} ${column.range}`,
+                                  retailPrice:
+                                    Number.isFinite(value) ? Number(value) : null,
+                                });
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  onSelectCell({
+                                    productRecordId: product.recordId,
+                                    productName: product.name,
+                                    productMatrixKey: product.id,
+                                    columnRecordId: column.recordId,
+                                    columnPublicId: column.id,
+                                    columnLabel: `${column.supplier} ${column.range}`,
+                                    retailPrice:
+                                      Number.isFinite(value) ? Number(value) : null,
+                                  });
+                                }
+                              }}
+                              tabIndex={0}
+                            >
                               {Number.isFinite(value) ? gbp.format(value) : "-"}
                             </td>
                           );
@@ -530,9 +610,17 @@ export default function PricesAdmin() {
   const [productActionError, setProductActionError] = React.useState("");
   const [productActionSuccess, setProductActionSuccess] = React.useState("");
   const [savingProduct, setSavingProduct] = React.useState(false);
+  const [selectedCell, setSelectedCell] = React.useState(null);
+  const [selectedCellDetails, setSelectedCellDetails] = React.useState(null);
+  const [loadingCellDetails, setLoadingCellDetails] = React.useState(false);
+  const [cellActionError, setCellActionError] = React.useState("");
+  const [cellActionSuccess, setCellActionSuccess] = React.useState("");
+  const [cellForm, setCellForm] = React.useState(() => buildCellFormState(null));
+  const [savingCell, setSavingCell] = React.useState(false);
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
+  const loadCellSeq = React.useRef(0);
 
   const canView = role === "admin" || role === "manager";
   const isAdmin = role === "admin";
@@ -553,11 +641,24 @@ export default function PricesAdmin() {
     () => allProducts.find((product) => product.recordId === selectedProductId) || null,
     [allProducts, selectedProductId],
   );
+  const selectedCellKey = selectedCell
+    ? `${selectedCell.productRecordId}:${selectedCell.columnRecordId}`
+    : "";
   const isDraftSelection = Boolean(matrixData && isDraftList(matrixData) && !matrixData?.is_active);
   const canEditSelectedProduct = Boolean(isAdmin && isDraftSelection && selectedProduct);
   const productValidationHints = React.useMemo(
     () => getProductValidationHints(productForm),
     [productForm],
+  );
+  const canEditSelectedCell = Boolean(
+    isAdmin &&
+      isDraftSelection &&
+      selectedCell &&
+      selectedCellDetails?.recordId,
+  );
+  const cellValidationHints = React.useMemo(
+    () => getCellValidationHints(cellForm),
+    [cellForm],
   );
 
   const loadPriceLists = React.useCallback(
@@ -664,6 +765,11 @@ export default function PricesAdmin() {
 
   React.useEffect(() => {
     setSelectedProductId("");
+    setSelectedCell(null);
+    setSelectedCellDetails(null);
+    setCellForm(buildCellFormState(null));
+    setCellActionError("");
+    setCellActionSuccess("");
     setProductForm(buildProductFormState(null));
     setProductActionError("");
     setProductActionSuccess("");
@@ -674,12 +780,128 @@ export default function PricesAdmin() {
     if (selectedProduct) return;
 
     setSelectedProductId("");
+    setSelectedCell(null);
+    setSelectedCellDetails(null);
+    setCellForm(buildCellFormState(null));
     setProductForm(buildProductFormState(null));
   }, [selectedProduct, selectedProductId]);
 
   React.useEffect(() => {
     setProductForm(buildProductFormState(selectedProduct));
   }, [selectedProduct]);
+
+  React.useEffect(() => {
+    if (!selectedCell?.productRecordId || !selectedCell?.columnRecordId) return;
+
+    const refreshedProduct = allProducts.find(
+      (product) => product.recordId === selectedCell.productRecordId,
+    );
+    const refreshedColumn = (matrixModel.columns || []).find(
+      (column) => column.recordId === selectedCell.columnRecordId,
+    );
+
+    if (!refreshedProduct || !refreshedColumn) {
+      setSelectedCell(null);
+      setSelectedCellDetails(null);
+      setCellForm(buildCellFormState(null));
+      return;
+    }
+
+    const nextRetailPrice = refreshedProduct.prices?.[refreshedColumn.id];
+    setSelectedCell((current) =>
+      current
+        ? current.productName === refreshedProduct.name &&
+          current.columnLabel ===
+            `${refreshedColumn.supplier} ${refreshedColumn.range}` &&
+          current.retailPrice ===
+            (Number.isFinite(nextRetailPrice) ? Number(nextRetailPrice) : null)
+          ? current
+          : {
+              ...current,
+              productName: refreshedProduct.name,
+              columnLabel: `${refreshedColumn.supplier} ${refreshedColumn.range}`,
+              retailPrice:
+                Number.isFinite(nextRetailPrice) ? Number(nextRetailPrice) : null,
+            }
+        : current,
+    );
+  }, [allProducts, matrixModel.columns, selectedCell]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadSelectedCellDetails() {
+      if (!selectedCell?.productRecordId || !selectedCell?.columnRecordId) {
+        setSelectedCellDetails(null);
+        setLoadingCellDetails(false);
+        return;
+      }
+
+      const seq = ++loadCellSeq.current;
+      setLoadingCellDetails(true);
+
+      try {
+        const { data, error } = await supabase
+          .from("price_cells")
+          .select("id, product_id, column_id, retail_price, updated_at")
+          .eq("product_id", selectedCell.productRecordId)
+          .eq("column_id", selectedCell.columnRecordId)
+          .maybeSingle();
+
+        if (cancelled || seq !== loadCellSeq.current) return;
+        if (error) throw error;
+
+        setSelectedCellDetails(
+          data
+            ? {
+                recordId: String(data.id),
+                productId: String(data.product_id),
+                columnId: String(data.column_id),
+                retailPrice: Number.isFinite(Number(data.retail_price))
+                  ? Number(data.retail_price)
+                  : selectedCell.retailPrice,
+                updatedAt: data.updated_at || null,
+              }
+            : {
+                recordId: "",
+                productId: selectedCell.productRecordId,
+                columnId: selectedCell.columnRecordId,
+                retailPrice: selectedCell.retailPrice,
+                updatedAt: null,
+              },
+        );
+      } catch (error) {
+        console.error("prices admin: failed to load cell details", error);
+        if (cancelled || seq !== loadCellSeq.current) return;
+
+        setSelectedCellDetails({
+          recordId: "",
+          productId: selectedCell.productRecordId,
+          columnId: selectedCell.columnRecordId,
+          retailPrice: selectedCell.retailPrice,
+          updatedAt: null,
+        });
+        setCellActionError(
+          error?.message ||
+            "Could not resolve the selected cell for editing.",
+        );
+      } finally {
+        if (!cancelled && seq === loadCellSeq.current) {
+          setLoadingCellDetails(false);
+        }
+      }
+    }
+
+    loadSelectedCellDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCell]);
+
+  React.useEffect(() => {
+    setCellForm(buildCellFormState(selectedCellDetails));
+  }, [selectedCellDetails]);
 
   function openDraftForm() {
     const defaults = buildDraftDefaults(activePriceList);
@@ -753,6 +975,18 @@ export default function PricesAdmin() {
     setProductActionSuccess("");
   }
 
+  function handleSelectCell(nextCell) {
+    if (!nextCell?.productRecordId || !nextCell?.columnRecordId) return;
+    setSelectedProductId(nextCell.productRecordId);
+    setSelectedCell(nextCell);
+    setCellActionError("");
+    setCellActionSuccess("");
+  }
+
+  function updateCellForm(key, value) {
+    setCellForm((current) => ({ ...current, [key]: value }));
+  }
+
   async function saveSelectedProduct(event) {
     event.preventDefault();
     if (!canEditSelectedProduct || savingProduct || !selectedProduct) return;
@@ -789,6 +1023,49 @@ export default function PricesAdmin() {
       );
     } finally {
       setSavingProduct(false);
+    }
+  }
+
+  async function saveSelectedCell(event) {
+    event.preventDefault();
+    if (!canEditSelectedCell || savingCell || !selectedCellDetails?.recordId) return;
+    if (cellValidationHints.length > 0) {
+      setCellActionError(cellValidationHints[0]);
+      setCellActionSuccess("");
+      return;
+    }
+
+    setSavingCell(true);
+    setCellActionError("");
+    setCellActionSuccess("");
+
+    try {
+      const { error } = await supabase.rpc("update_price_cell_admin", {
+        p_cell_id: selectedCellDetails.recordId,
+        p_retail_price: parseOptionalNumber(cellForm.retailPrice),
+        p_reason: toOptionalText(cellForm.reason),
+      });
+
+      if (error) throw error;
+
+      await loadSelectedMatrix();
+      setSelectedCellDetails((current) =>
+        current
+          ? {
+              ...current,
+              retailPrice: parseOptionalNumber(cellForm.retailPrice),
+            }
+          : current,
+      );
+      setCellForm((current) => ({ ...current, reason: "" }));
+      setCellActionSuccess("Retail price saved to this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to update cell", error);
+      setCellActionError(
+        error?.message || "Could not update the selected draft retail price.",
+      );
+    } finally {
+      setSavingCell(false);
     }
   }
 
@@ -995,7 +1272,9 @@ export default function PricesAdmin() {
                   matrixData={matrixData}
                   matrixModel={matrixModel}
                   selectedProductId={selectedProductId}
+                  selectedCellKey={selectedCellKey}
                   onSelectProduct={handleSelectProduct}
+                  onSelectCell={handleSelectCell}
                 />
 
                 <section className="prices-admin-product-panel">
@@ -1170,6 +1449,142 @@ export default function PricesAdmin() {
                             disabled={savingProduct || productValidationHints.length > 0}
                           >
                             {savingProduct ? "Saving product..." : "Save product details"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </form>
+                  ) : null}
+                </section>
+
+                <section className="prices-admin-product-panel">
+                  {!selectedCell ? (
+                    <div className="prices-admin-state">
+                      <strong>Select a retail price cell</strong>
+                      <p>
+                        Click a retail price cell in the matrix to inspect or edit
+                        that draft value. Cell selection is local to the admin
+                        preview only.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedCell ? (
+                    <form
+                      className="prices-admin-product-detail"
+                      onSubmit={saveSelectedCell}
+                    >
+                      <div className="prices-admin-product-detail__header">
+                        <div>
+                          <span className="prices-admin-panel__eyebrow">
+                            Selected retail price
+                          </span>
+                          <h3>
+                            {selectedCell.productName} / {selectedCell.columnLabel}
+                          </h3>
+                          <p>
+                            {canEditSelectedCell
+                              ? "Draft-only admin cell editing is enabled for this retail price."
+                              : isDraftSelection && !isAdmin
+                                ? "Managers can review draft retail prices but cannot edit them."
+                                : "Only draft price lists can be edited."}
+                          </p>
+                        </div>
+                        <div className="prices-admin-product-detail__badges">
+                          <span className="prices-admin-badge prices-admin-badge--readonly">
+                            {selectedCell.columnPublicId}
+                          </span>
+                          {canEditSelectedCell ? (
+                            <span className="prices-admin-badge prices-admin-badge--draft">
+                              DRAFT EDIT
+                            </span>
+                          ) : (
+                            <span className="prices-admin-badge prices-admin-badge--readonly">
+                              READ ONLY
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="prices-admin-product-detail__grid">
+                        <label className="prices-admin-field">
+                          <span>Retail price</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={cellForm.retailPrice}
+                            onChange={(event) =>
+                              updateCellForm("retailPrice", event.target.value)
+                            }
+                            readOnly={!canEditSelectedCell}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field">
+                          <span>Current matrix value</span>
+                          <input
+                            value={
+                              selectedCell.retailPrice != null
+                                ? gbp.format(selectedCell.retailPrice)
+                                : "-"
+                            }
+                            readOnly
+                            tabIndex={-1}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field prices-admin-field--full">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={2}
+                            value={cellForm.reason}
+                            onChange={(event) =>
+                              updateCellForm("reason", event.target.value)
+                            }
+                            readOnly={!canEditSelectedCell}
+                          />
+                        </label>
+                      </div>
+
+                      {loadingCellDetails ? (
+                        <div className="prices-admin-product-detail__helper">
+                          Resolving selected cell details...
+                        </div>
+                      ) : null}
+
+                      {!loadingCellDetails && !selectedCellDetails?.recordId ? (
+                        <div className="prices-admin-product-detail__helper">
+                          Cell record details are unavailable from the current
+                          session, so this selection can only be reviewed read-only.
+                        </div>
+                      ) : null}
+
+                      {cellValidationHints.length > 0 && canEditSelectedCell ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--error">
+                          {cellValidationHints[0]}
+                        </div>
+                      ) : null}
+
+                      {cellActionError ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--error">
+                          {cellActionError}
+                        </div>
+                      ) : null}
+
+                      {cellActionSuccess ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--success">
+                          {cellActionSuccess}
+                        </div>
+                      ) : null}
+
+                      {canEditSelectedCell ? (
+                        <div className="prices-admin-product-detail__footer">
+                          <button
+                            type="submit"
+                            className="prices-admin-primary-button"
+                            disabled={savingCell || cellValidationHints.length > 0}
+                          >
+                            {savingCell ? "Saving retail price..." : "Save retail price"}
                           </button>
                         </div>
                       ) : null}
