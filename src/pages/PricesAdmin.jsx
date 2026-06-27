@@ -39,6 +39,22 @@ function formatCount(value, label) {
   return `${number} ${label}`;
 }
 
+function toOptionalText(value) {
+  const text = String(value || "").trim();
+  return text ? text : null;
+}
+
+function buildDraftDefaults(activeList) {
+  const activeVersion = String(activeList?.version || "").trim();
+  const activeName = String(activeList?.name || "").trim();
+
+  return {
+    version: activeVersion ? `${activeVersion}-draft` : "",
+    name: activeName ? `${activeName} Draft` : "",
+    reason: "",
+  };
+}
+
 function formatDeliveryWindow(product) {
   if (
     Number.isFinite(product.deliveryWeeksMin) &&
@@ -272,16 +288,26 @@ export default function PricesAdmin() {
   const [loadingMatrix, setLoadingMatrix] = React.useState(false);
   const [matrixError, setMatrixError] = React.useState("");
   const [matrixData, setMatrixData] = React.useState(null);
+  const [draftFormOpen, setDraftFormOpen] = React.useState(false);
+  const [draftVersion, setDraftVersion] = React.useState("");
+  const [draftName, setDraftName] = React.useState("");
+  const [draftReason, setDraftReason] = React.useState("");
+  const [creatingDraft, setCreatingDraft] = React.useState(false);
+  const [draftActionError, setDraftActionError] = React.useState("");
+  const [draftActionSuccess, setDraftActionSuccess] = React.useState("");
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
 
   const canView = role === "admin" || role === "manager";
+  const isAdmin = role === "admin";
+  const activePriceList = React.useMemo(
+    () => priceLists.find((item) => item.is_active) || null,
+    [priceLists],
+  );
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadPriceLists() {
+  const loadPriceLists = React.useCallback(
+    async ({ preferredSelectionId } = {}) => {
       const seq = ++loadListsSeq.current;
 
       setLoadingLists(true);
@@ -289,7 +315,7 @@ export default function PricesAdmin() {
 
       try {
         const { role: nextRole } = await getMeAndRole();
-        if (cancelled || seq !== loadListsSeq.current) return;
+        if (seq !== loadListsSeq.current) return;
 
         const normalizedRole = String(nextRole || "").toLowerCase();
         setRole(normalizedRole);
@@ -302,40 +328,46 @@ export default function PricesAdmin() {
         }
 
         const { data, error } = await supabase.rpc("get_price_lists_admin");
-        if (cancelled || seq !== loadListsSeq.current) return;
+        if (seq !== loadListsSeq.current) return;
         if (error) throw error;
 
         const nextLists = Array.isArray(data) ? data : [];
         setPriceLists(nextLists);
         setSelectedPriceListId((current) => {
+          if (
+            preferredSelectionId &&
+            nextLists.some((item) => item.id === preferredSelectionId)
+          ) {
+            return preferredSelectionId;
+          }
+
           if (current && nextLists.some((item) => item.id === current)) {
             return current;
           }
 
-          const activeList = nextLists.find((item) => item.is_active);
-          return activeList?.id || nextLists[0]?.id || "";
+          const nextActiveList = nextLists.find((item) => item.is_active);
+          return nextActiveList?.id || nextLists[0]?.id || "";
         });
       } catch (error) {
         console.error("prices admin: failed to load price lists", error);
-        if (cancelled || seq !== loadListsSeq.current) return;
+        if (seq !== loadListsSeq.current) return;
 
         setListsError(error?.message || "Could not load HUB price lists.");
         setPriceLists([]);
         setSelectedPriceListId("");
         setMatrixData(null);
       } finally {
-        if (!cancelled && seq === loadListsSeq.current) {
+        if (seq === loadListsSeq.current) {
           setLoadingLists(false);
         }
       }
-    }
+    },
+    [],
+  );
 
+  React.useEffect(() => {
     loadPriceLists();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [loadPriceLists]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -382,17 +414,182 @@ export default function PricesAdmin() {
     };
   }, [canView, selectedPriceListId]);
 
+  function openDraftForm() {
+    const defaults = buildDraftDefaults(activePriceList);
+    setDraftVersion(defaults.version);
+    setDraftName(defaults.name);
+    setDraftReason(defaults.reason);
+    setDraftActionError("");
+    setDraftActionSuccess("");
+    setDraftFormOpen(true);
+  }
+
+  function closeDraftForm() {
+    if (creatingDraft) return;
+    setDraftFormOpen(false);
+    setDraftActionError("");
+  }
+
+  async function createDraftFromActive(event) {
+    event.preventDefault();
+    if (!isAdmin || creatingDraft) return;
+
+    setCreatingDraft(true);
+    setDraftActionError("");
+    setDraftActionSuccess("");
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "create_price_list_draft_from_active_admin",
+        {
+          p_version: toOptionalText(draftVersion),
+          p_name: toOptionalText(draftName),
+          p_reason: toOptionalText(draftReason),
+        },
+      );
+
+      if (error) throw error;
+
+      const createdDraft = Array.isArray(data) ? data[0] || null : data || null;
+      const createdDraftId = createdDraft?.id || "";
+      const createdDraftVersion = createdDraft?.version || "";
+
+      await loadPriceLists({
+        preferredSelectionId:
+          createdDraftId || activePriceList?.id || undefined,
+      });
+
+      setDraftFormOpen(false);
+      setDraftActionError("");
+      setDraftActionSuccess(
+        createdDraftVersion
+          ? `Draft ${createdDraftVersion} created from the active price list.`
+          : "Draft created from the active price list.",
+      );
+    } catch (error) {
+      console.error("prices admin: failed to create draft", error);
+      setDraftActionError(
+        error?.message || "Could not create a draft from the active price list.",
+      );
+    } finally {
+      setCreatingDraft(false);
+    }
+  }
+
   return (
     <section className="prices-admin-page">
       <header className="prices-admin-header">
-        <div>
-          <span className="prices-admin-header__eyebrow">Prices CMS</span>
-          <h2>Prices Admin Preview</h2>
-          <p>
-            Review price list versions and draft matrices without affecting the
-            live staff Prices page.
-          </p>
+        <div className="prices-admin-header__top">
+          <div>
+            <span className="prices-admin-header__eyebrow">Prices CMS</span>
+            <h2>Prices Admin Preview</h2>
+            <p>
+              Review price list versions and draft matrices without affecting the
+              live staff Prices page.
+            </p>
+          </div>
+
+          {isAdmin ? (
+            <div className="prices-admin-header__actions">
+              <button
+                type="button"
+                className="prices-admin-primary-button"
+                onClick={openDraftForm}
+                disabled={loadingLists || !activePriceList || creatingDraft}
+              >
+                Create draft from active
+              </button>
+            </div>
+          ) : null}
         </div>
+
+        {draftActionSuccess ? (
+          <div className="prices-admin-feedback prices-admin-feedback--success">
+            {draftActionSuccess}
+          </div>
+        ) : null}
+
+        {isAdmin && draftFormOpen ? (
+          <form className="prices-admin-draft-form" onSubmit={createDraftFromActive}>
+            <div className="prices-admin-draft-form__header">
+              <div>
+                <span className="prices-admin-panel__eyebrow">Draft creation</span>
+                <h3>Create draft from active</h3>
+                <p>
+                  This creates a draft copy from the active published price list.
+                  Live staff prices stay unchanged.
+                </p>
+              </div>
+              <div className="prices-admin-draft-form__active">
+                {activePriceList ? (
+                  <>
+                    <strong>{activePriceList.version || "Active list"}</strong>
+                    <span>{activePriceList.name || "Published price list"}</span>
+                  </>
+                ) : (
+                  <span>No active list available</span>
+                )}
+              </div>
+            </div>
+
+            <div className="prices-admin-draft-form__grid">
+              <label className="prices-admin-field">
+                <span>Draft version</span>
+                <input
+                  value={draftVersion}
+                  onChange={(event) => setDraftVersion(event.target.value)}
+                  placeholder="2026-01-draft"
+                  disabled={creatingDraft}
+                />
+              </label>
+
+              <label className="prices-admin-field">
+                <span>Draft name</span>
+                <input
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  placeholder="January 2026 Draft"
+                  disabled={creatingDraft}
+                />
+              </label>
+
+              <label className="prices-admin-field prices-admin-field--full">
+                <span>Reason / note</span>
+                <textarea
+                  value={draftReason}
+                  onChange={(event) => setDraftReason(event.target.value)}
+                  placeholder="Optional note for why this draft is being created."
+                  rows={3}
+                  disabled={creatingDraft}
+                />
+              </label>
+            </div>
+
+            {draftActionError ? (
+              <div className="prices-admin-feedback prices-admin-feedback--error">
+                {draftActionError}
+              </div>
+            ) : null}
+
+            <div className="prices-admin-draft-form__footer">
+              <button
+                type="button"
+                className="prices-admin-secondary-button"
+                onClick={closeDraftForm}
+                disabled={creatingDraft}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="prices-admin-primary-button"
+                disabled={creatingDraft || !activePriceList}
+              >
+                {creatingDraft ? "Creating draft..." : "Confirm draft creation"}
+              </button>
+            </div>
+          </form>
+        ) : null}
       </header>
 
       {!loadingLists && !canView ? (
