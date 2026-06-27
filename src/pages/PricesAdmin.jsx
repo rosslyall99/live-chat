@@ -152,6 +152,124 @@ function getMatrixSummary(matrix) {
   };
 }
 
+function buildAdminMatrixModel(matrixData) {
+  const normalized = normalizePricesData(matrixData || {});
+  const rawSections = Array.isArray(matrixData?.sections) ? matrixData.sections : [];
+  const rawProductLookup = new Map();
+
+  rawSections.forEach((section) => {
+    (section?.products || []).forEach((product) => {
+      rawProductLookup.set(String(product.id), {
+        recordId: product?.record_id ? String(product.record_id) : "",
+        sectionName: section?.name || "",
+        sectionId: section?.id ? String(section.id) : "",
+      });
+    });
+  });
+
+  const sections = (normalized.sections || []).map((section) => ({
+    ...section,
+    products: (section.products || []).map((product) => {
+      const rawMeta = rawProductLookup.get(String(product.id));
+
+      return {
+        ...product,
+        recordId: rawMeta?.recordId || "",
+        section: rawMeta?.sectionName || section.name,
+        sectionId: rawMeta?.sectionId || "",
+      };
+    }),
+  }));
+
+  return {
+    version: normalized.version,
+    columns: normalized.columns || [],
+    sections,
+  };
+}
+
+function buildProductFormState(product) {
+  return {
+    name: product?.name || "",
+    clothRequired: product?.clothRequired || "",
+    cmtPrice:
+      product?.cmtPrice != null && Number.isFinite(product.cmtPrice)
+        ? String(product.cmtPrice)
+        : "",
+    deliveryWeeksMin:
+      product?.deliveryWeeksMin != null &&
+      Number.isFinite(product.deliveryWeeksMin)
+        ? String(product.deliveryWeeksMin)
+        : "",
+    deliveryWeeksMax:
+      product?.deliveryWeeksMax != null &&
+      Number.isFinite(product.deliveryWeeksMax)
+        ? String(product.deliveryWeeksMax)
+        : "",
+    notes: product?.notes || "",
+    reason: "",
+  };
+}
+
+function parseOptionalNumber(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  const number = Number(text);
+  return Number.isFinite(number) ? number : Number.NaN;
+}
+
+function parseOptionalInteger(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+
+  if (!/^-?\d+$/.test(text)) return Number.NaN;
+
+  return Number(text);
+}
+
+function getProductValidationHints(formState) {
+  const hints = [];
+  const name = String(formState?.name || "").trim();
+  const cmtPrice = parseOptionalNumber(formState?.cmtPrice);
+  const deliveryWeeksMin = parseOptionalInteger(formState?.deliveryWeeksMin);
+  const deliveryWeeksMax = parseOptionalInteger(formState?.deliveryWeeksMax);
+
+  if (!name) {
+    hints.push("Product name is required.");
+  }
+
+  if (Number.isNaN(cmtPrice)) {
+    hints.push("CMT price must be a valid number.");
+  } else if (cmtPrice != null && cmtPrice < 0) {
+    hints.push("CMT price cannot be negative.");
+  }
+
+  if (Number.isNaN(deliveryWeeksMin)) {
+    hints.push("Delivery weeks min must be a whole number.");
+  } else if (deliveryWeeksMin != null && deliveryWeeksMin < 0) {
+    hints.push("Delivery weeks min cannot be negative.");
+  }
+
+  if (Number.isNaN(deliveryWeeksMax)) {
+    hints.push("Delivery weeks max must be a whole number.");
+  } else if (deliveryWeeksMax != null && deliveryWeeksMax < 0) {
+    hints.push("Delivery weeks max cannot be negative.");
+  }
+
+  if (
+    !Number.isNaN(deliveryWeeksMin) &&
+    !Number.isNaN(deliveryWeeksMax) &&
+    deliveryWeeksMin != null &&
+    deliveryWeeksMax != null &&
+    deliveryWeeksMin > deliveryWeeksMax
+  ) {
+    hints.push("Delivery weeks min cannot be greater than delivery weeks max.");
+  }
+
+  return hints;
+}
+
 function PriceListCard({ list, isSelected, onSelect }) {
   const tone = getListTone(list);
   const previewState = getPreviewState(list);
@@ -199,11 +317,13 @@ function PriceListCard({ list, isSelected, onSelect }) {
   );
 }
 
-function PriceMatrixPreview({ matrixData }) {
-  const matrix = React.useMemo(
-    () => normalizePricesData(matrixData || {}),
-    [matrixData],
-  );
+function PriceMatrixPreview({
+  matrixData,
+  matrixModel,
+  selectedProductId,
+  onSelectProduct,
+}) {
+  const matrix = matrixModel;
   const summary = React.useMemo(() => getMatrixSummary(matrixData), [matrixData]);
   const columns = matrix.columns || [];
   const sections = matrix.sections || [];
@@ -333,9 +453,23 @@ function PriceMatrixPreview({ matrixData }) {
                   </tr>
                   {(section.products || []).map((product) => {
                     const delivery = formatDeliveryWindow(product);
+                    const isSelected = product.recordId === selectedProductId;
 
                     return (
-                      <tr key={product.id}>
+                      <tr
+                        key={product.recordId || product.id}
+                        className={`prices-admin-matrix__product-row ${
+                          isSelected ? "prices-admin-matrix__product-row--selected" : ""
+                        }`}
+                        onClick={() => onSelectProduct(product.recordId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelectProduct(product.recordId);
+                          }
+                        }}
+                        tabIndex={0}
+                      >
                         <th className="prices-admin-matrix__product-cell">
                           <div className="prices-admin-matrix__product-name">
                             {product.name}
@@ -389,6 +523,13 @@ export default function PricesAdmin() {
   const [creatingDraft, setCreatingDraft] = React.useState(false);
   const [draftActionError, setDraftActionError] = React.useState("");
   const [draftActionSuccess, setDraftActionSuccess] = React.useState("");
+  const [selectedProductId, setSelectedProductId] = React.useState("");
+  const [productForm, setProductForm] = React.useState(() =>
+    buildProductFormState(null),
+  );
+  const [productActionError, setProductActionError] = React.useState("");
+  const [productActionSuccess, setProductActionSuccess] = React.useState("");
+  const [savingProduct, setSavingProduct] = React.useState(false);
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
@@ -398,6 +539,25 @@ export default function PricesAdmin() {
   const activePriceList = React.useMemo(
     () => priceLists.find((item) => item.is_active) || null,
     [priceLists],
+  );
+  const matrixModel = React.useMemo(
+    () => buildAdminMatrixModel(matrixData),
+    [matrixData],
+  );
+  const allProducts = React.useMemo(
+    () =>
+      (matrixModel.sections || []).flatMap((section) => section.products || []),
+    [matrixModel],
+  );
+  const selectedProduct = React.useMemo(
+    () => allProducts.find((product) => product.recordId === selectedProductId) || null,
+    [allProducts, selectedProductId],
+  );
+  const isDraftSelection = Boolean(matrixData && isDraftList(matrixData) && !matrixData?.is_active);
+  const canEditSelectedProduct = Boolean(isAdmin && isDraftSelection && selectedProduct);
+  const productValidationHints = React.useMemo(
+    () => getProductValidationHints(productForm),
+    [productForm],
   );
 
   const loadPriceLists = React.useCallback(
@@ -463,50 +623,63 @@ export default function PricesAdmin() {
     loadPriceLists();
   }, [loadPriceLists]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadSelectedMatrix() {
-      if (!canView || !selectedPriceListId) {
-        setLoadingMatrix(false);
-        setMatrixError("");
-        setMatrixData(null);
-        return;
-      }
-
-      const seq = ++loadMatrixSeq.current;
-
-      setLoadingMatrix(true);
+  const loadSelectedMatrix = React.useCallback(async () => {
+    if (!canView || !selectedPriceListId) {
+      setLoadingMatrix(false);
       setMatrixError("");
-
-      try {
-        const { data, error } = await supabase.rpc("get_price_list_matrix_admin", {
-          p_price_list_id: selectedPriceListId,
-        });
-
-        if (cancelled || seq !== loadMatrixSeq.current) return;
-        if (error) throw error;
-
-        setMatrixData(data || null);
-      } catch (error) {
-        console.error("prices admin: failed to load matrix", error);
-        if (cancelled || seq !== loadMatrixSeq.current) return;
-
-        setMatrixError(error?.message || "Could not load the selected matrix.");
-        setMatrixData(null);
-      } finally {
-        if (!cancelled && seq === loadMatrixSeq.current) {
-          setLoadingMatrix(false);
-        }
-      }
+      setMatrixData(null);
+      return;
     }
 
-    loadSelectedMatrix();
+    const seq = ++loadMatrixSeq.current;
 
-    return () => {
-      cancelled = true;
-    };
+    setLoadingMatrix(true);
+    setMatrixError("");
+
+    try {
+      const { data, error } = await supabase.rpc("get_price_list_matrix_admin", {
+        p_price_list_id: selectedPriceListId,
+      });
+
+      if (seq !== loadMatrixSeq.current) return;
+      if (error) throw error;
+
+      setMatrixData(data || null);
+    } catch (error) {
+      console.error("prices admin: failed to load matrix", error);
+      if (seq !== loadMatrixSeq.current) return;
+
+      setMatrixError(error?.message || "Could not load the selected matrix.");
+      setMatrixData(null);
+    } finally {
+      if (seq === loadMatrixSeq.current) {
+        setLoadingMatrix(false);
+      }
+    }
   }, [canView, selectedPriceListId]);
+
+  React.useEffect(() => {
+    loadSelectedMatrix();
+  }, [loadSelectedMatrix]);
+
+  React.useEffect(() => {
+    setSelectedProductId("");
+    setProductForm(buildProductFormState(null));
+    setProductActionError("");
+    setProductActionSuccess("");
+  }, [selectedPriceListId]);
+
+  React.useEffect(() => {
+    if (!selectedProductId) return;
+    if (selectedProduct) return;
+
+    setSelectedProductId("");
+    setProductForm(buildProductFormState(null));
+  }, [selectedProduct, selectedProductId]);
+
+  React.useEffect(() => {
+    setProductForm(buildProductFormState(selectedProduct));
+  }, [selectedProduct]);
 
   function openDraftForm() {
     const defaults = buildDraftDefaults(activePriceList);
@@ -567,6 +740,55 @@ export default function PricesAdmin() {
       );
     } finally {
       setCreatingDraft(false);
+    }
+  }
+
+  function updateProductForm(key, value) {
+    setProductForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function handleSelectProduct(nextProductId) {
+    setSelectedProductId(nextProductId);
+    setProductActionError("");
+    setProductActionSuccess("");
+  }
+
+  async function saveSelectedProduct(event) {
+    event.preventDefault();
+    if (!canEditSelectedProduct || savingProduct || !selectedProduct) return;
+    if (productValidationHints.length > 0) {
+      setProductActionError(productValidationHints[0]);
+      setProductActionSuccess("");
+      return;
+    }
+
+    setSavingProduct(true);
+    setProductActionError("");
+    setProductActionSuccess("");
+
+    try {
+      const { error } = await supabase.rpc("update_price_product_admin", {
+        p_product_id: selectedProduct.recordId,
+        p_name: productForm.name,
+        p_cloth_required: toOptionalText(productForm.clothRequired),
+        p_cmt_price: parseOptionalNumber(productForm.cmtPrice),
+        p_delivery_weeks_min: parseOptionalInteger(productForm.deliveryWeeksMin),
+        p_delivery_weeks_max: parseOptionalInteger(productForm.deliveryWeeksMax),
+        p_notes: toOptionalText(productForm.notes),
+        p_reason: toOptionalText(productForm.reason),
+      });
+
+      if (error) throw error;
+
+      await loadSelectedMatrix();
+      setProductActionSuccess("Product details saved to this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to update product", error);
+      setProductActionError(
+        error?.message || "Could not update the selected draft product.",
+      );
+    } finally {
+      setSavingProduct(false);
     }
   }
 
@@ -768,7 +990,193 @@ export default function PricesAdmin() {
             ) : null}
 
             {!loadingMatrix && !matrixError && matrixData ? (
-              <PriceMatrixPreview matrixData={matrixData} />
+              <>
+                <PriceMatrixPreview
+                  matrixData={matrixData}
+                  matrixModel={matrixModel}
+                  selectedProductId={selectedProductId}
+                  onSelectProduct={handleSelectProduct}
+                />
+
+                <section className="prices-admin-product-panel">
+                  {!selectedProduct ? (
+                    <div className="prices-admin-state">
+                      <strong>Select a product</strong>
+                      <p>
+                        Choose a product row in the matrix preview to inspect its
+                        metadata. Selection here is local to the admin preview only.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedProduct ? (
+                    <form
+                      className="prices-admin-product-detail"
+                      onSubmit={saveSelectedProduct}
+                    >
+                      <div className="prices-admin-product-detail__header">
+                        <div>
+                          <span className="prices-admin-panel__eyebrow">
+                            Selected product
+                          </span>
+                          <h3>{selectedProduct.name}</h3>
+                          <p>
+                            {selectedProduct.section || "Unassigned section"}.
+                            {" "}
+                            {canEditSelectedProduct
+                              ? "Draft-only admin editing is enabled for this product."
+                              : isDraftSelection && !isAdmin
+                                ? "Managers can review draft product details but cannot edit them."
+                                : "Only draft price lists can be edited."}
+                          </p>
+                        </div>
+                        <div className="prices-admin-product-detail__badges">
+                          <span className="prices-admin-badge prices-admin-badge--readonly">
+                            {selectedProduct.id}
+                          </span>
+                          {canEditSelectedProduct ? (
+                            <span className="prices-admin-badge prices-admin-badge--draft">
+                              DRAFT EDIT
+                            </span>
+                          ) : (
+                            <span className="prices-admin-badge prices-admin-badge--readonly">
+                              READ ONLY
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="prices-admin-product-detail__grid">
+                        <label className="prices-admin-field">
+                          <span>Name</span>
+                          <input
+                            value={productForm.name}
+                            onChange={(event) =>
+                              updateProductForm("name", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field">
+                          <span>Cloth required</span>
+                          <input
+                            value={productForm.clothRequired}
+                            onChange={(event) =>
+                              updateProductForm("clothRequired", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field">
+                          <span>CMT price</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={productForm.cmtPrice}
+                            onChange={(event) =>
+                              updateProductForm("cmtPrice", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field">
+                          <span>Delivery weeks min</span>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={productForm.deliveryWeeksMin}
+                            onChange={(event) =>
+                              updateProductForm("deliveryWeeksMin", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field">
+                          <span>Delivery weeks max</span>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={productForm.deliveryWeeksMax}
+                            onChange={(event) =>
+                              updateProductForm("deliveryWeeksMax", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field prices-admin-field--full">
+                          <span>Notes</span>
+                          <textarea
+                            rows={3}
+                            value={productForm.notes}
+                            onChange={(event) =>
+                              updateProductForm("notes", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+
+                        <label className="prices-admin-field prices-admin-field--full">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={2}
+                            value={productForm.reason}
+                            onChange={(event) =>
+                              updateProductForm("reason", event.target.value)
+                            }
+                            readOnly={!canEditSelectedProduct}
+                          />
+                        </label>
+                      </div>
+
+                      {canEditSelectedProduct ? (
+                        <div className="prices-admin-product-detail__helper">
+                          Blank optional fields preserve their current values.
+                          Explicit clearing to empty is not available in this first
+                          draft-edit stage.
+                        </div>
+                      ) : null}
+
+                      {productValidationHints.length > 0 && canEditSelectedProduct ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--error">
+                          {productValidationHints[0]}
+                        </div>
+                      ) : null}
+
+                      {productActionError ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--error">
+                          {productActionError}
+                        </div>
+                      ) : null}
+
+                      {productActionSuccess ? (
+                        <div className="prices-admin-feedback prices-admin-feedback--success">
+                          {productActionSuccess}
+                        </div>
+                      ) : null}
+
+                      {canEditSelectedProduct ? (
+                        <div className="prices-admin-product-detail__footer">
+                          <button
+                            type="submit"
+                            className="prices-admin-primary-button"
+                            disabled={savingProduct || productValidationHints.length > 0}
+                          >
+                            {savingProduct ? "Saving product..." : "Save product details"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </form>
+                  ) : null}
+                </section>
+              </>
             ) : null}
           </section>
         </div>

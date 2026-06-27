@@ -675,6 +675,30 @@
   background: rgba(8, 18, 34, 0.96);
 }
 
+.prices-admin-matrix__product-row {
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    box-shadow 160ms ease;
+}
+
+.prices-admin-matrix__product-row:hover th,
+.prices-admin-matrix__product-row:hover td,
+.prices-admin-matrix__product-row:focus-visible th,
+.prices-admin-matrix__product-row:focus-visible td {
+  background-color: rgba(45, 212, 191, 0.05);
+}
+
+.prices-admin-matrix__product-row:focus-visible {
+  outline: none;
+}
+
+.prices-admin-matrix__product-row--selected th,
+.prices-admin-matrix__product-row--selected td {
+  background-color: rgba(45, 212, 191, 0.1);
+  box-shadow: inset 0 1px 0 rgba(94, 234, 212, 0.06);
+}
+
 .prices-admin-matrix__product-name {
   color: #fff;
   font-size: 13px;
@@ -689,6 +713,68 @@
   color: rgba(148, 163, 184, 0.95);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.prices-admin-product-panel {
+  min-height: 0;
+}
+
+.prices-admin-product-detail {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.035),
+      rgba(255, 255, 255, 0.012)
+    ),
+    rgba(4, 10, 24, 0.7);
+}
+
+.prices-admin-product-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prices-admin-product-detail__header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 320;
+}
+
+.prices-admin-product-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.prices-admin-product-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prices-admin-product-detail__helper {
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 10px;
+  background: rgba(8, 15, 30, 0.34);
+  color: rgba(186, 230, 253, 0.88);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.prices-admin-product-detail__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 @media (max-width: 1100px) {
@@ -726,7 +812,8 @@
   }
 
   .prices-admin-header__top,
-  .prices-admin-draft-form__header {
+  .prices-admin-draft-form__header,
+  .prices-admin-product-detail__header {
     flex-direction: column;
   }
 
@@ -738,11 +825,16 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .prices-admin-product-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .prices-admin-draft-form__active {
     min-width: 0;
   }
 
-  .prices-admin-draft-form__footer {
+  .prices-admin-draft-form__footer,
+  .prices-admin-product-detail__footer {
     justify-content: stretch;
     flex-direction: column;
   }
