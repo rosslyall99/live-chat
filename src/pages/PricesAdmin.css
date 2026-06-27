@@ -1,0 +1,456 @@
+.prices-admin-page,
+.prices-admin-page * {
+  box-sizing: border-box;
+}
+
+.prices-admin-page {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 14px;
+  color: rgba(241, 245, 249, 0.94);
+}
+
+.prices-admin-header,
+.prices-admin-panel,
+.prices-admin-state,
+.prices-admin-summary-card,
+.prices-admin-list-card,
+.prices-admin-matrix {
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045),
+      rgba(255, 255, 255, 0.018)
+    ),
+    rgba(4, 10, 24, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+.prices-admin-header,
+.prices-admin-panel,
+.prices-admin-state {
+  position: relative;
+  overflow: hidden;
+}
+
+.prices-admin-header::before,
+.prices-admin-panel::before,
+.prices-admin-state::before,
+.prices-admin-summary-card::before,
+.prices-admin-matrix::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(48, 199, 204, 0.16), transparent 36%);
+  opacity: 0.14;
+}
+
+.prices-admin-header > *,
+.prices-admin-panel > *,
+.prices-admin-state > *,
+.prices-admin-summary-card > *,
+.prices-admin-matrix > * {
+  position: relative;
+  z-index: 1;
+}
+
+.prices-admin-header {
+  padding: 18px 20px;
+  background:
+    linear-gradient(135deg, rgba(48, 199, 204, 0.11), rgba(124, 58, 237, 0.09)),
+    rgba(5, 12, 24, 0.7);
+}
+
+.prices-admin-header__eyebrow,
+.prices-admin-panel__eyebrow,
+.prices-admin-preview__eyebrow,
+.prices-admin-list-card__eyebrow {
+  display: inline-block;
+  margin-bottom: 7px;
+  color: rgba(125, 211, 252, 0.82);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.prices-admin-header h2,
+.prices-admin-panel__header h3,
+.prices-admin-preview__intro h3 {
+  margin: 0;
+  color: #fff;
+  font-weight: 320;
+}
+
+.prices-admin-header h2 {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.prices-admin-header p,
+.prices-admin-preview__intro p,
+.prices-admin-state p {
+  margin: 8px 0 0;
+  max-width: 72ch;
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.prices-admin-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.prices-admin-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.prices-admin-panel--list {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.prices-admin-panel--preview {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.prices-admin-panel__header h3 {
+  font-size: 22px;
+}
+
+.prices-admin-list {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.prices-admin-list-card {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 13px 14px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.prices-admin-list-card:hover,
+.prices-admin-list-card:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: rgba(94, 234, 212, 0.34);
+  box-shadow: 0 10px 20px rgba(8, 15, 30, 0.26);
+}
+
+.prices-admin-list-card--selected {
+  border-color: rgba(45, 212, 191, 0.38);
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.18);
+}
+
+.prices-admin-list-card__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.prices-admin-list-card__version {
+  display: block;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 360;
+  line-height: 1.2;
+}
+
+.prices-admin-list-card__name {
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 14px;
+  font-weight: 520;
+  line-height: 1.45;
+}
+
+.prices-admin-list-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: rgba(148, 163, 184, 0.94);
+  font-size: 12px;
+}
+
+.prices-admin-list-card__badges,
+.prices-admin-preview__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.prices-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.44);
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prices-admin-badge--active {
+  border-color: rgba(45, 212, 191, 0.3);
+  background: rgba(20, 184, 166, 0.12);
+  color: rgba(204, 251, 241, 0.94);
+}
+
+.prices-admin-badge--status {
+  border-color: rgba(96, 165, 250, 0.28);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.prices-admin-state {
+  padding: 16px;
+}
+
+.prices-admin-state strong {
+  display: block;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 640;
+}
+
+.prices-admin-state--error {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+.prices-admin-preview {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.prices-admin-preview__intro {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.prices-admin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.prices-admin-summary-card {
+  position: relative;
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.prices-admin-summary-card span {
+  display: block;
+  margin-bottom: 5px;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.prices-admin-summary-card strong {
+  display: block;
+  color: rgba(241, 245, 249, 0.96);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.prices-admin-matrix {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.prices-admin-matrix__scroll {
+  min-height: 0;
+  height: 100%;
+  max-height: calc(100vh - 300px);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 199, 204, 0.75) rgba(3, 7, 18, 0.55);
+}
+
+.prices-admin-matrix__scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.prices-admin-matrix__scroll::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.55);
+}
+
+.prices-admin-matrix__scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(48, 199, 204, 0.82),
+    rgba(124, 58, 237, 0.78)
+  );
+}
+
+.prices-admin-matrix table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.prices-admin-matrix th,
+.prices-admin-matrix td {
+  min-width: 88px;
+  padding: 9px 8px;
+  border-right: 1px solid rgba(125, 211, 252, 0.1);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.1);
+  color: rgba(226, 232, 240, 0.88);
+  text-align: center;
+  vertical-align: top;
+}
+
+.prices-admin-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background:
+    linear-gradient(90deg, rgba(48, 199, 204, 0.11), rgba(124, 58, 237, 0.08)),
+    rgba(5, 12, 24, 0.97);
+}
+
+.prices-admin-matrix__product-heading,
+.prices-admin-matrix__product-cell {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  min-width: 240px !important;
+  max-width: 240px !important;
+  text-align: left !important;
+  background: rgba(4, 10, 24, 0.98) !important;
+}
+
+.prices-admin-matrix__product-heading {
+  color: rgba(125, 211, 252, 0.86) !important;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.prices-admin-matrix__column {
+  display: grid;
+  gap: 3px;
+}
+
+.prices-admin-matrix__column strong {
+  color: rgba(240, 249, 255, 0.96);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.prices-admin-matrix__column span,
+.prices-admin-matrix__column small {
+  color: rgba(191, 219, 254, 0.84);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.prices-admin-matrix__section-row th {
+  padding: 8px 12px;
+  color: rgba(204, 251, 241, 0.9);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  background: rgba(8, 18, 34, 0.96);
+}
+
+.prices-admin-matrix__product-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.prices-admin-matrix__product-meta {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+  color: rgba(148, 163, 184, 0.95);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 1100px) {
+  .prices-admin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prices-admin-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prices-admin-matrix__scroll {
+    max-height: 60vh;
+  }
+}
+
+@media (max-width: 720px) {
+  .prices-admin-header,
+  .prices-admin-panel,
+  .prices-admin-state {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .prices-admin-preview__intro {
+    flex-direction: column;
+  }
+
+  .prices-admin-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prices-admin-matrix__product-heading,
+  .prices-admin-matrix__product-cell {
+    min-width: 190px !important;
+    max-width: 190px !important;
+  }
+}

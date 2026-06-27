@@ -36,6 +36,7 @@ export default function Shell() {
   const isWideAppointmentsRoute =
     loc.pathname === "/appointments" ||
     loc.pathname === "/prices" ||
+    loc.pathname === "/admin/prices" ||
     loc.pathname === "/admin/appointment-types" ||
     loc.pathname === "/admin/appointment-customers" ||
     loc.pathname === "/admin/appointment-emails";

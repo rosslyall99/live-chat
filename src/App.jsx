@@ -19,6 +19,7 @@ import AdminInsights from "./pages/AdminInsights";
 import HubRota from "./pages/HubRota.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Prices from "./pages/Prices.jsx";
+import PricesAdmin from "./pages/PricesAdmin.jsx";
 import Appointments from "./pages/Appointments.jsx";
 import AppointmentEmailTemplates from "./pages/AppointmentEmailTemplates.jsx";
 import AppointmentCustomersAdmin from "./pages/AppointmentCustomersAdmin.jsx";
@@ -244,6 +245,7 @@ function DesktopApp() {
         <Route path="change-pin" element={<ChangePin />} />
 
         {/* Admin */}
+        <Route path="admin/prices" element={<PricesAdmin />} />
         <Route path="admin/canned" element={<CannedRepliesAdmin />} />
         <Route path="admin/users" element={<UsersAdmin />} />
         <Route path="admin/live" element={<AdminLive />} />

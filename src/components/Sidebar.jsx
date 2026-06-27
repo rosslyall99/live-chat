@@ -78,6 +78,8 @@ export default function Sidebar({
 }) {
   const normalizedRole = String(role).toLowerCase();
   const isAdmin = normalizedRole === "admin";
+  const canViewPricesAdmin =
+    normalizedRole === "admin" || normalizedRole === "manager";
 
   const primaryItems = [
     { to: "/rota", label: "ROTA", code: "RT" },
@@ -86,8 +88,18 @@ export default function Sidebar({
     { to: "/inbox", label: "LIVE CHAT", code: "LC" },
   ];
 
-  const groups = isAdmin
-    ? [
+  const groups = [
+    ...(canViewPricesAdmin
+      ? [
+          {
+            title: "Prices Admin",
+            code: "PA",
+            items: [{ to: "/admin/prices", label: "Versions", code: "PV" }],
+          },
+        ]
+      : []),
+    ...(isAdmin
+      ? [
         {
           title: "Appointments",
           code: "AP",
@@ -126,7 +138,8 @@ export default function Sidebar({
           code: "ST",
           items: [{ to: "/change-pin", label: "Change PIN", code: "PN" }],
         },
-      ];
+      ]),
+  ];
 
   return (
     <aside
