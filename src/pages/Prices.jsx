@@ -322,6 +322,7 @@ function TartanLookupSection({
     Boolean(mapping) || Boolean(error) || isLoading || hasResults;
   const mappedRanges = Array.isArray(mapping?.ranges) ? mapping.ranges : [];
   const isMultiRange = mappedRanges.length > 1;
+  const trimmedQuery = query.trim();
 
   return (
     <section className="prices-detail-section prices-detail-section--lookup">
@@ -388,7 +389,9 @@ function TartanLookupSection({
 
       {!hasSearched && !isNotMapped ? (
         <p className="prices-lookup-state">
-          Run a lookup to view mapped tartans for this range.
+          {trimmedQuery.length > 0 && trimmedQuery.length < 3
+            ? "Keep typing - tartan search starts after 3 characters."
+            : "Type at least 3 characters to search tartans, or run a blank lookup to browse this mapped range."}
         </p>
       ) : null}
 
@@ -415,18 +418,20 @@ function TartanLookupSection({
                 </div>
                 <div className="prices-tartan-card__content">
                   <div className="prices-tartan-card__heading">
-                    <strong>{result.name}</strong>
+                    <div className="prices-tartan-card__title-block">
+                      <strong>{result.name}</strong>
+                      {result.clan ? (
+                        <p className="prices-tartan-card__clan">{result.clan}</p>
+                      ) : null}
+                    </div>
                     {isSelected ? (
                       <span className="prices-tartan-card__selected">
                         Selected
                       </span>
                     ) : null}
                   </div>
-                  {result.clan ? (
-                    <p className="prices-tartan-card__subline">{result.clan}</p>
-                  ) : null}
                   {result.variation ? (
-                    <p className="prices-tartan-card__subline">
+                    <p className="prices-tartan-card__variation">
                       {result.variation}
                     </p>
                   ) : null}
@@ -902,10 +907,10 @@ export default function Prices() {
     Boolean(tartanPagination) ||
     selectedTartanId != null;
   const tartanLookupHelperText = canRunDefaultLookup
-    ? "Search all mapped tartans or type at least 3 characters to narrow the catalogue."
+    ? "Type at least 3 characters to search tartans, or run a blank lookup to browse this mapped range."
     : meetsTypedSearchThreshold
       ? "Searching tartans as you type."
-      : "Type at least 3 characters to search tartans.";
+      : "Keep typing - tartan search starts after 3 characters.";
 
   const clearActiveTartanResults = React.useCallback(() => {
     latestTartanRequestRef.current += 1;
