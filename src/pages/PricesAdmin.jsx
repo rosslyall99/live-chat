@@ -80,6 +80,46 @@ function getListTone(list) {
   return "idle";
 }
 
+function isDraftList(list) {
+  return String(list?.status || "").toLowerCase() === "draft";
+}
+
+function isPublishedList(list) {
+  return String(list?.status || "").toLowerCase() === "published";
+}
+
+function getPreviewState(list) {
+  if (list?.is_active) {
+    return {
+      tone: "live",
+      label: "LIVE ACTIVE",
+      summary: "This is the current staff-facing published price list.",
+    };
+  }
+
+  if (isDraftList(list)) {
+    return {
+      tone: "draft",
+      label: "DRAFT",
+      summary: "This is a safe draft preview and does not affect live staff prices.",
+    };
+  }
+
+  if (isPublishedList(list)) {
+    return {
+      tone: "historical",
+      label: "PUBLISHED INACTIVE",
+      summary: "This is a published non-live version kept for reference.",
+    };
+  }
+
+  return {
+    tone: "readonly",
+    label: formatStatus(list?.status || "read only"),
+    summary: "This is a non-live read-only admin preview.",
+  };
+}
+
 function getMatrixSummary(matrix) {
   const columns = Array.isArray(matrix?.columns) ? matrix.columns : [];
   const sections = Array.isArray(matrix?.sections) ? matrix.sections : [];
@@ -114,6 +154,7 @@ function getMatrixSummary(matrix) {
 
 function PriceListCard({ list, isSelected, onSelect }) {
   const tone = getListTone(list);
+  const previewState = getPreviewState(list);
 
   return (
     <button
@@ -131,12 +172,15 @@ function PriceListCard({ list, isSelected, onSelect }) {
           </strong>
         </div>
         <div className="prices-admin-list-card__badges">
-          {list.is_active ? (
-            <span className="prices-admin-badge prices-admin-badge--active">
-              Active
-            </span>
-          ) : null}
+          <span
+            className={`prices-admin-badge prices-admin-badge--${previewState.tone}`}
+          >
+            {previewState.label}
+          </span>
           <span className="prices-admin-badge">{formatStatus(list.status)}</span>
+          <span className="prices-admin-badge prices-admin-badge--readonly">
+            READ ONLY
+          </span>
         </div>
       </div>
 
@@ -163,26 +207,76 @@ function PriceMatrixPreview({ matrixData }) {
   const summary = React.useMemo(() => getMatrixSummary(matrixData), [matrixData]);
   const columns = matrix.columns || [];
   const sections = matrix.sections || [];
-  const statusText = matrixData?.is_active
-    ? "Published active"
-    : formatStatus(matrixData?.status);
+  const previewState = React.useMemo(
+    () => getPreviewState(matrixData),
+    [matrixData],
+  );
+  const keyCounts = [
+    `${summary.columnCount} columns`,
+    `${summary.sectionCount} sections`,
+    `${summary.productCount} products`,
+    `${summary.cellCount} cells`,
+    summary.mappedColumnCount > 0
+      ? `${summary.mappedColumnCount} mapped columns`
+      : null,
+  ].filter(Boolean);
 
   return (
     <div className="prices-admin-preview">
-      <div className="prices-admin-preview__intro">
-        <div>
+      <div className="prices-admin-preview__summary-strip">
+        <div className="prices-admin-preview__intro">
+          <div>
+            <span className="prices-admin-preview__eyebrow">Selected list</span>
+            <h3>{matrixData?.name || matrix.version || "Selected price list"}</h3>
+            <p>{previewState.summary}</p>
+          </div>
+          <div className="prices-admin-preview__badges">
+            <span
+              className={`prices-admin-badge prices-admin-badge--${previewState.tone}`}
+            >
+              {previewState.label}
+            </span>
+            <span className="prices-admin-badge">{formatStatus(matrixData?.status)}</span>
+            {!matrixData?.is_active ? (
+              <span className="prices-admin-badge prices-admin-badge--inactive">
+                INACTIVE
+              </span>
+            ) : null}
+            <span className="prices-admin-badge prices-admin-badge--readonly">
+              READ ONLY
+            </span>
+          </div>
+        </div>
+
+        <div className="prices-admin-preview__identity">
+          <div className="prices-admin-preview__identity-card">
+            <span>Version</span>
+            <strong>{matrix.version || "No version"}</strong>
+          </div>
+          <div className="prices-admin-preview__identity-card">
+            <span>Name</span>
+            <strong>{matrixData?.name || "Unnamed price list"}</strong>
+          </div>
+          <div className="prices-admin-preview__identity-card">
+            <span>Effective</span>
+            <strong>{formatDate(matrixData?.effective_from)}</strong>
+          </div>
+        </div>
+
+        <div className="prices-admin-preview__safety-copy">
           <span className="prices-admin-preview__eyebrow">Admin preview</span>
-          <h3>{matrixData?.name || matrix.version || "Selected price list"}</h3>
           <p>
-            Read-only preview of the selected Prices version. This does not
-            affect the live staff `/prices` page.
+            Preview-only screen. No prices, products, sections, or live staff
+            matrix data can be edited from here.
           </p>
         </div>
-        <div className="prices-admin-preview__badges">
-          <span className="prices-admin-badge prices-admin-badge--status">
-            {statusText}
-          </span>
-          <span className="prices-admin-badge">{matrix.version || "No version"}</span>
+
+        <div className="prices-admin-preview__count-strip">
+          {keyCounts.map((item) => (
+            <span key={item} className="prices-admin-preview__count-pill">
+              {item}
+            </span>
+          ))}
         </div>
       </div>
 
