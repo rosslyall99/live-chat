@@ -4,6 +4,7 @@ import {
   loadPriceColumnMappings,
   loadPricesData,
 } from "../lib/pricesData";
+import { invokeAuthed } from "../lib/invokeAuthed";
 import "./Prices.css";
 
 const categoryThemes = [
@@ -55,6 +56,13 @@ function formatWeight(weight) {
   return typeof weight === "number" ? `${weight} oz` : String(weight);
 }
 
+function formatLookupRangeSummary(ranges) {
+  if (!Array.isArray(ranges) || ranges.length === 0) return "No mapped ranges";
+  return ranges
+    .map((range) => range.external_range_label || `Range ${range.external_range_id}`)
+    .join(", ");
+}
+
 function getMappingDisplay(mappingSource, columnMapping) {
   if (mappingSource !== "supabase") {
     return {
@@ -94,6 +102,19 @@ function DetailPanel({
   mappingSource,
   onClose,
   isOpen,
+  tartanLookupOpen,
+  onToggleTartanLookup,
+  tartanQuery,
+  onTartanQueryChange,
+  onTartanSearch,
+  onTartanLoadMore,
+  tartanSearchLoading,
+  tartanSearchError,
+  tartanResults,
+  tartanMapping,
+  tartanPagination,
+  selectedTartanId,
+  onSelectTartan,
 }) {
   const hasContent = Boolean(isOpen && product && column);
   const value = hasContent ? product.prices[column.id] : null;
@@ -177,11 +198,39 @@ function DetailPanel({
           <ActionSection
             title="Future tools"
             actions={[
-              "Generate quote email",
-              "Check tartan availability",
-              "Supplier enquiry",
+              {
+                label: "Generate quote email",
+                disabled: true,
+              },
+              {
+                label: tartanLookupOpen
+                  ? "Hide tartan availability"
+                  : "Check tartan availability",
+                disabled: false,
+                active: tartanLookupOpen,
+                onClick: onToggleTartanLookup,
+              },
+              {
+                label: "Supplier enquiry",
+                disabled: true,
+              },
             ]}
           />
+          {tartanLookupOpen ? (
+            <TartanLookupSection
+              query={tartanQuery}
+              onQueryChange={onTartanQueryChange}
+              onSearch={onTartanSearch}
+              onLoadMore={onTartanLoadMore}
+              isLoading={tartanSearchLoading}
+              error={tartanSearchError}
+              results={tartanResults}
+              mapping={tartanMapping}
+              pagination={tartanPagination}
+              selectedTartanId={selectedTartanId}
+              onSelectTartan={onSelectTartan}
+            />
+          ) : null}
         </>
       ) : null}
     </aside>
@@ -236,15 +285,178 @@ function ActionSection({ title, actions }) {
       <div className="prices-detail-actions-grid">
         {actions.map((action) => (
           <button
-            key={action}
+            key={action.label}
             type="button"
-            className="prices-detail-action"
-            disabled
+            className={`prices-detail-action ${
+              action.disabled ? "" : "prices-detail-action--enabled"
+            } ${action.active ? "prices-detail-action--active" : ""}`}
+            disabled={action.disabled}
+            onClick={action.onClick}
           >
-            {action}
+            {action.label}
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+function TartanLookupSection({
+  query,
+  onQueryChange,
+  onSearch,
+  onLoadMore,
+  isLoading,
+  error,
+  results,
+  mapping,
+  pagination,
+  selectedTartanId,
+  onSelectTartan,
+}) {
+  const isNotMapped = mapping?.status === "not_mapped";
+  const hasResults = Array.isArray(results) && results.length > 0;
+  const hasSearched =
+    Boolean(mapping) || Boolean(error) || isLoading || hasResults;
+  const mappedRanges = Array.isArray(mapping?.ranges) ? mapping.ranges : [];
+  const isMultiRange = mappedRanges.length > 1;
+
+  return (
+    <section className="prices-detail-section prices-detail-section--lookup">
+      <div className="prices-detail-section__header">
+        <h4>Tartan availability</h4>
+        {mapping?.status === "mapped" ? (
+          <span className="prices-lookup-status">
+            {isMultiRange ? "Mapped multi-range" : "Mapped single-range"}
+          </span>
+        ) : null}
+      </div>
+
+      <form className="prices-lookup-form" onSubmit={onSearch}>
+        <label className="prices-lookup-form__field">
+          <span>Search tartans</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Name, clan, or variation"
+          />
+        </label>
+        <button type="submit" className="prices-lookup-form__submit">
+          {isLoading ? "Searching..." : "Search"}
+        </button>
+      </form>
+
+      {error ? <p className="prices-lookup-banner is-error">{error}</p> : null}
+
+      {isNotMapped ? (
+        <div className="prices-lookup-banner is-info">
+          This range is not mapped to the tartan database yet.
+        </div>
+      ) : null}
+
+      {mapping?.status === "mapped" ? (
+        <div className="prices-lookup-summary">
+          <p>
+            {isMultiRange ? "Linked ranges" : "Linked range"}:{" "}
+            {formatLookupRangeSummary(mappedRanges)}
+          </p>
+        </div>
+      ) : null}
+
+      {isLoading && !hasResults ? (
+        <p className="prices-lookup-state">Searching the tartan catalogue...</p>
+      ) : null}
+
+      {!error &&
+      !isNotMapped &&
+      mapping?.status === "mapped" &&
+      !hasResults &&
+      !isLoading ? (
+        <p className="prices-lookup-state">
+          No tartans matched this search for the mapped range.
+        </p>
+      ) : null}
+
+      {!hasSearched && !isNotMapped ? (
+        <p className="prices-lookup-state">
+          Run a lookup to view mapped tartans for this range.
+        </p>
+      ) : null}
+
+      {hasResults ? (
+        <div className="prices-tartan-results">
+          {results.map((result) => {
+            const imageUrl = result.image_url || result.backup_url || "";
+            const isSelected = selectedTartanId === result.tartan_id;
+            return (
+              <button
+                key={result.tartan_id}
+                type="button"
+                className={`prices-tartan-card ${isSelected ? "is-selected" : ""}`}
+                onClick={() => onSelectTartan(result.tartan_id)}
+              >
+                <div className="prices-tartan-card__media">
+                  {imageUrl ? (
+                    <img src={imageUrl} alt={result.name} />
+                  ) : (
+                    <div className="prices-tartan-card__placeholder">
+                      No image
+                    </div>
+                  )}
+                </div>
+                <div className="prices-tartan-card__content">
+                  <div className="prices-tartan-card__heading">
+                    <strong>{result.name}</strong>
+                    {isSelected ? (
+                      <span className="prices-tartan-card__selected">
+                        Selected
+                      </span>
+                    ) : null}
+                  </div>
+                  {result.clan ? (
+                    <p className="prices-tartan-card__subline">{result.clan}</p>
+                  ) : null}
+                  {result.variation ? (
+                    <p className="prices-tartan-card__subline">
+                      {result.variation}
+                    </p>
+                  ) : null}
+                  <dl className="prices-tartan-card__meta">
+                    <div>
+                      <dt>Weaver</dt>
+                      <dd>{formatDetailValue(result.weaver)}</dd>
+                    </div>
+                    <div>
+                      <dt>Range</dt>
+                      <dd>{formatDetailValue(result.range)}</dd>
+                    </div>
+                    <div>
+                      <dt>Width</dt>
+                      <dd>{formatDetailValue(result.width)}</dd>
+                    </div>
+                    <div>
+                      <dt>Weight</dt>
+                      <dd>{formatDetailValue(result.weight)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {pagination?.has_more && !isNotMapped ? (
+        <button
+          type="button"
+          className="prices-lookup-load-more"
+          onClick={onLoadMore}
+          disabled={isLoading}
+        >
+          {isLoading ? "Loading..." : "Load more"}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -261,6 +473,14 @@ export default function Prices() {
   const [selectedCell, setSelectedCell] = React.useState(null);
   const [dismissedDerivedCellKey, setDismissedDerivedCellKey] =
     React.useState(null);
+  const [isTartanLookupOpen, setIsTartanLookupOpen] = React.useState(false);
+  const [tartanQuery, setTartanQuery] = React.useState("");
+  const [tartanSearchLoading, setTartanSearchLoading] = React.useState(false);
+  const [tartanSearchError, setTartanSearchError] = React.useState("");
+  const [tartanResults, setTartanResults] = React.useState([]);
+  const [tartanMapping, setTartanMapping] = React.useState(null);
+  const [tartanPagination, setTartanPagination] = React.useState(null);
+  const [selectedTartanId, setSelectedTartanId] = React.useState(null);
   const matrixScrollRef = React.useRef(null);
   const priceCellRefs = React.useRef(new Map());
 
@@ -570,6 +790,21 @@ export default function Prices() {
     };
   }, [finalSelectedCell, isDetailOpen]);
 
+  const resetTartanLookup = React.useCallback(() => {
+    setIsTartanLookupOpen(false);
+    setTartanQuery("");
+    setTartanSearchLoading(false);
+    setTartanSearchError("");
+    setTartanResults([]);
+    setTartanMapping(null);
+    setTartanPagination(null);
+    setSelectedTartanId(null);
+  }, []);
+
+  React.useEffect(() => {
+    resetTartanLookup();
+  }, [finalSelectedCell?.columnId, resetTartanLookup]);
+
   function resetDerivedDismissal() {
     setDismissedDerivedCellKey(null);
   }
@@ -640,6 +875,81 @@ export default function Prices() {
     setColumnScope(null);
     setSelectedCell(null);
     setDismissedDerivedCellKey(null);
+  }
+
+  async function runTartanLookup({ offset = 0, append = false } = {}) {
+    if (!detailColumn?.id) return;
+
+    setTartanSearchLoading(true);
+    setTartanSearchError("");
+
+    const { data, error } = await invokeAuthed(
+      "search_tartans_for_price_column",
+      {
+        column_id: detailColumn.id,
+        query: tartanQuery.trim(),
+        limit: 24,
+        offset,
+      },
+    );
+
+    if (error) {
+      setTartanSearchError(
+        error.message || "Could not search the tartan catalogue.",
+      );
+      if (!append) {
+        setTartanResults([]);
+        setTartanMapping(null);
+        setTartanPagination(null);
+        setSelectedTartanId(null);
+      }
+      setTartanSearchLoading(false);
+      return;
+    }
+
+    const incomingResults = Array.isArray(data?.results) ? data.results : [];
+
+    setTartanMapping(data?.mapping || null);
+    setTartanPagination(data?.pagination || null);
+    setTartanResults((current) => {
+      const nextResults = append
+        ? [...current, ...incomingResults]
+        : incomingResults;
+      setSelectedTartanId((selectedId) =>
+        nextResults.some((result) => result.tartan_id === selectedId)
+          ? selectedId
+          : null,
+      );
+      return nextResults;
+    });
+    setTartanSearchLoading(false);
+  }
+
+  function handleToggleTartanLookup() {
+    setIsTartanLookupOpen((current) => {
+      const next = !current;
+      if (!next) {
+        setTartanSearchLoading(false);
+        setTartanSearchError("");
+        setTartanResults([]);
+        setTartanMapping(null);
+        setTartanPagination(null);
+        setSelectedTartanId(null);
+        setTartanQuery("");
+      }
+      return next;
+    });
+  }
+
+  async function handleTartanSearch(event) {
+    event.preventDefault();
+    await runTartanLookup({ offset: 0, append: false });
+  }
+
+  async function handleTartanLoadMore() {
+    const nextOffset =
+      (tartanPagination?.offset || 0) + (tartanPagination?.returned || 0);
+    await runTartanLookup({ offset: nextOffset, append: true });
   }
 
   const statusLabel =
@@ -918,6 +1228,19 @@ export default function Prices() {
           version={pricesData?.version}
           onClose={clearSelectedCell}
           isOpen={isDetailOpen}
+          tartanLookupOpen={isTartanLookupOpen}
+          onToggleTartanLookup={handleToggleTartanLookup}
+          tartanQuery={tartanQuery}
+          onTartanQueryChange={setTartanQuery}
+          onTartanSearch={handleTartanSearch}
+          onTartanLoadMore={handleTartanLoadMore}
+          tartanSearchLoading={tartanSearchLoading}
+          tartanSearchError={tartanSearchError}
+          tartanResults={tartanResults}
+          tartanMapping={tartanMapping}
+          tartanPagination={tartanPagination}
+          selectedTartanId={selectedTartanId}
+          onSelectTartan={setSelectedTartanId}
         />
       </div>
     </div>
