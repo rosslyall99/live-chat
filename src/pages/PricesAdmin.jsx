@@ -758,9 +758,13 @@ function PriceMatrixPreview({
 
 function PriceAuditPanel({
   selectedList,
+  isAdmin,
   loadingAudit,
+  refreshingAudit,
   auditError,
   auditEntries,
+  lastAuditLoadedAt,
+  onRefresh,
 }) {
   return (
     <section className="prices-admin-audit-panel">
@@ -772,14 +776,42 @@ function PriceAuditPanel({
             Read-only admin audit trail for the selected price list, showing the
             latest recorded changes first.
           </p>
+          {!isAdmin ? (
+            <p className="prices-admin-audit-panel__manager-note">
+              Managers can review this list and its audit history, but only admins
+              can edit draft pricing.
+            </p>
+          ) : null}
         </div>
-        {selectedList ? (
-          <div className="prices-admin-audit-panel__meta">
-            <strong>{selectedList.version || "Selected list"}</strong>
-            <span>{selectedList.name || "Unnamed price list"}</span>
-          </div>
-        ) : null}
+        <div className="prices-admin-audit-panel__side">
+          {selectedList ? (
+            <div className="prices-admin-audit-panel__meta">
+              <strong>{selectedList.version || "Selected list"}</strong>
+              <span>{selectedList.name || "Unnamed price list"}</span>
+            </div>
+          ) : null}
+          {selectedList ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button prices-admin-audit-panel__refresh"
+              onClick={onRefresh}
+              disabled={loadingAudit || refreshingAudit}
+            >
+              {refreshingAudit ? "Refreshing..." : "Refresh"}
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {selectedList && lastAuditLoadedAt && !loadingAudit ? (
+        <div className="prices-admin-audit-panel__status">
+          <span>
+            {refreshingAudit
+              ? "Refreshing audit history..."
+              : `Last refreshed ${formatDateTime(lastAuditLoadedAt)}`}
+          </span>
+        </div>
+      ) : null}
 
       {loadingAudit ? (
         <div className="prices-admin-state">
@@ -869,8 +901,10 @@ export default function PricesAdmin() {
   const [matrixError, setMatrixError] = React.useState("");
   const [matrixData, setMatrixData] = React.useState(null);
   const [loadingAudit, setLoadingAudit] = React.useState(false);
+  const [refreshingAudit, setRefreshingAudit] = React.useState(false);
   const [auditError, setAuditError] = React.useState("");
   const [auditEntries, setAuditEntries] = React.useState([]);
+  const [lastAuditLoadedAt, setLastAuditLoadedAt] = React.useState("");
   const [draftFormOpen, setDraftFormOpen] = React.useState(false);
   const [draftVersion, setDraftVersion] = React.useState("");
   const [draftName, setDraftName] = React.useState("");
@@ -1041,42 +1075,61 @@ export default function PricesAdmin() {
     loadSelectedMatrix();
   }, [loadSelectedMatrix]);
 
-  const loadSelectedAudit = React.useCallback(async () => {
-    if (!canView || !selectedPriceListId) {
-      setLoadingAudit(false);
-      setAuditError("");
-      setAuditEntries([]);
-      return;
-    }
+  const loadSelectedAudit = React.useCallback(
+    async ({ background = false, priceListId } = {}) => {
+      const targetPriceListId = priceListId || selectedPriceListId;
 
-    const seq = ++loadAuditSeq.current;
-
-    setLoadingAudit(true);
-    setAuditError("");
-
-    try {
-      const { data, error } = await supabase.rpc("get_price_audit_log_admin", {
-        p_price_list_id: selectedPriceListId,
-        p_limit: 50,
-        p_offset: 0,
-      });
-
-      if (seq !== loadAuditSeq.current) return;
-      if (error) throw error;
-
-      setAuditEntries(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("prices admin: failed to load audit history", error);
-      if (seq !== loadAuditSeq.current) return;
-
-      setAuditError(error?.message || "Could not load the selected audit history.");
-      setAuditEntries([]);
-    } finally {
-      if (seq === loadAuditSeq.current) {
+      if (!canView || !targetPriceListId) {
         setLoadingAudit(false);
+        setRefreshingAudit(false);
+        setAuditError("");
+        setAuditEntries([]);
+        setLastAuditLoadedAt("");
+        return;
       }
-    }
-  }, [canView, selectedPriceListId]);
+
+      const seq = ++loadAuditSeq.current;
+
+      if (background) {
+        setRefreshingAudit(true);
+      } else {
+        setLoadingAudit(true);
+      }
+      setAuditError("");
+
+      try {
+        const { data, error } = await supabase.rpc("get_price_audit_log_admin", {
+          p_price_list_id: targetPriceListId,
+          p_limit: 50,
+          p_offset: 0,
+        });
+
+        if (seq !== loadAuditSeq.current) return;
+        if (error) throw error;
+
+        setAuditEntries(Array.isArray(data) ? data : []);
+        setLastAuditLoadedAt(new Date().toISOString());
+      } catch (error) {
+        console.error("prices admin: failed to load audit history", error);
+        if (seq !== loadAuditSeq.current) return;
+
+        setAuditError(error?.message || "Could not load the selected audit history.");
+        if (!background) {
+          setAuditEntries([]);
+          setLastAuditLoadedAt("");
+        }
+      } finally {
+        if (seq === loadAuditSeq.current) {
+          if (background) {
+            setRefreshingAudit(false);
+          } else {
+            setLoadingAudit(false);
+          }
+        }
+      }
+    },
+    [canView, selectedPriceListId],
+  );
 
   React.useEffect(() => {
     loadSelectedAudit();
@@ -1092,6 +1145,15 @@ export default function PricesAdmin() {
     setProductActionError("");
     setProductActionSuccess("");
   }, [selectedPriceListId]);
+
+  const refreshAuditAfterSuccess = React.useCallback(
+    (priceListId) => {
+      loadSelectedAudit({ background: true, priceListId }).catch((error) => {
+        console.error("prices admin: background audit refresh failed", error);
+      });
+    },
+    [loadSelectedAudit],
+  );
 
   React.useEffect(() => {
     if (!selectedProductId) return;
@@ -1200,6 +1262,7 @@ export default function PricesAdmin() {
         preferredSelectionId:
           createdDraftId || activePriceList?.id || undefined,
       });
+      refreshAuditAfterSuccess(createdDraftId || activePriceList?.id || "");
 
       setDraftFormOpen(false);
       setDraftActionError("");
@@ -1268,6 +1331,7 @@ export default function PricesAdmin() {
       if (error) throw error;
 
       await loadSelectedMatrix();
+      refreshAuditAfterSuccess();
       setProductActionSuccess("Product details saved to this draft.");
     } catch (error) {
       console.error("prices admin: failed to update product", error);
@@ -1302,6 +1366,7 @@ export default function PricesAdmin() {
       if (error) throw error;
 
       await loadSelectedMatrix();
+      refreshAuditAfterSuccess();
       setCellForm((current) => ({ ...current, reason: "" }));
       setCellActionSuccess("Retail price saved to this draft.");
     } catch (error) {
@@ -1524,9 +1589,13 @@ export default function PricesAdmin() {
 
                 <PriceAuditPanel
                   selectedList={selectedPriceList}
+                  isAdmin={isAdmin}
                   loadingAudit={loadingAudit}
+                  refreshingAudit={refreshingAudit}
                   auditError={auditError}
                   auditEntries={auditEntries}
+                  lastAuditLoadedAt={lastAuditLoadedAt}
+                  onRefresh={() => loadSelectedAudit({ background: true })}
                 />
 
                 <section className="prices-admin-product-panel">
