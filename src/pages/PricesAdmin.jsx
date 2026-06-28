@@ -239,6 +239,34 @@ function canPublishList(list, isAdmin) {
   return Boolean(isAdmin && list && isDraftList(list) && !list.is_active);
 }
 
+function getHonestListDate(list, kind) {
+  if (!list) {
+    return {
+      label: "Updated",
+      value: "Unknown date",
+    };
+  }
+
+  if (kind === "draft") {
+    return {
+      label: "Created",
+      value: formatDateTime(list.created_at),
+    };
+  }
+
+  if (kind === "inactive") {
+    return {
+      label: "Updated",
+      value: formatDateTime(list.updated_at || list.created_at),
+    };
+  }
+
+  return {
+    label: "Updated",
+    value: formatDateTime(list.updated_at || list.created_at),
+  };
+}
+
 function formatArchivedDeliveryWindow(item) {
   if (
     Number.isFinite(item?.delivery_weeks_min) &&
@@ -682,9 +710,8 @@ function getCellValidationHints(formState) {
   return hints;
 }
 
-function PriceListCard({ list, isSelected, onSelect }) {
+function PriceListCard({ list, isSelected, onSelect, eyebrow, dateLabel, dateValue }) {
   const tone = getListTone(list);
-  const previewState = getPreviewState(list);
 
   return (
     <button
@@ -696,34 +723,19 @@ function PriceListCard({ list, isSelected, onSelect }) {
     >
       <div className="prices-admin-list-card__header">
         <div>
-          <span className="prices-admin-list-card__eyebrow">Price list</span>
+          <span className="prices-admin-list-card__eyebrow">
+            {eyebrow || "Price list"}
+          </span>
           <strong className="prices-admin-list-card__version">
-            {list.version || "Untitled version"}
+            {list.name || "Unnamed price list"}
           </strong>
         </div>
-        <div className="prices-admin-list-card__badges">
-          <span
-            className={`prices-admin-badge prices-admin-badge--${previewState.tone}`}
-          >
-            {previewState.label}
-          </span>
-          <span className="prices-admin-badge">{formatStatus(list.status)}</span>
-          <span className="prices-admin-badge prices-admin-badge--readonly">
-            READ ONLY
-          </span>
-        </div>
-      </div>
-
-      <div className="prices-admin-list-card__name">
-        {list.name || "Unnamed price list"}
       </div>
 
       <div className="prices-admin-list-card__meta">
-        <span>{formatDate(list.effective_from)}</span>
-        <span>{formatCount(list.column_count, "columns")}</span>
-        <span>{formatCount(list.section_count, "sections")}</span>
-        <span>{formatCount(list.product_count, "products")}</span>
-        <span>{formatCount(list.cell_count, "cells")}</span>
+        <span>
+          {dateLabel}: {dateValue}
+        </span>
       </div>
     </button>
   );
@@ -732,28 +744,22 @@ function PriceListCard({ list, isSelected, onSelect }) {
 function PriceMatrixPreview({
   matrixData,
   matrixModel,
-  selectedProductId,
   selectedCellKey,
+  selectedProductId,
+  selectedRangeId,
   onSelectProduct,
   onSelectCell,
+  onSelectColumn,
 }) {
   const matrix = matrixModel;
-  const summary = React.useMemo(() => getMatrixSummary(matrixData), [matrixData]);
   const columns = matrix.columns || [];
   const sections = matrix.sections || [];
   const previewState = React.useMemo(
     () => getPreviewState(matrixData),
     [matrixData],
   );
-  const keyCounts = [
-    `${summary.columnCount} columns`,
-    `${summary.sectionCount} sections`,
-    `${summary.productCount} products`,
-    `${summary.cellCount} cells`,
-    summary.mappedColumnCount > 0
-      ? `${summary.mappedColumnCount} mapped columns`
-      : null,
-  ].filter(Boolean);
+  const showStatusBadge =
+    formatStatus(matrixData?.status).toLowerCase() !== previewState.label.toLowerCase();
 
   return (
     <div className="prices-admin-preview">
@@ -761,8 +767,7 @@ function PriceMatrixPreview({
         <div className="prices-admin-preview__intro">
           <div>
             <span className="prices-admin-preview__eyebrow">Selected list</span>
-            <h3>{matrixData?.name || matrix.version || "Selected price list"}</h3>
-            <p>{previewState.summary}</p>
+            <h3>{matrixData?.name || "Selected price list"}</h3>
           </div>
           <div className="prices-admin-preview__badges">
             <span
@@ -770,15 +775,9 @@ function PriceMatrixPreview({
             >
               {previewState.label}
             </span>
-            <span className="prices-admin-badge">{formatStatus(matrixData?.status)}</span>
-            {!matrixData?.is_active ? (
-              <span className="prices-admin-badge prices-admin-badge--inactive">
-                INACTIVE
-              </span>
+            {showStatusBadge ? (
+              <span className="prices-admin-badge">{formatStatus(matrixData?.status)}</span>
             ) : null}
-            <span className="prices-admin-badge prices-admin-badge--readonly">
-              READ ONLY
-            </span>
           </div>
         </div>
 
@@ -788,29 +787,13 @@ function PriceMatrixPreview({
             <strong>{matrix.version || "No version"}</strong>
           </div>
           <div className="prices-admin-preview__identity-card">
-            <span>Name</span>
-            <strong>{matrixData?.name || "Unnamed price list"}</strong>
-          </div>
-          <div className="prices-admin-preview__identity-card">
             <span>Effective</span>
             <strong>{formatDate(matrixData?.effective_from)}</strong>
           </div>
-        </div>
-
-        <div className="prices-admin-preview__safety-copy">
-          <span className="prices-admin-preview__eyebrow">Working area</span>
-          <p>
-            Select a product row or retail price cell below to work on this
-            draft. Live staff Prices stay unchanged until publishing.
-          </p>
-        </div>
-
-        <div className="prices-admin-preview__count-strip">
-          {keyCounts.map((item) => (
-            <span key={item} className="prices-admin-preview__count-pill">
-              {item}
-            </span>
-          ))}
+          <div className="prices-admin-preview__identity-card">
+            <span>Status</span>
+            <strong>{formatStatus(matrixData?.status)}</strong>
+          </div>
         </div>
       </div>
 
@@ -820,18 +803,57 @@ function PriceMatrixPreview({
             <thead>
               <tr>
                 <th className="prices-admin-matrix__product-heading">Product</th>
-                {columns.map((column) => (
-                  <th key={column.id}>
-                    <div className="prices-admin-matrix__column">
-                      <strong>{column.supplier}</strong>
-                      <span>{column.range}</span>
-                      <small>
-                        {[column.width, column.weight].filter(Boolean).join(" / ") ||
-                          "No spec"}
-                      </small>
-                    </div>
-                  </th>
-                ))}
+                {columns.map((column) => {
+                  const isMapped =
+                    Number.isFinite(column.external_weaver_id) ||
+                    Number.isFinite(column.external_range_id);
+                  const isSelectedRange = selectedRangeId === column.recordId;
+
+                  return (
+                    <th
+                      key={column.id}
+                      className={
+                        isSelectedRange
+                          ? "prices-admin-matrix__column-heading--selected"
+                          : ""
+                      }
+                    >
+                      <button
+                        type="button"
+                        className={`prices-admin-matrix__column ${
+                          !isMapped ? "prices-admin-matrix__column--unmapped" : ""
+                        } ${isSelectedRange ? "prices-admin-matrix__column--selected" : ""}`}
+                        onClick={() => onSelectColumn(column.recordId)}
+                        title={
+                          isMapped ? "Mapped to tartan range" : "No tartan mapping"
+                        }
+                        aria-label={
+                          isMapped
+                            ? `${column.supplier} ${column.range} - Mapped to tartan range`
+                            : `${column.supplier} ${column.range} - No tartan mapping`
+                        }
+                      >
+                        <strong>{column.supplier}</strong>
+                        <span>{column.range}</span>
+                        <small>
+                          {[column.width, column.weight].filter(Boolean).join(" / ") ||
+                            "No spec"}
+                        </small>
+                        <span
+                          className={`prices-admin-matrix__column-marker ${
+                            isMapped
+                              ? "prices-admin-matrix__column-marker--mapped"
+                              : "prices-admin-matrix__column-marker--unmapped"
+                          }`}
+                          title={isMapped ? "Mapped to tartan range" : "No tartan mapping"}
+                          aria-hidden="true"
+                        >
+                          {isMapped ? "•" : "!"}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -841,7 +863,6 @@ function PriceMatrixPreview({
                     <th colSpan={columns.length + 1}>{section.name}</th>
                   </tr>
                   {(section.products || []).map((product) => {
-                    const delivery = formatDeliveryWindow(product);
                     const isSelected = product.recordId === selectedProductId;
 
                     return (
@@ -862,16 +883,6 @@ function PriceMatrixPreview({
                         <th className="prices-admin-matrix__product-cell">
                           <div className="prices-admin-matrix__product-name">
                             {product.name}
-                          </div>
-                          <div className="prices-admin-matrix__product-meta">
-                            {product.clothRequired ? (
-                              <span>Cloth: {product.clothRequired}</span>
-                            ) : null}
-                            {product.cmtPrice != null ? (
-                              <span>CMT: {gbp.format(product.cmtPrice)}</span>
-                            ) : null}
-                            {delivery ? <span>Delivery: {delivery}</span> : null}
-                            {product.notes ? <span>Notes: {product.notes}</span> : null}
                           </div>
                         </th>
                         {columns.map((column) => {
@@ -950,31 +961,34 @@ function PriceMatrixPreview({
 
 function PriceAuditPanel({
   selectedList,
-  isAdmin,
   loadingAudit,
   refreshingAudit,
   auditError,
   auditEntries,
   lastAuditLoadedAt,
+  expanded,
+  onToggleExpanded,
   onRefresh,
 }) {
   return (
     <section className="prices-admin-audit-panel">
       <div className="prices-admin-audit-panel__header">
-        <div>
-          <span className="prices-admin-panel__eyebrow">Audit trail</span>
+        <button
+          type="button"
+          className="prices-admin-audit-panel__toggle"
+          onClick={onToggleExpanded}
+        >
           <h3>History</h3>
-          <p>
-            Read-only change history for the selected price list, newest first.
-          </p>
-        </div>
+          <span
+            className={`prices-admin-audit-panel__chevron ${
+              expanded ? "is-open" : ""
+            }`}
+            aria-hidden="true"
+          >
+            v
+          </span>
+        </button>
         <div className="prices-admin-audit-panel__side">
-          {selectedList ? (
-            <div className="prices-admin-audit-panel__meta">
-              <strong>{selectedList.version || "Selected list"}</strong>
-              <span>{selectedList.name || "Unnamed price list"}</span>
-            </div>
-          ) : null}
           {selectedList ? (
             <button
               type="button"
@@ -982,96 +996,99 @@ function PriceAuditPanel({
               onClick={onRefresh}
               disabled={loadingAudit || refreshingAudit}
             >
-              {refreshingAudit ? "Refreshing..." : "Refresh"}
+              <span>{refreshingAudit ? "Refreshing..." : "Refresh"}</span>
+              <small>
+                {lastAuditLoadedAt
+                  ? formatDateTime(lastAuditLoadedAt)
+                  : "Not loaded yet"}
+              </small>
             </button>
           ) : null}
         </div>
       </div>
 
-      {selectedList && lastAuditLoadedAt && !loadingAudit ? (
-        <div className="prices-admin-audit-panel__status">
-          <span>
-            {refreshingAudit
-              ? "Refreshing audit history..."
-              : `Last refreshed ${formatDateTime(lastAuditLoadedAt)}`}
-          </span>
-        </div>
-      ) : null}
+      {!expanded ? null : (
+        <>
+          {loadingAudit ? (
+            <div className="prices-admin-state">
+              <strong>Loading history</strong>
+              <p>Fetching the latest selected-list audit entries.</p>
+            </div>
+          ) : null}
 
-      {loadingAudit ? (
-        <div className="prices-admin-state">
-          <strong>Loading audit history</strong>
-          <p>Fetching the latest selected-list audit entries.</p>
-        </div>
-      ) : null}
+          {!loadingAudit && auditError ? (
+            <div className="prices-admin-state prices-admin-state--error">
+              <strong>Could not load history</strong>
+              <p>{auditError}</p>
+            </div>
+          ) : null}
 
-      {!loadingAudit && auditError ? (
-        <div className="prices-admin-state prices-admin-state--error">
-          <strong>Could not load audit history</strong>
-          <p>{auditError}</p>
-        </div>
-      ) : null}
+          {!loadingAudit && !auditError && auditEntries.length === 0 ? (
+            <div className="prices-admin-state">
+              <strong>No history yet</strong>
+              <p>No recorded admin audit entries were returned for this price list.</p>
+            </div>
+          ) : null}
 
-      {!loadingAudit && !auditError && auditEntries.length === 0 ? (
-        <div className="prices-admin-state">
-          <strong>No audit history yet</strong>
-          <p>No recorded admin audit entries were returned for this price list.</p>
-        </div>
-      ) : null}
+          {!loadingAudit && !auditError && auditEntries.length > 0 ? (
+            <div className="prices-admin-audit-log">
+              {auditEntries.map((entry) => {
+                const changes = getAuditChanges(entry);
 
-      {!loadingAudit && !auditError && auditEntries.length > 0 ? (
-        <div className="prices-admin-audit-log">
-          {auditEntries.map((entry) => {
-            const changes = getAuditChanges(entry);
-
-            return (
-              <article key={entry.id} className="prices-admin-audit-entry">
-                <div className="prices-admin-audit-entry__top">
-                  <div>
-                    <div className="prices-admin-audit-entry__badges">
-                      <span className="prices-admin-badge prices-admin-badge--readonly">
-                        {formatAuditLabel(entry.entity_type)}
-                      </span>
-                      <span className="prices-admin-badge prices-admin-badge--historical">
-                        {formatAuditLabel(entry.action)}
-                      </span>
-                    </div>
-                    <h4>{getAuditSummary(entry)}</h4>
-                  </div>
-                  <time
-                    className="prices-admin-audit-entry__time"
-                    dateTime={entry.created_at || undefined}
-                  >
-                    {formatDateTime(entry.created_at)}
-                  </time>
-                </div>
-
-                <div className="prices-admin-audit-entry__meta">
-                  <span>By {entry.changed_by_name || "Unknown staff user"}</span>
-                  {entry.reason ? <span>Reason: {entry.reason}</span> : null}
-                </div>
-
-                {changes.length > 0 ? (
-                  <dl className="prices-admin-audit-entry__changes">
-                    {changes.map((change) => (
-                      <div
-                        key={`${entry.id}:${change.label}`}
-                        className="prices-admin-audit-entry__change"
-                      >
-                        <dt>{change.label}</dt>
-                        <dd>
-                          <span>{change.before}</span>
-                          <strong>{change.after}</strong>
-                        </dd>
+                return (
+                  <article key={entry.id} className="prices-admin-audit-entry">
+                    <div className="prices-admin-audit-entry__top">
+                      <div>
+                        <div className="prices-admin-audit-entry__badges">
+                          <span className="prices-admin-badge prices-admin-badge--readonly">
+                            {formatAuditLabel(entry.entity_type)}
+                          </span>
+                          <span className="prices-admin-badge prices-admin-badge--historical">
+                            {formatAuditLabel(entry.action)}
+                          </span>
+                        </div>
+                        <h4>{getAuditSummary(entry)}</h4>
                       </div>
-                    ))}
-                  </dl>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
+                      <div className="prices-admin-audit-entry__side">
+                        <time
+                          className="prices-admin-audit-entry__time"
+                          dateTime={entry.created_at || undefined}
+                        >
+                          {formatDateTime(entry.created_at)}
+                        </time>
+                        <span className="prices-admin-audit-entry__actor">
+                          By {entry.changed_by_name || "Unknown staff user"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="prices-admin-audit-entry__meta">
+                      {entry.reason ? <span>Reason: {entry.reason}</span> : null}
+                    </div>
+
+                    {changes.length > 0 ? (
+                      <dl className="prices-admin-audit-entry__changes">
+                        {changes.map((change) => (
+                          <div
+                            key={`${entry.id}:${change.label}`}
+                            className="prices-admin-audit-entry__change"
+                          >
+                            <dt>{change.label}</dt>
+                            <dd>
+                              <span>{change.before}</span>
+                              <strong>{change.after}</strong>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -1084,7 +1101,6 @@ function PriceStatusPanel({
   auditError,
   loadingAudit,
   isAdmin,
-  activePriceList,
   publishActionError,
   publishActionSuccess,
   publishing,
@@ -1096,10 +1112,6 @@ function PriceStatusPanel({
   onOpenArchivedItems,
   onOpenPublishModal,
 }) {
-  const previewState = React.useMemo(
-    () => getPreviewState(matrixData || selectedList),
-    [matrixData, selectedList],
-  );
   const readiness = React.useMemo(
     () => getReadinessMetrics(matrixModel),
     [matrixModel],
@@ -1110,58 +1122,71 @@ function PriceStatusPanel({
       isDraftList(matrixData || selectedList) &&
       !(matrixData || selectedList)?.is_active,
   );
-  const capabilityNote = getCapabilityNote({
-    list: matrixData || selectedList,
-    isAdmin,
-    isDraftSelection,
-  });
-  const editabilityLabel = getEditabilityLabel({
-    list: matrixData || selectedList,
-    isAdmin,
-    isDraftSelection,
-  });
   const canPublishSelectedList = canPublishList(matrixData || selectedList, isAdmin);
-  const showManagerNote = Boolean(isDraftSelection && !isAdmin);
+
+  if (!isDraftSelection) {
+    return null;
+  }
 
   return (
     <section className="prices-admin-status-panel">
       <div className="prices-admin-status-panel__header">
         <div>
           <span className="prices-admin-panel__eyebrow">Draft controls</span>
-          <h3>List status and actions</h3>
-          <p>{capabilityNote}</p>
-          {showManagerNote ? (
-            <p className="prices-admin-status-panel__manager-note">
-              Manager mode is read-only. Admin-only actions stay visible through
-              audit and status, but remain unavailable here.
-            </p>
-          ) : null}
+          <h3>Draft controls</h3>
         </div>
-        <div className="prices-admin-status-panel__badges">
-          <span
-            className={`prices-admin-badge prices-admin-badge--${previewState.tone}`}
-          >
-            {previewState.label}
-          </span>
-          <span className="prices-admin-badge">{editabilityLabel}</span>
+        <div className="prices-admin-status-panel__actions-inline">
+          {canBrowseArchivedItems ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button"
+              onClick={onOpenArchivedItems}
+            >
+              Archived items
+            </button>
+          ) : null}
+          {canManageColumns ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button"
+              onClick={onOpenColumnCreate}
+            >
+              Add column
+            </button>
+          ) : null}
+          {canManageProducts ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button"
+              onClick={onOpenProductCreate}
+            >
+              Add product
+            </button>
+          ) : null}
+          {canPublishSelectedList ? (
+            <button
+              type="button"
+              className="prices-admin-warning-button"
+              onClick={onOpenPublishModal}
+              disabled={publishing}
+            >
+              {publishing ? "Publishing..." : "Publish draft"}
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="prices-admin-status-panel__grid">
         <div className="prices-admin-status-card">
-          <span>Selected list</span>
-          <strong>{selectedList?.version || matrixData?.version || "No version"}</strong>
-          <small>{selectedList?.name || matrixData?.name || "Unnamed price list"}</small>
+          <span>Name</span>
+          <strong>{selectedList?.name || matrixData?.name || "Unnamed price list"}</strong>
+          <small>{selectedList?.version || matrixData?.version || "No version"}</small>
         </div>
 
         <div className="prices-admin-status-card">
           <span>Status</span>
           <strong>{formatStatus((matrixData || selectedList)?.status)}</strong>
-          <small>
-            {(matrixData || selectedList)?.is_active
-              ? "Current staff-facing list"
-              : "Non-live CMS selection"}
-          </small>
+          <small>{isAdmin ? "Draft editable by admin" : "Draft review only"}</small>
         </div>
 
         <div className="prices-admin-status-card">
@@ -1178,92 +1203,20 @@ function PriceStatusPanel({
           <span>Audit history</span>
           <strong>
             {loadingAudit
-              ? "Loading audit"
+              ? "Loading history"
               : auditError
-                ? "Audit unavailable"
+                ? "History unavailable"
                 : latestAuditEntry
                   ? formatDateTime(latestAuditEntry.created_at)
-                  : "No audit entries"}
+                  : "No history entries"}
           </strong>
           <small>
             {auditError
-              ? "Editing remains available even if audit loading fails."
+              ? "History can fail without blocking draft editing."
               : latestAuditEntry
                 ? formatAuditLabel(latestAuditEntry.action)
                 : "No recorded changes yet"}
           </small>
-        </div>
-      </div>
-
-      <div className="prices-admin-status-panel__actions">
-        <div className="prices-admin-status-panel__action-group">
-          <span className="prices-admin-status-panel__action-label">
-            Draft structure
-          </span>
-          <div className="prices-admin-status-panel__action-buttons">
-            {canBrowseArchivedItems ? (
-              <button
-                type="button"
-                className="prices-admin-secondary-button"
-                onClick={onOpenArchivedItems}
-              >
-                Archived items
-              </button>
-            ) : null}
-
-            {canManageColumns ? (
-              <button
-                type="button"
-                className="prices-admin-secondary-button"
-                onClick={onOpenColumnCreate}
-              >
-                Add column
-              </button>
-            ) : null}
-
-            {canManageProducts ? (
-              <button
-                type="button"
-                className="prices-admin-secondary-button"
-                onClick={onOpenProductCreate}
-              >
-                Add product
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="prices-admin-status-panel__action-group prices-admin-status-panel__action-group--danger">
-          <span className="prices-admin-status-panel__action-label">
-            Live impact
-          </span>
-          <div className="prices-admin-status-panel__publish-copy">
-            {canPublishSelectedList ? (
-              <p>Publishing will make this draft the live staff Prices matrix.</p>
-            ) : isDraftSelection && !isAdmin ? (
-              <p>Only admins can publish a reviewed draft to live staff Prices.</p>
-            ) : (matrixData || selectedList)?.is_active ? (
-              <p>This is already the live staff Prices matrix.</p>
-            ) : selectedList ? (
-              <p>Only inactive draft price lists can be published live.</p>
-            ) : null}
-            {canPublishSelectedList && activePriceList ? (
-              <span>
-                Current live list: {activePriceList.version || "Active list"}
-                {activePriceList.name ? ` - ${activePriceList.name}` : ""}
-              </span>
-            ) : null}
-          </div>
-          {canPublishSelectedList ? (
-            <button
-              type="button"
-              className="prices-admin-warning-button"
-              onClick={onOpenPublishModal}
-              disabled={publishing}
-            >
-              {publishing ? "Publishing..." : "Publish draft"}
-            </button>
-          ) : null}
         </div>
       </div>
 
@@ -1330,6 +1283,7 @@ export default function PricesAdmin() {
   const [archivedRestoreError, setArchivedRestoreError] = React.useState("");
   const [archivedRestoreSuccess, setArchivedRestoreSuccess] = React.useState("");
   const [columnArchiveConfirmOpen, setColumnArchiveConfirmOpen] = React.useState(false);
+  const [columnArchiveTargetId, setColumnArchiveTargetId] = React.useState("");
   const [columnArchiveReason, setColumnArchiveReason] = React.useState("");
   const [archivingColumn, setArchivingColumn] = React.useState(false);
   const [columnArchiveError, setColumnArchiveError] = React.useState("");
@@ -1337,7 +1291,9 @@ export default function PricesAdmin() {
   const [archiveReason, setArchiveReason] = React.useState("");
   const [archivingProduct, setArchivingProduct] = React.useState(false);
   const [productArchiveError, setProductArchiveError] = React.useState("");
+  const [selectedContext, setSelectedContext] = React.useState("none");
   const [selectedProductId, setSelectedProductId] = React.useState("");
+  const [selectedRangeId, setSelectedRangeId] = React.useState("");
   const [productForm, setProductForm] = React.useState(() =>
     buildProductFormState(null),
   );
@@ -1354,6 +1310,8 @@ export default function PricesAdmin() {
   const [publishing, setPublishing] = React.useState(false);
   const [publishActionError, setPublishActionError] = React.useState("");
   const [publishActionSuccess, setPublishActionSuccess] = React.useState("");
+  const [inactiveListsExpanded, setInactiveListsExpanded] = React.useState(false);
+  const [historyExpanded, setHistoryExpanded] = React.useState(false);
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
@@ -1369,6 +1327,22 @@ export default function PricesAdmin() {
   const selectedPriceList = React.useMemo(
     () => priceLists.find((item) => item.id === selectedPriceListId) || null,
     [priceLists, selectedPriceListId],
+  );
+  const currentDraftList = React.useMemo(
+    () =>
+      priceLists.find(
+        (item) => isDraftList(item) && !item.is_active,
+      ) || null,
+    [priceLists],
+  );
+  const inactiveLists = React.useMemo(
+    () =>
+      priceLists.filter(
+        (item) =>
+          !item.is_active &&
+          (!currentDraftList || item.id !== currentDraftList.id),
+      ),
+    [priceLists, currentDraftList],
   );
   const matrixModel = React.useMemo(
     () => buildAdminMatrixModel(matrixData),
@@ -1393,18 +1367,35 @@ export default function PricesAdmin() {
   const canBrowseArchivedItems = Boolean(isDraftSelection);
   const canRestoreArchivedItems = Boolean(isAdmin && isDraftSelection);
   const draftSections = matrixModel.sections || [];
-  const selectedColumn = React.useMemo(
+  const selectedColumnFromCell = React.useMemo(
     () =>
       (matrixModel.columns || []).find(
         (column) => column.recordId === selectedCell?.columnRecordId,
       ) || null,
     [matrixModel.columns, selectedCell?.columnRecordId],
   );
+  const selectedRange = React.useMemo(
+    () =>
+      (matrixModel.columns || []).find(
+        (column) => column.recordId === selectedRangeId,
+      ) || null,
+    [matrixModel.columns, selectedRangeId],
+  );
+  const columnArchiveTarget = React.useMemo(
+    () =>
+      (matrixModel.columns || []).find(
+        (column) => column.recordId === columnArchiveTargetId,
+      ) || null,
+    [matrixModel.columns, columnArchiveTargetId],
+  );
   const selectedProductIsDraftEditable = Boolean(
-    isAdmin && isDraftSelection && selectedProduct,
+    isAdmin && isDraftSelection && selectedProduct && selectedContext === "product",
   );
   const selectedColumnIsDraftEditable = Boolean(
-    isAdmin && isDraftSelection && selectedColumn,
+    isAdmin &&
+      isDraftSelection &&
+      (selectedRange || selectedColumnFromCell) &&
+      (selectedContext === "range" || selectedContext === "cell"),
   );
   const canEditSelectedProduct = selectedProductIsDraftEditable;
   const productValidationHints = React.useMemo(
@@ -1646,7 +1637,9 @@ export default function PricesAdmin() {
   );
 
   React.useEffect(() => {
+    setSelectedContext("none");
     setSelectedProductId("");
+    setSelectedRangeId("");
     setSelectedCell(null);
     setCellForm(buildCellFormState(null));
     setCellActionError("");
@@ -1675,6 +1668,7 @@ export default function PricesAdmin() {
     setArchivedRestoreError("");
     setArchivedRestoreSuccess("");
     setColumnArchiveConfirmOpen(false);
+    setColumnArchiveTargetId("");
     setColumnArchiveReason("");
     setColumnArchiveError("");
     setProductArchiveConfirmOpen(false);
@@ -1684,6 +1678,8 @@ export default function PricesAdmin() {
     setPublishReason("");
     setPublishActionError("");
     setPublishActionSuccess("");
+    setInactiveListsExpanded(false);
+    setHistoryExpanded(false);
   }, [selectedPriceListId]);
 
   const refreshAuditAfterSuccess = React.useCallback(
@@ -1699,7 +1695,9 @@ export default function PricesAdmin() {
     if (!selectedProductId) return;
     if (selectedProduct) return;
 
+    setSelectedContext("none");
     setSelectedProductId("");
+    setSelectedRangeId("");
     setSelectedCell(null);
     setCellForm(buildCellFormState(null));
     setProductForm(buildProductFormState(null));
@@ -1708,6 +1706,14 @@ export default function PricesAdmin() {
   React.useEffect(() => {
     setProductForm(buildProductFormState(selectedProduct));
   }, [selectedProduct]);
+
+  React.useEffect(() => {
+    if (!selectedRangeId) return;
+    if (selectedRange) return;
+
+    setSelectedContext("none");
+    setSelectedRangeId("");
+  }, [selectedRange, selectedRangeId]);
 
   React.useEffect(() => {
     if (!selectedCell?.productRecordId || !selectedCell?.columnRecordId) return;
@@ -1912,17 +1918,38 @@ export default function PricesAdmin() {
   }
 
   function handleSelectProduct(nextProductId) {
+    setSelectedContext("product");
     setSelectedProductId(nextProductId);
+    setSelectedRangeId("");
+    setSelectedCell(null);
     setProductActionError("");
     setProductActionSuccess("");
+    setCellActionError("");
+    setCellActionSuccess("");
   }
 
   function handleSelectCell(nextCell) {
     if (!nextCell?.productRecordId || !nextCell?.columnRecordId) return;
-    setSelectedProductId(nextCell.productRecordId);
+    setSelectedContext("cell");
+    setSelectedProductId("");
+    setSelectedRangeId("");
     setSelectedCell(nextCell);
     setCellActionError("");
     setCellActionSuccess("");
+    setProductActionError("");
+    setProductActionSuccess("");
+  }
+
+  function handleSelectColumn(nextColumnRecordId) {
+    if (!nextColumnRecordId) return;
+    setSelectedContext("range");
+    setSelectedRangeId(nextColumnRecordId);
+    setSelectedProductId("");
+    setSelectedCell(null);
+    setCellActionError("");
+    setCellActionSuccess("");
+    setProductActionError("");
+    setProductActionSuccess("");
   }
 
   function updateCellForm(key, value) {
@@ -1944,9 +1971,11 @@ export default function PricesAdmin() {
   }
 
   function openArchiveColumnConfirm() {
-    if (!selectedColumnIsDraftEditable || savingCell || archivingColumn) return;
+    const targetColumn = selectedContext === "range" ? selectedRange : selectedColumnFromCell;
+    if (!selectedColumnIsDraftEditable || !targetColumn || savingCell || archivingColumn) return;
     setColumnArchiveReason("");
     setColumnArchiveError("");
+    setColumnArchiveTargetId(targetColumn.recordId || "");
     setColumnArchiveConfirmOpen(true);
   }
 
@@ -1969,6 +1998,7 @@ export default function PricesAdmin() {
   function closeArchiveColumnConfirm() {
     if (archivingColumn) return;
     setColumnArchiveConfirmOpen(false);
+    setColumnArchiveTargetId("");
     setColumnArchiveReason("");
     setColumnArchiveError("");
   }
@@ -2227,7 +2257,12 @@ export default function PricesAdmin() {
 
   async function archiveSelectedColumn(event) {
     event.preventDefault();
-    if (!selectedColumnIsDraftEditable || archivingColumn || !selectedPriceList) {
+    if (
+      !selectedColumnIsDraftEditable ||
+      archivingColumn ||
+      !selectedPriceList ||
+      !columnArchiveTarget
+    ) {
       return;
     }
 
@@ -2237,7 +2272,7 @@ export default function PricesAdmin() {
 
     try {
       const { error } = await supabase.rpc("set_price_matrix_column_active_admin", {
-        p_column_id: selectedCell.columnRecordId,
+        p_column_id: columnArchiveTarget.recordId,
         p_is_active: false,
         p_reason: toOptionalText(columnArchiveReason),
       });
@@ -2245,8 +2280,12 @@ export default function PricesAdmin() {
       if (error) throw error;
 
       setColumnArchiveConfirmOpen(false);
+      setColumnArchiveTargetId("");
       setColumnArchiveReason("");
+      setSelectedContext("none");
+      setSelectedRangeId("");
       setSelectedCell(null);
+      setSelectedProductId("");
       setCellForm(buildCellFormState(null));
 
       await Promise.all([
@@ -2393,12 +2432,7 @@ export default function PricesAdmin() {
       <header className="prices-admin-header">
         <div className="prices-admin-header__top">
           <div>
-            <span className="prices-admin-header__eyebrow">Prices CMS</span>
-            <h2>Prices Admin Preview</h2>
-            <p>
-              Review price list versions and draft matrices without affecting the
-              live staff Prices page.
-            </p>
+            <h2>Prices Admin</h2>
           </div>
 
           {isAdmin ? (
@@ -2516,8 +2550,7 @@ export default function PricesAdmin() {
           <aside className="prices-admin-panel prices-admin-panel--list">
             <div className="prices-admin-panel__header">
               <div>
-                <span className="prices-admin-panel__eyebrow">Available lists</span>
-                <h3>Versions and drafts</h3>
+                <span className="prices-admin-panel__eyebrow">Available Price Lists</span>
               </div>
             </div>
 
@@ -2544,14 +2577,80 @@ export default function PricesAdmin() {
 
             {!loadingLists && !listsError && priceLists.length > 0 ? (
               <div className="prices-admin-list">
-                {priceLists.map((list) => (
-                  <PriceListCard
-                    key={list.id}
-                    list={list}
-                    isSelected={list.id === selectedPriceListId}
-                    onSelect={() => setSelectedPriceListId(list.id)}
-                  />
-                ))}
+                {activePriceList ? (
+                  <section className="prices-admin-list-section">
+                    <div className="prices-admin-list-section__header">
+                      <h4>Active List</h4>
+                    </div>
+                    <PriceListCard
+                      list={activePriceList}
+                      eyebrow="Active list"
+                      dateLabel={getHonestListDate(activePriceList, "active").label}
+                      dateValue={getHonestListDate(activePriceList, "active").value}
+                      isSelected={activePriceList.id === selectedPriceListId}
+                      onSelect={() => setSelectedPriceListId(activePriceList.id)}
+                    />
+                  </section>
+                ) : null}
+
+                <section className="prices-admin-list-section">
+                  <div className="prices-admin-list-section__header">
+                    <h4>Current Draft</h4>
+                  </div>
+                  {currentDraftList ? (
+                    <PriceListCard
+                      list={currentDraftList}
+                      eyebrow="Current draft"
+                      dateLabel={getHonestListDate(currentDraftList, "draft").label}
+                      dateValue={getHonestListDate(currentDraftList, "draft").value}
+                      isSelected={currentDraftList.id === selectedPriceListId}
+                      onSelect={() => setSelectedPriceListId(currentDraftList.id)}
+                    />
+                  ) : (
+                    <div className="prices-admin-state">
+                      <strong>No current draft</strong>
+                    </div>
+                  )}
+                </section>
+
+                <section className="prices-admin-list-section">
+                  <button
+                    type="button"
+                    className="prices-admin-list-section__toggle"
+                    onClick={() => setInactiveListsExpanded((current) => !current)}
+                  >
+                    <h4>Inactive Lists</h4>
+                    <span
+                      className={`prices-admin-list-section__chevron ${
+                        inactiveListsExpanded ? "is-open" : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      v
+                    </span>
+                  </button>
+                  {inactiveListsExpanded ? (
+                    inactiveLists.length > 0 ? (
+                      <div className="prices-admin-list-section__stack">
+                        {inactiveLists.map((list) => (
+                          <PriceListCard
+                            key={list.id}
+                            list={list}
+                            eyebrow="Inactive list"
+                            dateLabel={getHonestListDate(list, "inactive").label}
+                            dateValue={getHonestListDate(list, "inactive").value}
+                            isSelected={list.id === selectedPriceListId}
+                            onSelect={() => setSelectedPriceListId(list.id)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="prices-admin-state">
+                        <strong>No inactive lists</strong>
+                      </div>
+                    )
+                  ) : null}
+                </section>
               </div>
             ) : null}
           </aside>
@@ -2559,8 +2658,7 @@ export default function PricesAdmin() {
           <section className="prices-admin-panel prices-admin-panel--preview">
             <div className="prices-admin-panel__header">
               <div>
-                <span className="prices-admin-panel__eyebrow">Selected matrix</span>
-                <h3>Read-only preview</h3>
+                <span className="prices-admin-panel__eyebrow">Selected Price List</span>
               </div>
             </div>
 
@@ -3324,7 +3422,7 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
-                {columnArchiveConfirmOpen && selectedColumn ? (
+                {columnArchiveConfirmOpen && columnArchiveTarget ? (
                   <div
                     className="prices-admin-modal-backdrop"
                     role="presentation"
@@ -3359,8 +3457,8 @@ export default function PricesAdmin() {
 
                         <div className="prices-admin-status-card prices-admin-status-card--full">
                           <span>Selected column</span>
-                          <strong>{selectedColumn.supplier}</strong>
-                          <small>{selectedColumn.range || "Unnamed range"}</small>
+                          <strong>{columnArchiveTarget.supplier}</strong>
+                          <small>{columnArchiveTarget.range || "Unnamed range"}</small>
                         </div>
 
                         <label className="prices-admin-field">
@@ -3586,10 +3684,12 @@ export default function PricesAdmin() {
                 <PriceMatrixPreview
                   matrixData={matrixData}
                   matrixModel={matrixModel}
-                  selectedProductId={selectedProductId}
                   selectedCellKey={selectedCellKey}
+                  selectedProductId={selectedContext === "product" ? selectedProductId : ""}
+                  selectedRangeId={selectedContext === "range" ? selectedRangeId : ""}
                   onSelectProduct={handleSelectProduct}
                   onSelectCell={handleSelectCell}
+                  onSelectColumn={handleSelectColumn}
                 />
 
                 {(columnCreateSuccess || productCreateSuccess || archivedRestoreSuccess) ? (
@@ -3617,353 +3717,409 @@ export default function PricesAdmin() {
                 <section className="prices-admin-selection-workspace">
                   <div className="prices-admin-selection-workspace__header">
                     <span className="prices-admin-panel__eyebrow">Selection workspace</span>
-                    <h3>Selected product and price cell</h3>
-                    <p>
-                      Work from the current matrix selection here. Product details and
-                      price-cell editing stay separate so draft structure and pricing
-                      context are easier to scan.
-                    </p>
                   </div>
 
-                  <div className="prices-admin-selection-grid">
-                    <section className="prices-admin-product-panel">
-                  {!selectedProduct ? (
-                    <div className="prices-admin-state">
-                      <strong>Select a product row</strong>
-                      <p>
-                        Choose a product row in the matrix preview to review its
-                        draft metadata and row-level actions.
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {selectedProduct ? (
-                    <form
-                      className="prices-admin-product-detail"
-                      onSubmit={saveSelectedProduct}
-                    >
-                      <div className="prices-admin-product-detail__header">
-                        <div>
-                          <span className="prices-admin-panel__eyebrow">
-                            Selected product
-                          </span>
-                          <h3>{selectedProduct.name}</h3>
+                  <div className="prices-admin-selection-grid prices-admin-selection-grid--single">
+                    {selectedContext === "none" ? (
+                      <section className="prices-admin-product-panel">
+                        <div className="prices-admin-state">
+                          <strong>Select item</strong>
                           <p>
-                            {selectedProduct.section || "Unassigned section"}.{" "}
-                            {selectedProductIsDraftEditable
-                              ? "Update draft-only metadata for this row here."
-                              : "Review the current product details for this selection."}
+                            Click a row, price cell, or column header to open the
+                            relevant editor for this selected price list.
                           </p>
                         </div>
-                        <div className="prices-admin-product-detail__badges">
-                          <span className="prices-admin-badge prices-admin-badge--readonly">
-                            {selectedProduct.id}
-                          </span>
+                      </section>
+                    ) : null}
+
+                    {selectedContext === "product" && selectedProduct ? (
+                      <section className="prices-admin-product-panel">
+                        <form
+                          className="prices-admin-product-detail"
+                          onSubmit={saveSelectedProduct}
+                        >
+                          <div className="prices-admin-product-detail__header">
+                            <div>
+                              <span className="prices-admin-panel__eyebrow">
+                                Selected product
+                              </span>
+                              <h3>{selectedProduct.name}</h3>
+                            </div>
+                            <div className="prices-admin-product-detail__badges">
+                              <span className="prices-admin-badge prices-admin-badge--readonly">
+                                {selectedProduct.id}
+                              </span>
+                              {selectedProductIsDraftEditable ? (
+                                <span className="prices-admin-badge prices-admin-badge--draft">
+                                  DRAFT EDIT
+                                </span>
+                              ) : (
+                                <span className="prices-admin-badge prices-admin-badge--readonly">
+                                  READ ONLY
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="prices-admin-product-detail__grid">
+                            <label className="prices-admin-field">
+                              <span>Name</span>
+                              <input
+                                value={productForm.name}
+                                onChange={(event) =>
+                                  updateProductForm("name", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field">
+                              <span>Cloth required</span>
+                              <input
+                                value={productForm.clothRequired}
+                                onChange={(event) =>
+                                  updateProductForm("clothRequired", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field">
+                              <span>CMT price</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={productForm.cmtPrice}
+                                onChange={(event) =>
+                                  updateProductForm("cmtPrice", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field">
+                              <span>Delivery weeks min</span>
+                              <input
+                                type="number"
+                                step="1"
+                                min="0"
+                                value={productForm.deliveryWeeksMin}
+                                onChange={(event) =>
+                                  updateProductForm("deliveryWeeksMin", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field">
+                              <span>Delivery weeks max</span>
+                              <input
+                                type="number"
+                                step="1"
+                                min="0"
+                                value={productForm.deliveryWeeksMax}
+                                onChange={(event) =>
+                                  updateProductForm("deliveryWeeksMax", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field prices-admin-field--full">
+                              <span>Notes</span>
+                              <textarea
+                                rows={3}
+                                value={productForm.notes}
+                                onChange={(event) =>
+                                  updateProductForm("notes", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+
+                            <label className="prices-admin-field prices-admin-field--full">
+                              <span>Reason / note for audit</span>
+                              <textarea
+                                rows={2}
+                                value={productForm.reason}
+                                onChange={(event) =>
+                                  updateProductForm("reason", event.target.value)
+                                }
+                                readOnly={!canEditSelectedProduct}
+                              />
+                            </label>
+                          </div>
+
                           {selectedProductIsDraftEditable ? (
-                            <span className="prices-admin-badge prices-admin-badge--draft">
-                              DRAFT EDIT
-                            </span>
-                          ) : (
-                            <span className="prices-admin-badge prices-admin-badge--readonly">
-                              READ ONLY
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                            <div className="prices-admin-product-detail__helper">
+                              Optional blank fields preserve their current values.
+                            </div>
+                          ) : null}
 
-                      <div className="prices-admin-product-detail__grid">
-                        <label className="prices-admin-field">
-                          <span>Name</span>
-                          <input
-                            value={productForm.name}
-                            onChange={(event) =>
-                              updateProductForm("name", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                          {productValidationHints.length > 0 &&
+                          selectedProductIsDraftEditable ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--error">
+                              {productValidationHints[0]}
+                            </div>
+                          ) : null}
 
-                        <label className="prices-admin-field">
-                          <span>Cloth required</span>
-                          <input
-                            value={productForm.clothRequired}
-                            onChange={(event) =>
-                              updateProductForm("clothRequired", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                          {productActionError ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--error">
+                              {productActionError}
+                            </div>
+                          ) : null}
 
-                        <label className="prices-admin-field">
-                          <span>CMT price</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={productForm.cmtPrice}
-                            onChange={(event) =>
-                              updateProductForm("cmtPrice", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                          {productActionSuccess ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--success">
+                              {productActionSuccess}
+                            </div>
+                          ) : null}
 
-                        <label className="prices-admin-field">
-                          <span>Delivery weeks min</span>
-                          <input
-                            type="number"
-                            step="1"
-                            min="0"
-                            value={productForm.deliveryWeeksMin}
-                            onChange={(event) =>
-                              updateProductForm("deliveryWeeksMin", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                          {selectedProductIsDraftEditable ? (
+                            <div className="prices-admin-product-detail__footer">
+                              <button
+                                type="submit"
+                                className="prices-admin-primary-button"
+                                disabled={savingProduct || productValidationHints.length > 0}
+                              >
+                                {savingProduct
+                                  ? "Saving product..."
+                                  : "Save product details"}
+                              </button>
+                              <button
+                                type="button"
+                                className="prices-admin-danger-button"
+                                onClick={openArchiveProductConfirm}
+                                disabled={savingProduct || archivingProduct}
+                              >
+                                Archive product
+                              </button>
+                            </div>
+                          ) : null}
+                        </form>
+                      </section>
+                    ) : null}
 
-                        <label className="prices-admin-field">
-                          <span>Delivery weeks max</span>
-                          <input
-                            type="number"
-                            step="1"
-                            min="0"
-                            value={productForm.deliveryWeeksMax}
-                            onChange={(event) =>
-                              updateProductForm("deliveryWeeksMax", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                    {selectedContext === "cell" && selectedCell ? (
+                      <section className="prices-admin-product-panel">
+                        <form
+                          className="prices-admin-product-detail"
+                          onSubmit={saveSelectedCell}
+                        >
+                          <div className="prices-admin-product-detail__header">
+                            <div>
+                              <span className="prices-admin-panel__eyebrow">
+                                Selected price cell
+                              </span>
+                              <h3>
+                                {selectedCell.productName} / {selectedCell.columnLabel}
+                              </h3>
+                              <p>
+                                {canEditSelectedCell
+                                  ? "Review or update the selected draft retail price."
+                                  : "Review the current retail price for this matrix intersection."}
+                              </p>
+                            </div>
+                            <div className="prices-admin-product-detail__badges">
+                              <span className="prices-admin-badge prices-admin-badge--readonly">
+                                {selectedCell.columnPublicId}
+                              </span>
+                              {canEditSelectedCell ? (
+                                <span className="prices-admin-badge prices-admin-badge--draft">
+                                  DRAFT EDIT
+                                </span>
+                              ) : (
+                                <span className="prices-admin-badge prices-admin-badge--readonly">
+                                  READ ONLY
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                        <label className="prices-admin-field prices-admin-field--full">
-                          <span>Notes</span>
-                          <textarea
-                            rows={3}
-                            value={productForm.notes}
-                            onChange={(event) =>
-                              updateProductForm("notes", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
+                          <div className="prices-admin-selection-context">
+                            <div className="prices-admin-selection-context__item">
+                              <span>Selected product</span>
+                              <strong>{selectedCell.productName}</strong>
+                            </div>
+                            <div className="prices-admin-selection-context__item">
+                              <span>Selected range</span>
+                              <strong>{selectedCell.columnLabel}</strong>
+                            </div>
+                            <div className="prices-admin-selection-context__item">
+                              <span>Price state</span>
+                              <strong>
+                                {selectedCell.cellRecordId
+                                  ? "Existing price cell"
+                                  : "First sparse price"}
+                              </strong>
+                            </div>
+                          </div>
 
-                        <label className="prices-admin-field prices-admin-field--full">
-                          <span>Reason / note for audit</span>
-                          <textarea
-                            rows={2}
-                            value={productForm.reason}
-                            onChange={(event) =>
-                              updateProductForm("reason", event.target.value)
-                            }
-                            readOnly={!canEditSelectedProduct}
-                          />
-                        </label>
-                      </div>
+                          <div className="prices-admin-product-detail__grid">
+                            <label className="prices-admin-field">
+                              <span>Retail price</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={cellForm.retailPrice}
+                                onChange={(event) =>
+                                  updateCellForm("retailPrice", event.target.value)
+                                }
+                                readOnly={!canEditSelectedCell}
+                              />
+                            </label>
 
-                      {selectedProductIsDraftEditable ? (
-                        <div className="prices-admin-product-detail__helper">
-                          Optional blank fields preserve their current values.
-                        </div>
-                      ) : null}
+                            <label className="prices-admin-field">
+                              <span>Current matrix value</span>
+                              <input
+                                value={
+                                  selectedCell.retailPrice != null
+                                    ? gbp.format(selectedCell.retailPrice)
+                                    : "-"
+                                }
+                                readOnly
+                                tabIndex={-1}
+                              />
+                            </label>
 
-                      {productValidationHints.length > 0 && selectedProductIsDraftEditable ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--error">
-                          {productValidationHints[0]}
-                        </div>
-                      ) : null}
+                            <label className="prices-admin-field prices-admin-field--full">
+                              <span>Reason / note for audit</span>
+                              <textarea
+                                rows={2}
+                                value={cellForm.reason}
+                                onChange={(event) =>
+                                  updateCellForm("reason", event.target.value)
+                                }
+                                readOnly={!canEditSelectedCell}
+                              />
+                            </label>
+                          </div>
 
-                      {productActionError ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--error">
-                          {productActionError}
-                        </div>
-                      ) : null}
+                          {!selectedCell.cellRecordId ? (
+                            <div className="prices-admin-product-detail__helper">
+                              {canEditSelectedCell
+                                ? "Saving here will create the missing draft price cell for this product and column."
+                                : "Cell record details are unavailable in this matrix payload, so this selection can only be reviewed read-only."}
+                            </div>
+                          ) : null}
 
-                      {productActionSuccess ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--success">
-                          {productActionSuccess}
-                        </div>
-                      ) : null}
+                          {cellValidationHints.length > 0 && canEditSelectedCell ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--error">
+                              {cellValidationHints[0]}
+                            </div>
+                          ) : null}
 
-                      {selectedProductIsDraftEditable ? (
-                        <div className="prices-admin-product-detail__footer">
-                          <button
-                            type="submit"
-                            className="prices-admin-primary-button"
-                            disabled={savingProduct || productValidationHints.length > 0}
-                          >
-                            {savingProduct ? "Saving product..." : "Save product details"}
-                          </button>
-                          <button
-                            type="button"
-                            className="prices-admin-danger-button"
-                            onClick={openArchiveProductConfirm}
-                            disabled={savingProduct || archivingProduct}
-                          >
-                            Archive product
-                          </button>
-                        </div>
-                      ) : null}
-                    </form>
-                  ) : null}
-                    </section>
+                          {cellActionError ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--error">
+                              {cellActionError}
+                            </div>
+                          ) : null}
 
-                    <section className="prices-admin-product-panel">
-                  {!selectedCell ? (
-                    <div className="prices-admin-state">
-                      <strong>Select a price cell</strong>
-                      <p>
-                        Click a retail price cell in the matrix to review pricing
-                        context or update the selected draft value.
-                      </p>
-                    </div>
-                  ) : null}
+                          {cellActionSuccess ? (
+                            <div className="prices-admin-feedback prices-admin-feedback--success">
+                              {cellActionSuccess}
+                            </div>
+                          ) : null}
 
-                  {selectedCell ? (
-                    <form
-                      className="prices-admin-product-detail"
-                      onSubmit={saveSelectedCell}
-                    >
-                      <div className="prices-admin-product-detail__header">
-                        <div>
-                          <span className="prices-admin-panel__eyebrow">
-                            Selected price cell
-                          </span>
-                          <h3>
-                            {selectedCell.productName} / {selectedCell.columnLabel}
-                          </h3>
-                          <p>
-                            {canEditSelectedCell
-                              ? "Review or update the selected draft retail price."
-                              : "Review the current retail price for this matrix intersection."}
-                          </p>
-                        </div>
-                        <div className="prices-admin-product-detail__badges">
-                          <span className="prices-admin-badge prices-admin-badge--readonly">
-                            {selectedCell.columnPublicId}
-                          </span>
                           {canEditSelectedCell ? (
-                            <span className="prices-admin-badge prices-admin-badge--draft">
-                              DRAFT EDIT
-                            </span>
-                          ) : (
-                            <span className="prices-admin-badge prices-admin-badge--readonly">
-                              READ ONLY
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                            <div className="prices-admin-product-detail__footer">
+                              <button
+                                type="submit"
+                                className="prices-admin-primary-button"
+                                disabled={savingCell || cellValidationHints.length > 0}
+                              >
+                                {savingCell ? "Saving retail price..." : "Save retail price"}
+                              </button>
+                              {selectedColumnIsDraftEditable ? (
+                                <button
+                                  type="button"
+                                  className="prices-admin-danger-button"
+                                  onClick={openArchiveColumnConfirm}
+                                  disabled={savingCell || archivingColumn}
+                                >
+                                  Archive column
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </form>
+                      </section>
+                    ) : null}
 
-                      <div className="prices-admin-selection-context">
-                        <div className="prices-admin-selection-context__item">
-                          <span>Selected product</span>
-                          <strong>{selectedCell.productName}</strong>
-                        </div>
-                        <div className="prices-admin-selection-context__item">
-                          <span>Selected column</span>
-                          <strong>{selectedCell.columnLabel}</strong>
-                        </div>
-                        <div className="prices-admin-selection-context__item">
-                          <span>Price state</span>
-                          <strong>
-                            {selectedCell.cellRecordId
-                              ? "Existing price cell"
-                              : "First sparse price"}
-                          </strong>
-                        </div>
-                      </div>
+                    {selectedContext === "range" && selectedRange ? (
+                      <section className="prices-admin-product-panel">
+                        <div className="prices-admin-product-detail">
+                          <div className="prices-admin-product-detail__header">
+                            <div>
+                              <span className="prices-admin-panel__eyebrow">
+                                Selected range
+                              </span>
+                              <h3>{selectedRange.supplier} / {selectedRange.range}</h3>
+                            </div>
+                            <div className="prices-admin-product-detail__badges">
+                              <span className="prices-admin-badge prices-admin-badge--readonly">
+                                {selectedRange.publicId}
+                              </span>
+                              {selectedColumnIsDraftEditable ? (
+                                <span className="prices-admin-badge prices-admin-badge--draft">
+                                  DRAFT EDIT
+                                </span>
+                              ) : (
+                                <span className="prices-admin-badge prices-admin-badge--readonly">
+                                  READ ONLY
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                      <div className="prices-admin-product-detail__grid">
-                        <label className="prices-admin-field">
-                          <span>Retail price</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={cellForm.retailPrice}
-                            onChange={(event) =>
-                              updateCellForm("retailPrice", event.target.value)
-                            }
-                            readOnly={!canEditSelectedCell}
-                          />
-                        </label>
+                          <div className="prices-admin-selection-context">
+                            <div className="prices-admin-selection-context__item">
+                              <span>Supplier</span>
+                              <strong>{selectedRange.supplier}</strong>
+                            </div>
+                            <div className="prices-admin-selection-context__item">
+                              <span>Range</span>
+                              <strong>{selectedRange.range}</strong>
+                            </div>
+                            <div className="prices-admin-selection-context__item">
+                              <span>Mapping</span>
+                              <strong>
+                                {Number.isFinite(selectedRange.external_weaver_id) ||
+                                Number.isFinite(selectedRange.external_range_id)
+                                  ? "Mapped"
+                                  : "No tartan mapping"}
+                              </strong>
+                            </div>
+                          </div>
 
-                        <label className="prices-admin-field">
-                          <span>Current matrix value</span>
-                          <input
-                            value={
-                              selectedCell.retailPrice != null
-                                ? gbp.format(selectedCell.retailPrice)
-                                : "-"
-                            }
-                            readOnly
-                            tabIndex={-1}
-                          />
-                        </label>
+                          <div className="prices-admin-product-detail__grid">
+                            <label className="prices-admin-field">
+                              <span>Width</span>
+                              <input value={selectedRange.width || "-"} readOnly />
+                            </label>
+                            <label className="prices-admin-field">
+                              <span>Weight</span>
+                              <input value={selectedRange.weight || "-"} readOnly />
+                            </label>
+                          </div>
 
-                        <label className="prices-admin-field prices-admin-field--full">
-                          <span>Reason / note for audit</span>
-                          <textarea
-                            rows={2}
-                            value={cellForm.reason}
-                            onChange={(event) =>
-                              updateCellForm("reason", event.target.value)
-                            }
-                            readOnly={!canEditSelectedCell}
-                          />
-                        </label>
-                      </div>
-
-                      {!selectedCell.cellRecordId ? (
-                        <div className="prices-admin-product-detail__helper">
-                          {canEditSelectedCell
-                            ? "Saving here will create the missing draft price cell for this product and column."
-                            : "Cell record details are unavailable in this matrix payload, so this selection can only be reviewed read-only."}
-                        </div>
-                      ) : null}
-
-                      {cellValidationHints.length > 0 && canEditSelectedCell ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--error">
-                          {cellValidationHints[0]}
-                        </div>
-                      ) : null}
-
-                      {cellActionError ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--error">
-                          {cellActionError}
-                        </div>
-                      ) : null}
-
-                      {cellActionSuccess ? (
-                        <div className="prices-admin-feedback prices-admin-feedback--success">
-                          {cellActionSuccess}
-                        </div>
-                      ) : null}
-
-                      {canEditSelectedCell ? (
-                        <div className="prices-admin-product-detail__footer">
-                          <button
-                            type="submit"
-                            className="prices-admin-primary-button"
-                            disabled={savingCell || cellValidationHints.length > 0}
-                          >
-                            {savingCell ? "Saving retail price..." : "Save retail price"}
-                          </button>
                           {selectedColumnIsDraftEditable ? (
-                            <button
-                              type="button"
-                              className="prices-admin-danger-button"
-                              onClick={openArchiveColumnConfirm}
-                              disabled={savingCell || archivingColumn}
-                            >
-                              Archive column
-                            </button>
+                            <div className="prices-admin-product-detail__footer">
+                              <button
+                                type="button"
+                                className="prices-admin-danger-button"
+                                onClick={openArchiveColumnConfirm}
+                                disabled={archivingColumn}
+                              >
+                                Archive column
+                              </button>
+                            </div>
                           ) : null}
                         </div>
-                      ) : null}
-                    </form>
-                  ) : null}
-                    </section>
+                      </section>
+                    ) : null}
                   </div>
                 </section>
 
@@ -3975,7 +4131,6 @@ export default function PricesAdmin() {
                   auditError={auditError}
                   loadingAudit={loadingAudit}
                   isAdmin={isAdmin}
-                  activePriceList={activePriceList}
                   publishActionError={publishActionError}
                   publishActionSuccess={publishActionSuccess}
                   publishing={publishing}
@@ -3990,12 +4145,13 @@ export default function PricesAdmin() {
 
                 <PriceAuditPanel
                   selectedList={selectedPriceList}
-                  isAdmin={isAdmin}
                   loadingAudit={loadingAudit}
                   refreshingAudit={refreshingAudit}
                   auditError={auditError}
                   auditEntries={auditEntries}
                   lastAuditLoadedAt={lastAuditLoadedAt}
+                  expanded={historyExpanded}
+                  onToggleExpanded={() => setHistoryExpanded((current) => !current)}
                   onRefresh={() => loadSelectedAudit({ background: true })}
                 />
               </>
