@@ -245,6 +245,7 @@ function buildAdminMatrixModel(matrixData) {
   const rawSections = Array.isArray(matrixData?.sections) ? matrixData.sections : [];
   const rawProductLookup = new Map();
   const rawColumnLookup = new Map();
+  const rawSectionLookup = new Map();
 
   rawColumns.forEach((column) => {
     rawColumnLookup.set(String(column?.id || ""), {
@@ -253,6 +254,10 @@ function buildAdminMatrixModel(matrixData) {
   });
 
   rawSections.forEach((section) => {
+    rawSectionLookup.set(String(section?.name || ""), {
+      id: section?.id ? String(section.id) : "",
+    });
+
     (section?.products || []).forEach((product) => {
       const rawPriceCells = product?.price_cells || {};
       const normalizedPriceCells = Object.fromEntries(
@@ -286,6 +291,7 @@ function buildAdminMatrixModel(matrixData) {
 
   const sections = (normalized.sections || []).map((section) => ({
     ...section,
+    id: rawSectionLookup.get(String(section?.name || ""))?.id || "",
     products: (section.products || []).map((product) => {
       const rawMeta = rawProductLookup.get(String(product.id));
 
