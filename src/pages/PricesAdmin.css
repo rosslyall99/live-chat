@@ -836,6 +836,13 @@
   padding-top: 2px;
 }
 
+.prices-admin-status-panel__action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .prices-admin-status-panel__publish-copy {
   display: grid;
   gap: 6px;
@@ -887,6 +894,38 @@
   box-shadow: none;
 }
 
+.prices-admin-danger-button {
+  appearance: none;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 113, 113, 0.14), rgba(127, 29, 29, 0.12)),
+    rgba(24, 10, 10, 0.76);
+  color: rgba(254, 226, 226, 0.96);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.prices-admin-danger-button:hover,
+.prices-admin-danger-button:focus-visible {
+  outline: none;
+  border-color: rgba(252, 165, 165, 0.46);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
+}
+
+.prices-admin-danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .prices-admin-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -916,10 +955,20 @@
     0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
+.prices-admin-modal--compact {
+  width: min(560px, 100%);
+}
+
 .prices-admin-modal__content {
   display: grid;
   gap: 14px;
   padding: 18px;
+}
+
+.prices-admin-modal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .prices-admin-modal__header h3 {
@@ -1168,6 +1217,27 @@
   gap: 10px;
 }
 
+.prices-admin-field select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 10px;
+  background: rgba(4, 10, 24, 0.88);
+  color: rgba(248, 250, 252, 0.96);
+  font: inherit;
+}
+
+.prices-admin-field select:focus-visible {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.42);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.1);
+}
+
+.prices-admin-field select:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1100px) {
   .prices-admin-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -1216,6 +1286,10 @@
   }
 
   .prices-admin-draft-form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prices-admin-modal-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -329,6 +329,34 @@ function buildProductFormState(product) {
   };
 }
 
+function buildCreateProductFormState(selectedProduct, matrixModel) {
+  const sections = Array.isArray(matrixModel?.sections) ? matrixModel.sections : [];
+  const fallbackSectionId = selectedProduct?.sectionId || sections[0]?.id || "";
+
+  return {
+    sectionId: fallbackSectionId,
+    name: "",
+    matrixKey: "",
+    clothRequired: "",
+    cmtPrice: "",
+    deliveryWeeksMin: "",
+    deliveryWeeksMax: "",
+    notes: "",
+    sortOrder: "",
+    reason: "",
+  };
+}
+
+function slugifyMatrixKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function parseOptionalNumber(value) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -496,6 +524,55 @@ function getProductValidationHints(formState) {
     deliveryWeeksMin > deliveryWeeksMax
   ) {
     hints.push("Delivery weeks min cannot be greater than delivery weeks max.");
+  }
+
+  return hints;
+}
+
+function getCreateProductValidationHints(formState) {
+  const hints = [];
+  const sectionId = String(formState?.sectionId || "").trim();
+  const name = String(formState?.name || "").trim();
+  const matrixKey = String(formState?.matrixKey || "").trim();
+  const cmtPrice = parseOptionalNumber(formState?.cmtPrice);
+  const deliveryWeeksMin = parseOptionalInteger(formState?.deliveryWeeksMin);
+  const deliveryWeeksMax = parseOptionalInteger(formState?.deliveryWeeksMax);
+  const sortOrder = parseOptionalInteger(formState?.sortOrder);
+
+  if (!sectionId) hints.push("Section is required.");
+  if (!name) hints.push("Product name is required.");
+  if (!matrixKey) hints.push("Matrix key is required.");
+
+  if (Number.isNaN(cmtPrice)) {
+    hints.push("CMT price must be a valid number.");
+  } else if (cmtPrice != null && cmtPrice < 0) {
+    hints.push("CMT price cannot be negative.");
+  }
+
+  if (Number.isNaN(deliveryWeeksMin)) {
+    hints.push("Delivery weeks min must be a whole number.");
+  } else if (deliveryWeeksMin != null && deliveryWeeksMin < 0) {
+    hints.push("Delivery weeks min cannot be negative.");
+  }
+
+  if (Number.isNaN(deliveryWeeksMax)) {
+    hints.push("Delivery weeks max must be a whole number.");
+  } else if (deliveryWeeksMax != null && deliveryWeeksMax < 0) {
+    hints.push("Delivery weeks max cannot be negative.");
+  }
+
+  if (
+    !Number.isNaN(deliveryWeeksMin) &&
+    !Number.isNaN(deliveryWeeksMax) &&
+    deliveryWeeksMin != null &&
+    deliveryWeeksMax != null &&
+    deliveryWeeksMin > deliveryWeeksMax
+  ) {
+    hints.push("Delivery weeks min cannot be greater than delivery weeks max.");
+  }
+
+  if (Number.isNaN(sortOrder)) {
+    hints.push("Sort order must be a whole number.");
   }
 
   return hints;
@@ -964,6 +1041,8 @@ function PriceStatusPanel({
   publishActionError,
   publishActionSuccess,
   publishing,
+  canManageProducts,
+  onOpenProductCreate,
   onOpenPublishModal,
 }) {
   const previewState = React.useMemo(
@@ -1077,16 +1156,28 @@ function PriceStatusPanel({
           ) : null}
         </div>
 
-        {canPublishSelectedList ? (
-          <button
-            type="button"
-            className="prices-admin-warning-button"
-            onClick={onOpenPublishModal}
-            disabled={publishing}
-          >
-            {publishing ? "Publishing..." : "Publish draft"}
-          </button>
-        ) : null}
+        <div className="prices-admin-status-panel__action-buttons">
+          {canManageProducts ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button"
+              onClick={onOpenProductCreate}
+            >
+              Add product
+            </button>
+          ) : null}
+
+          {canPublishSelectedList ? (
+            <button
+              type="button"
+              className="prices-admin-warning-button"
+              onClick={onOpenPublishModal}
+              disabled={publishing}
+            >
+              {publishing ? "Publishing..." : "Publish draft"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {publishActionError ? (
@@ -1125,6 +1216,18 @@ export default function PricesAdmin() {
   const [creatingDraft, setCreatingDraft] = React.useState(false);
   const [draftActionError, setDraftActionError] = React.useState("");
   const [draftActionSuccess, setDraftActionSuccess] = React.useState("");
+  const [productCreateOpen, setProductCreateOpen] = React.useState(false);
+  const [productCreateForm, setProductCreateForm] = React.useState(() =>
+    buildCreateProductFormState(null, null),
+  );
+  const [productCreateKeyTouched, setProductCreateKeyTouched] = React.useState(false);
+  const [creatingProduct, setCreatingProduct] = React.useState(false);
+  const [productCreateError, setProductCreateError] = React.useState("");
+  const [productCreateSuccess, setProductCreateSuccess] = React.useState("");
+  const [productArchiveConfirmOpen, setProductArchiveConfirmOpen] = React.useState(false);
+  const [archiveReason, setArchiveReason] = React.useState("");
+  const [archivingProduct, setArchivingProduct] = React.useState(false);
+  const [productArchiveError, setProductArchiveError] = React.useState("");
   const [selectedProductId, setSelectedProductId] = React.useState("");
   const [productForm, setProductForm] = React.useState(() =>
     buildProductFormState(null),
@@ -1175,16 +1278,26 @@ export default function PricesAdmin() {
       `${selectedCell.productRecordId}:${selectedCell.columnRecordId}`
     : "";
   const isDraftSelection = Boolean(matrixData && isDraftList(matrixData) && !matrixData?.is_active);
-  const canEditSelectedProduct = Boolean(isAdmin && isDraftSelection && selectedProduct);
+  const canManageProducts = Boolean(isAdmin && isDraftSelection);
+  const draftSections = matrixModel.sections || [];
+  const selectedProductIsDraftEditable = Boolean(
+    isAdmin && isDraftSelection && selectedProduct,
+  );
+  const canEditSelectedProduct = selectedProductIsDraftEditable;
   const productValidationHints = React.useMemo(
     () => getProductValidationHints(productForm),
     [productForm],
+  );
+  const createProductValidationHints = React.useMemo(
+    () => getCreateProductValidationHints(productCreateForm),
+    [productCreateForm],
   );
   const canEditSelectedCell = Boolean(
     isAdmin &&
       isDraftSelection &&
       selectedCell &&
-      selectedCell.cellRecordId,
+      selectedCell.productRecordId &&
+      selectedCell.columnRecordId,
   );
   const cellValidationHints = React.useMemo(
     () => getCellValidationHints(cellForm),
@@ -1363,6 +1476,14 @@ export default function PricesAdmin() {
     setProductForm(buildProductFormState(null));
     setProductActionError("");
     setProductActionSuccess("");
+    setProductCreateOpen(false);
+    setProductCreateForm(buildCreateProductFormState(null, null));
+    setProductCreateKeyTouched(false);
+    setProductCreateError("");
+    setProductCreateSuccess("");
+    setProductArchiveConfirmOpen(false);
+    setArchiveReason("");
+    setProductArchiveError("");
     setPublishModalOpen(false);
     setPublishReason("");
     setPublishActionError("");
@@ -1508,6 +1629,39 @@ export default function PricesAdmin() {
     setProductForm((current) => ({ ...current, [key]: value }));
   }
 
+  function openProductCreate() {
+    if (!canManageProducts) return;
+    setProductCreateForm(buildCreateProductFormState(selectedProduct, matrixModel));
+    setProductCreateKeyTouched(false);
+    setProductCreateError("");
+    setProductCreateSuccess("");
+    setProductArchiveError("");
+    setProductCreateOpen(true);
+  }
+
+  function closeProductCreate() {
+    if (creatingProduct) return;
+    setProductCreateOpen(false);
+    setProductCreateError("");
+    setProductCreateKeyTouched(false);
+  }
+
+  function updateProductCreateForm(key, value) {
+    setProductCreateForm((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === "name" && !productCreateKeyTouched) {
+        next.matrixKey = slugifyMatrixKey(value);
+      }
+
+      return next;
+    });
+
+    if (key === "matrixKey") {
+      setProductCreateKeyTouched(true);
+    }
+  }
+
   function handleSelectProduct(nextProductId) {
     setSelectedProductId(nextProductId);
     setProductActionError("");
@@ -1524,6 +1678,20 @@ export default function PricesAdmin() {
 
   function updateCellForm(key, value) {
     setCellForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function openArchiveProductConfirm() {
+    if (!selectedProductIsDraftEditable || savingProduct || archivingProduct) return;
+    setArchiveReason("");
+    setProductArchiveError("");
+    setProductArchiveConfirmOpen(true);
+  }
+
+  function closeArchiveProductConfirm() {
+    if (archivingProduct) return;
+    setProductArchiveConfirmOpen(false);
+    setArchiveReason("");
+    setProductArchiveError("");
   }
 
   function openPublishModal() {
@@ -1631,9 +1799,117 @@ export default function PricesAdmin() {
     }
   }
 
+  async function createProduct(event) {
+    event.preventDefault();
+    if (!canManageProducts || creatingProduct || !selectedPriceList) return;
+    if (createProductValidationHints.length > 0) {
+      setProductCreateError(createProductValidationHints[0]);
+      setProductCreateSuccess("");
+      return;
+    }
+
+    setCreatingProduct(true);
+    setProductCreateError("");
+    setProductCreateSuccess("");
+    setProductArchiveError("");
+
+    try {
+      const { data, error } = await supabase.rpc("create_price_product_admin", {
+        p_price_list_id: selectedPriceList.id,
+        p_section_id: productCreateForm.sectionId,
+        p_matrix_key: productCreateForm.matrixKey.trim(),
+        p_name: productCreateForm.name.trim(),
+        p_cloth_required: toOptionalText(productCreateForm.clothRequired),
+        p_cmt_price: parseOptionalNumber(productCreateForm.cmtPrice),
+        p_delivery_weeks_min: parseOptionalInteger(productCreateForm.deliveryWeeksMin),
+        p_delivery_weeks_max: parseOptionalInteger(productCreateForm.deliveryWeeksMax),
+        p_notes: toOptionalText(productCreateForm.notes),
+        p_sort_order: parseOptionalInteger(productCreateForm.sortOrder),
+        p_reason: toOptionalText(productCreateForm.reason),
+      });
+
+      if (error) throw error;
+
+      const createdProduct = Array.isArray(data) ? data[0] || null : data || null;
+      const createdProductId = createdProduct?.id ? String(createdProduct.id) : "";
+
+      setSelectedCell(null);
+      if (createdProductId) {
+        setSelectedProductId(createdProductId);
+      }
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+      ]);
+      refreshAuditAfterSuccess(selectedPriceList.id);
+
+      setProductCreateOpen(false);
+      setProductCreateKeyTouched(false);
+      setProductCreateForm(buildCreateProductFormState(null, null));
+      setProductCreateSuccess("Product added to this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to create product", error);
+      setProductCreateError(error?.message || "Could not add a product to this draft.");
+    } finally {
+      setCreatingProduct(false);
+    }
+  }
+
+  async function archiveSelectedProduct(event) {
+    event.preventDefault();
+    if (!selectedProductIsDraftEditable || archivingProduct || !selectedPriceList) {
+      return;
+    }
+
+    setArchivingProduct(true);
+    setProductArchiveError("");
+    setProductCreateSuccess("");
+
+    try {
+      const { error } = await supabase.rpc("set_price_product_active_admin", {
+        p_product_id: selectedProduct.recordId,
+        p_is_active: false,
+        p_reason: toOptionalText(archiveReason),
+      });
+
+      if (error) throw error;
+
+      setProductArchiveConfirmOpen(false);
+      setArchiveReason("");
+      setSelectedProductId("");
+      setSelectedCell(null);
+      setCellForm(buildCellFormState(null));
+      setProductForm(buildProductFormState(null));
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+      ]);
+      refreshAuditAfterSuccess(selectedPriceList.id);
+
+      setProductCreateSuccess("Product archived from this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to archive product", error);
+      setProductArchiveError(
+        error?.message || "Could not archive the selected draft product.",
+      );
+    } finally {
+      setArchivingProduct(false);
+    }
+  }
+
   async function saveSelectedCell(event) {
     event.preventDefault();
-    if (!canEditSelectedCell || savingCell || !selectedCell?.cellRecordId) return;
+    if (
+      !canEditSelectedCell ||
+      savingCell ||
+      !selectedCell?.productRecordId ||
+      !selectedCell?.columnRecordId ||
+      !selectedPriceList
+    ) {
+      return;
+    }
     if (cellValidationHints.length > 0) {
       setCellActionError(cellValidationHints[0]);
       setCellActionSuccess("");
@@ -1645,16 +1921,29 @@ export default function PricesAdmin() {
     setCellActionSuccess("");
 
     try {
-      const { error } = await supabase.rpc("update_price_cell_admin", {
-        p_cell_id: selectedCell.cellRecordId,
-        p_retail_price: parseOptionalNumber(cellForm.retailPrice),
-        p_reason: toOptionalText(cellForm.reason),
-      });
+      const rpcName = selectedCell.cellRecordId
+        ? "update_price_cell_admin"
+        : "upsert_price_cell_admin";
+      const rpcArgs = selectedCell.cellRecordId
+        ? {
+            p_cell_id: selectedCell.cellRecordId,
+            p_retail_price: parseOptionalNumber(cellForm.retailPrice),
+            p_reason: toOptionalText(cellForm.reason),
+          }
+        : {
+            p_price_list_id: selectedPriceList.id,
+            p_product_id: selectedCell.productRecordId,
+            p_column_id: selectedCell.columnRecordId,
+            p_retail_price: parseOptionalNumber(cellForm.retailPrice),
+            p_reason: toOptionalText(cellForm.reason),
+          };
+
+      const { error } = await supabase.rpc(rpcName, rpcArgs);
 
       if (error) throw error;
 
       await loadSelectedMatrix();
-      refreshAuditAfterSuccess();
+      refreshAuditAfterSuccess(selectedPriceList.id);
       setCellForm((current) => ({ ...current, reason: "" }));
       setCellActionSuccess("Retail price saved to this draft.");
     } catch (error) {
@@ -1963,6 +2252,296 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
+                {productCreateOpen ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeProductCreate}
+                  >
+                    <div
+                      className="prices-admin-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-product-create-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form className="prices-admin-modal__content" onSubmit={createProduct}>
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Draft product
+                            </span>
+                            <h3 id="prices-admin-product-create-title">Add product</h3>
+                            <p>
+                              This adds a product row to the selected draft only.
+                              Live staff prices stay unchanged until a draft is published.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal__summary">
+                          <div className="prices-admin-status-card">
+                            <span>Selected draft</span>
+                            <strong>{selectedPriceList?.version || "No version"}</strong>
+                            <small>{selectedPriceList?.name || "Unnamed price list"}</small>
+                          </div>
+
+                          <div className="prices-admin-status-card">
+                            <span>Available sections</span>
+                            <strong>{draftSections.length}</strong>
+                            <small>Products must be added to an existing section.</small>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal-form-grid">
+                          <label className="prices-admin-field">
+                            <span>Section</span>
+                            <select
+                              value={productCreateForm.sectionId}
+                              onChange={(event) =>
+                                updateProductCreateForm("sectionId", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            >
+                              <option value="">Select a section</option>
+                              {draftSections.map((section) => (
+                                <option key={section.id} value={section.id}>
+                                  {section.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Product name</span>
+                            <input
+                              value={productCreateForm.name}
+                              onChange={(event) =>
+                                updateProductCreateForm("name", event.target.value)
+                              }
+                              placeholder="Full Kilt - 6 Yard"
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Matrix key</span>
+                            <input
+                              value={productCreateForm.matrixKey}
+                              onChange={(event) =>
+                                updateProductCreateForm("matrixKey", event.target.value)
+                              }
+                              placeholder="full-kilt-6-yard"
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Sort order</span>
+                            <input
+                              type="number"
+                              step="1"
+                              value={productCreateForm.sortOrder}
+                              onChange={(event) =>
+                                updateProductCreateForm("sortOrder", event.target.value)
+                              }
+                              placeholder="Optional"
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Cloth required</span>
+                            <input
+                              value={productCreateForm.clothRequired}
+                              onChange={(event) =>
+                                updateProductCreateForm("clothRequired", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>CMT price</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={productCreateForm.cmtPrice}
+                              onChange={(event) =>
+                                updateProductCreateForm("cmtPrice", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Delivery weeks min</span>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={productCreateForm.deliveryWeeksMin}
+                              onChange={(event) =>
+                                updateProductCreateForm("deliveryWeeksMin", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Delivery weeks max</span>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={productCreateForm.deliveryWeeksMax}
+                              onChange={(event) =>
+                                updateProductCreateForm("deliveryWeeksMax", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field prices-admin-field--full">
+                            <span>Notes</span>
+                            <textarea
+                              rows={3}
+                              value={productCreateForm.notes}
+                              onChange={(event) =>
+                                updateProductCreateForm("notes", event.target.value)
+                              }
+                              disabled={creatingProduct}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field prices-admin-field--full">
+                            <span>Reason / note for audit</span>
+                            <textarea
+                              rows={2}
+                              value={productCreateForm.reason}
+                              onChange={(event) =>
+                                updateProductCreateForm("reason", event.target.value)
+                              }
+                              placeholder="Optional note for why this product is being added."
+                              disabled={creatingProduct}
+                            />
+                          </label>
+                        </div>
+
+                        {productCreateError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {productCreateError}
+                          </div>
+                        ) : createProductValidationHints.length > 0 ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {createProductValidationHints[0]}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeProductCreate}
+                            disabled={creatingProduct}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-primary-button"
+                            disabled={
+                              creatingProduct ||
+                              draftSections.length === 0 ||
+                              createProductValidationHints.length > 0
+                            }
+                          >
+                            {creatingProduct ? "Adding product..." : "Add product"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
+                {productArchiveConfirmOpen && selectedProduct ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeArchiveProductConfirm}
+                  >
+                    <div
+                      className="prices-admin-modal prices-admin-modal--compact"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-archive-product-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form
+                        className="prices-admin-modal__content"
+                        onSubmit={archiveSelectedProduct}
+                      >
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Draft product
+                            </span>
+                            <h3 id="prices-admin-archive-product-title">
+                              Archive product
+                            </h3>
+                            <p>
+                              This will hide the product from this draft price matrix.
+                              Existing price history and audit records will be kept.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-status-card prices-admin-status-card--full">
+                          <span>Selected product</span>
+                          <strong>{selectedProduct.name}</strong>
+                          <small>{selectedProduct.section || "Unassigned section"}</small>
+                        </div>
+
+                        <label className="prices-admin-field">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={3}
+                            value={archiveReason}
+                            onChange={(event) => setArchiveReason(event.target.value)}
+                            placeholder="Optional note for why this product is being archived."
+                            disabled={archivingProduct}
+                          />
+                        </label>
+
+                        {productArchiveError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {productArchiveError}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeArchiveProductConfirm}
+                            disabled={archivingProduct}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-danger-button"
+                            disabled={archivingProduct}
+                          >
+                            {archivingProduct ? "Archiving..." : "Archive product"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
                 <PriceMatrixPreview
                   matrixData={matrixData}
                   matrixModel={matrixModel}
@@ -1984,8 +2563,16 @@ export default function PricesAdmin() {
                   publishActionError={publishActionError}
                   publishActionSuccess={publishActionSuccess}
                   publishing={publishing}
+                  canManageProducts={canManageProducts}
+                  onOpenProductCreate={openProductCreate}
                   onOpenPublishModal={openPublishModal}
                 />
+
+                {productCreateSuccess ? (
+                  <div className="prices-admin-feedback prices-admin-feedback--success">
+                    {productCreateSuccess}
+                  </div>
+                ) : null}
 
                 <PriceAuditPanel
                   selectedList={selectedPriceList}
@@ -2023,7 +2610,7 @@ export default function PricesAdmin() {
                           <p>
                             {selectedProduct.section || "Unassigned section"}.
                             {" "}
-                            {canEditSelectedProduct
+                            {selectedProductIsDraftEditable
                               ? "Draft-only admin editing is enabled for this product."
                               : isDraftSelection && !isAdmin
                                 ? "Managers can review draft product details but cannot edit them."
@@ -2034,7 +2621,7 @@ export default function PricesAdmin() {
                           <span className="prices-admin-badge prices-admin-badge--readonly">
                             {selectedProduct.id}
                           </span>
-                          {canEditSelectedProduct ? (
+                          {selectedProductIsDraftEditable ? (
                             <span className="prices-admin-badge prices-admin-badge--draft">
                               DRAFT EDIT
                             </span>
@@ -2136,7 +2723,7 @@ export default function PricesAdmin() {
                         </label>
                       </div>
 
-                      {canEditSelectedProduct ? (
+                      {selectedProductIsDraftEditable ? (
                         <div className="prices-admin-product-detail__helper">
                           Blank optional fields preserve their current values.
                           Explicit clearing to empty is not available in this first
@@ -2144,7 +2731,7 @@ export default function PricesAdmin() {
                         </div>
                       ) : null}
 
-                      {productValidationHints.length > 0 && canEditSelectedProduct ? (
+                      {productValidationHints.length > 0 && selectedProductIsDraftEditable ? (
                         <div className="prices-admin-feedback prices-admin-feedback--error">
                           {productValidationHints[0]}
                         </div>
@@ -2162,7 +2749,7 @@ export default function PricesAdmin() {
                         </div>
                       ) : null}
 
-                      {canEditSelectedProduct ? (
+                      {selectedProductIsDraftEditable ? (
                         <div className="prices-admin-product-detail__footer">
                           <button
                             type="submit"
@@ -2170,6 +2757,14 @@ export default function PricesAdmin() {
                             disabled={savingProduct || productValidationHints.length > 0}
                           >
                             {savingProduct ? "Saving product..." : "Save product details"}
+                          </button>
+                          <button
+                            type="button"
+                            className="prices-admin-danger-button"
+                            onClick={openArchiveProductConfirm}
+                            disabled={savingProduct || archivingProduct}
+                          >
+                            Archive product
                           </button>
                         </div>
                       ) : null}
@@ -2269,8 +2864,9 @@ export default function PricesAdmin() {
 
                       {!selectedCell.cellRecordId ? (
                         <div className="prices-admin-product-detail__helper">
-                          Cell record details are unavailable in this matrix
-                          payload, so this selection can only be reviewed read-only.
+                          {canEditSelectedCell
+                            ? "This draft cell does not exist yet. Saving a retail price here will create the missing draft cell."
+                            : "Cell record details are unavailable in this matrix payload, so this selection can only be reviewed read-only."}
                         </div>
                       ) : null}
 
