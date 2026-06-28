@@ -363,6 +363,23 @@ function slugifyMatrixKey(value) {
     .replace(/^-|-$/g, "");
 }
 
+function buildCreateColumnFormState() {
+  return {
+    supplier: "",
+    range: "",
+    matrixKey: "",
+    width: "",
+    weight: "",
+    supplierSortOrder: "",
+    sortOrder: "",
+    reason: "",
+  };
+}
+
+function slugifyColumnMatrixKey(supplier, range) {
+  return slugifyMatrixKey([supplier, range].filter(Boolean).join(" "));
+}
+
 function parseOptionalNumber(value) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -575,6 +592,29 @@ function getCreateProductValidationHints(formState) {
     deliveryWeeksMin > deliveryWeeksMax
   ) {
     hints.push("Delivery weeks min cannot be greater than delivery weeks max.");
+  }
+
+  if (Number.isNaN(sortOrder)) {
+    hints.push("Sort order must be a whole number.");
+  }
+
+  return hints;
+}
+
+function getCreateColumnValidationHints(formState) {
+  const hints = [];
+  const supplier = String(formState?.supplier || "").trim();
+  const range = String(formState?.range || "").trim();
+  const matrixKey = String(formState?.matrixKey || "").trim();
+  const supplierSortOrder = parseOptionalInteger(formState?.supplierSortOrder);
+  const sortOrder = parseOptionalInteger(formState?.sortOrder);
+
+  if (!supplier) hints.push("Supplier is required.");
+  if (!range) hints.push("Range is required.");
+  if (!matrixKey) hints.push("Matrix key is required.");
+
+  if (Number.isNaN(supplierSortOrder)) {
+    hints.push("Supplier sort order must be a whole number.");
   }
 
   if (Number.isNaN(sortOrder)) {
@@ -1049,6 +1089,8 @@ function PriceStatusPanel({
   publishing,
   canManageProducts,
   onOpenProductCreate,
+  canManageColumns,
+  onOpenColumnCreate,
   onOpenPublishModal,
 }) {
   const previewState = React.useMemo(
@@ -1163,6 +1205,16 @@ function PriceStatusPanel({
         </div>
 
         <div className="prices-admin-status-panel__action-buttons">
+          {canManageColumns ? (
+            <button
+              type="button"
+              className="prices-admin-secondary-button"
+              onClick={onOpenColumnCreate}
+            >
+              Add column
+            </button>
+          ) : null}
+
           {canManageProducts ? (
             <button
               type="button"
@@ -1230,6 +1282,18 @@ export default function PricesAdmin() {
   const [creatingProduct, setCreatingProduct] = React.useState(false);
   const [productCreateError, setProductCreateError] = React.useState("");
   const [productCreateSuccess, setProductCreateSuccess] = React.useState("");
+  const [columnCreateOpen, setColumnCreateOpen] = React.useState(false);
+  const [columnCreateForm, setColumnCreateForm] = React.useState(() =>
+    buildCreateColumnFormState(),
+  );
+  const [columnCreateKeyTouched, setColumnCreateKeyTouched] = React.useState(false);
+  const [creatingColumn, setCreatingColumn] = React.useState(false);
+  const [columnCreateError, setColumnCreateError] = React.useState("");
+  const [columnCreateSuccess, setColumnCreateSuccess] = React.useState("");
+  const [columnArchiveConfirmOpen, setColumnArchiveConfirmOpen] = React.useState(false);
+  const [columnArchiveReason, setColumnArchiveReason] = React.useState("");
+  const [archivingColumn, setArchivingColumn] = React.useState(false);
+  const [columnArchiveError, setColumnArchiveError] = React.useState("");
   const [productArchiveConfirmOpen, setProductArchiveConfirmOpen] = React.useState(false);
   const [archiveReason, setArchiveReason] = React.useState("");
   const [archivingProduct, setArchivingProduct] = React.useState(false);
@@ -1285,9 +1349,20 @@ export default function PricesAdmin() {
     : "";
   const isDraftSelection = Boolean(matrixData && isDraftList(matrixData) && !matrixData?.is_active);
   const canManageProducts = Boolean(isAdmin && isDraftSelection);
+  const canManageColumns = Boolean(isAdmin && isDraftSelection);
   const draftSections = matrixModel.sections || [];
+  const selectedColumn = React.useMemo(
+    () =>
+      (matrixModel.columns || []).find(
+        (column) => column.recordId === selectedCell?.columnRecordId,
+      ) || null,
+    [matrixModel.columns, selectedCell?.columnRecordId],
+  );
   const selectedProductIsDraftEditable = Boolean(
     isAdmin && isDraftSelection && selectedProduct,
+  );
+  const selectedColumnIsDraftEditable = Boolean(
+    isAdmin && isDraftSelection && selectedColumn,
   );
   const canEditSelectedProduct = selectedProductIsDraftEditable;
   const productValidationHints = React.useMemo(
@@ -1297,6 +1372,10 @@ export default function PricesAdmin() {
   const createProductValidationHints = React.useMemo(
     () => getCreateProductValidationHints(productCreateForm),
     [productCreateForm],
+  );
+  const createColumnValidationHints = React.useMemo(
+    () => getCreateColumnValidationHints(columnCreateForm),
+    [columnCreateForm],
   );
   const canEditSelectedCell = Boolean(
     isAdmin &&
@@ -1487,6 +1566,14 @@ export default function PricesAdmin() {
     setProductCreateKeyTouched(false);
     setProductCreateError("");
     setProductCreateSuccess("");
+    setColumnCreateOpen(false);
+    setColumnCreateForm(buildCreateColumnFormState());
+    setColumnCreateKeyTouched(false);
+    setColumnCreateError("");
+    setColumnCreateSuccess("");
+    setColumnArchiveConfirmOpen(false);
+    setColumnArchiveReason("");
+    setColumnArchiveError("");
     setProductArchiveConfirmOpen(false);
     setArchiveReason("");
     setProductArchiveError("");
@@ -1645,6 +1732,23 @@ export default function PricesAdmin() {
     setProductCreateOpen(true);
   }
 
+  function openColumnCreate() {
+    if (!canManageColumns) return;
+    setColumnCreateForm(buildCreateColumnFormState());
+    setColumnCreateKeyTouched(false);
+    setColumnCreateError("");
+    setColumnCreateSuccess("");
+    setColumnArchiveError("");
+    setColumnCreateOpen(true);
+  }
+
+  function closeColumnCreate() {
+    if (creatingColumn) return;
+    setColumnCreateOpen(false);
+    setColumnCreateError("");
+    setColumnCreateKeyTouched(false);
+  }
+
   function closeProductCreate() {
     if (creatingProduct) return;
     setProductCreateOpen(false);
@@ -1665,6 +1769,25 @@ export default function PricesAdmin() {
 
     if (key === "matrixKey") {
       setProductCreateKeyTouched(true);
+    }
+  }
+
+  function updateColumnCreateForm(key, value) {
+    setColumnCreateForm((current) => {
+      const next = { ...current, [key]: value };
+
+      if ((key === "supplier" || key === "range") && !columnCreateKeyTouched) {
+        next.matrixKey = slugifyColumnMatrixKey(
+          key === "supplier" ? value : current.supplier,
+          key === "range" ? value : current.range,
+        );
+      }
+
+      return next;
+    });
+
+    if (key === "matrixKey") {
+      setColumnCreateKeyTouched(true);
     }
   }
 
@@ -1698,6 +1821,20 @@ export default function PricesAdmin() {
     setProductArchiveConfirmOpen(false);
     setArchiveReason("");
     setProductArchiveError("");
+  }
+
+  function openArchiveColumnConfirm() {
+    if (!selectedColumnIsDraftEditable || savingCell || archivingColumn) return;
+    setColumnArchiveReason("");
+    setColumnArchiveError("");
+    setColumnArchiveConfirmOpen(true);
+  }
+
+  function closeArchiveColumnConfirm() {
+    if (archivingColumn) return;
+    setColumnArchiveConfirmOpen(false);
+    setColumnArchiveReason("");
+    setColumnArchiveError("");
   }
 
   function openPublishModal() {
@@ -1862,6 +1999,53 @@ export default function PricesAdmin() {
     }
   }
 
+  async function createColumn(event) {
+    event.preventDefault();
+    if (!canManageColumns || creatingColumn || !selectedPriceList) return;
+    if (createColumnValidationHints.length > 0) {
+      setColumnCreateError(createColumnValidationHints[0]);
+      setColumnCreateSuccess("");
+      return;
+    }
+
+    setCreatingColumn(true);
+    setColumnCreateError("");
+    setColumnCreateSuccess("");
+    setColumnArchiveError("");
+
+    try {
+      const { error } = await supabase.rpc("create_price_matrix_column_admin", {
+        p_price_list_id: selectedPriceList.id,
+        p_matrix_key: columnCreateForm.matrixKey.trim(),
+        p_supplier: columnCreateForm.supplier.trim(),
+        p_range: columnCreateForm.range.trim(),
+        p_width: toOptionalText(columnCreateForm.width),
+        p_weight: toOptionalText(columnCreateForm.weight),
+        p_supplier_sort_order: parseOptionalInteger(columnCreateForm.supplierSortOrder),
+        p_sort_order: parseOptionalInteger(columnCreateForm.sortOrder),
+        p_reason: toOptionalText(columnCreateForm.reason),
+      });
+
+      if (error) throw error;
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+      ]);
+      refreshAuditAfterSuccess(selectedPriceList.id);
+
+      setColumnCreateOpen(false);
+      setColumnCreateKeyTouched(false);
+      setColumnCreateForm(buildCreateColumnFormState());
+      setColumnCreateSuccess("Column added to this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to create column", error);
+      setColumnCreateError(error?.message || "Could not add a column to this draft.");
+    } finally {
+      setCreatingColumn(false);
+    }
+  }
+
   async function archiveSelectedProduct(event) {
     event.preventDefault();
     if (!selectedProductIsDraftEditable || archivingProduct || !selectedPriceList) {
@@ -1902,6 +2086,47 @@ export default function PricesAdmin() {
       );
     } finally {
       setArchivingProduct(false);
+    }
+  }
+
+  async function archiveSelectedColumn(event) {
+    event.preventDefault();
+    if (!selectedColumnIsDraftEditable || archivingColumn || !selectedPriceList) {
+      return;
+    }
+
+    setArchivingColumn(true);
+    setColumnArchiveError("");
+    setColumnCreateSuccess("");
+
+    try {
+      const { error } = await supabase.rpc("set_price_matrix_column_active_admin", {
+        p_column_id: selectedCell.columnRecordId,
+        p_is_active: false,
+        p_reason: toOptionalText(columnArchiveReason),
+      });
+
+      if (error) throw error;
+
+      setColumnArchiveConfirmOpen(false);
+      setColumnArchiveReason("");
+      setSelectedCell(null);
+      setCellForm(buildCellFormState(null));
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+      ]);
+      refreshAuditAfterSuccess(selectedPriceList.id);
+
+      setColumnCreateSuccess("Column archived from this draft.");
+    } catch (error) {
+      console.error("prices admin: failed to archive column", error);
+      setColumnArchiveError(
+        error?.message || "Could not archive the selected draft column.",
+      );
+    } finally {
+      setArchivingColumn(false);
     }
   }
 
@@ -2258,6 +2483,185 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
+                {columnCreateOpen ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeColumnCreate}
+                  >
+                    <div
+                      className="prices-admin-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-column-create-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form className="prices-admin-modal__content" onSubmit={createColumn}>
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Draft column
+                            </span>
+                            <h3 id="prices-admin-column-create-title">Add column</h3>
+                            <p>
+                              This adds a column to the selected draft matrix only.
+                              Live staff prices stay unchanged until a draft is published.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal__summary">
+                          <div className="prices-admin-status-card">
+                            <span>Selected draft</span>
+                            <strong>{selectedPriceList?.version || "No version"}</strong>
+                            <small>{selectedPriceList?.name || "Unnamed price list"}</small>
+                          </div>
+
+                          <div className="prices-admin-status-card">
+                            <span>Current columns</span>
+                            <strong>{matrixModel.columns?.length || 0}</strong>
+                            <small>New columns start empty and use sparse pricing.</small>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal-form-grid">
+                          <label className="prices-admin-field">
+                            <span>Supplier</span>
+                            <input
+                              value={columnCreateForm.supplier}
+                              onChange={(event) =>
+                                updateColumnCreateForm("supplier", event.target.value)
+                              }
+                              placeholder="Lochcarron"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Range</span>
+                            <input
+                              value={columnCreateForm.range}
+                              onChange={(event) =>
+                                updateColumnCreateForm("range", event.target.value)
+                              }
+                              placeholder="Reiver"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Matrix key</span>
+                            <input
+                              value={columnCreateForm.matrixKey}
+                              onChange={(event) =>
+                                updateColumnCreateForm("matrixKey", event.target.value)
+                              }
+                              placeholder="lochcarron-reiver"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Width</span>
+                            <input
+                              value={columnCreateForm.width}
+                              onChange={(event) =>
+                                updateColumnCreateForm("width", event.target.value)
+                              }
+                              placeholder="DW"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Weight</span>
+                            <input
+                              value={columnCreateForm.weight}
+                              onChange={(event) =>
+                                updateColumnCreateForm("weight", event.target.value)
+                              }
+                              placeholder="16"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Supplier sort order</span>
+                            <input
+                              type="number"
+                              step="1"
+                              value={columnCreateForm.supplierSortOrder}
+                              onChange={(event) =>
+                                updateColumnCreateForm(
+                                  "supplierSortOrder",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Optional"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field">
+                            <span>Sort order</span>
+                            <input
+                              type="number"
+                              step="1"
+                              value={columnCreateForm.sortOrder}
+                              onChange={(event) =>
+                                updateColumnCreateForm("sortOrder", event.target.value)
+                              }
+                              placeholder="Optional"
+                              disabled={creatingColumn}
+                            />
+                          </label>
+
+                          <label className="prices-admin-field prices-admin-field--full">
+                            <span>Reason / note for audit</span>
+                            <textarea
+                              rows={2}
+                              value={columnCreateForm.reason}
+                              onChange={(event) =>
+                                updateColumnCreateForm("reason", event.target.value)
+                              }
+                              placeholder="Optional note for why this column is being added."
+                              disabled={creatingColumn}
+                            />
+                          </label>
+                        </div>
+
+                        {columnCreateError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {columnCreateError}
+                          </div>
+                        ) : createColumnValidationHints.length > 0 ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {createColumnValidationHints[0]}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeColumnCreate}
+                            disabled={creatingColumn}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-primary-button"
+                            disabled={creatingColumn || createColumnValidationHints.length > 0}
+                          >
+                            {creatingColumn ? "Adding column..." : "Add column"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
                 {productCreateOpen ? (
                   <div
                     className="prices-admin-modal-backdrop"
@@ -2471,6 +2875,84 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
+                {columnArchiveConfirmOpen && selectedColumn ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeArchiveColumnConfirm}
+                  >
+                    <div
+                      className="prices-admin-modal prices-admin-modal--compact"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-archive-column-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form
+                        className="prices-admin-modal__content"
+                        onSubmit={archiveSelectedColumn}
+                      >
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Draft column
+                            </span>
+                            <h3 id="prices-admin-archive-column-title">
+                              Archive column
+                            </h3>
+                            <p>
+                              This will hide this column from the draft price matrix.
+                              Existing prices, mapping links, history and audit records
+                              will be kept.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-status-card prices-admin-status-card--full">
+                          <span>Selected column</span>
+                          <strong>{selectedColumn.supplier}</strong>
+                          <small>{selectedColumn.range || "Unnamed range"}</small>
+                        </div>
+
+                        <label className="prices-admin-field">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={3}
+                            value={columnArchiveReason}
+                            onChange={(event) => setColumnArchiveReason(event.target.value)}
+                            placeholder="Optional note for why this column is being archived."
+                            disabled={archivingColumn}
+                          />
+                        </label>
+
+                        {columnArchiveError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {columnArchiveError}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeArchiveColumnConfirm}
+                            disabled={archivingColumn}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-danger-button"
+                            disabled={archivingColumn}
+                          >
+                            {archivingColumn ? "Archiving..." : "Archive column"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
                 {productArchiveConfirmOpen && selectedProduct ? (
                   <div
                     className="prices-admin-modal-backdrop"
@@ -2571,8 +3053,16 @@ export default function PricesAdmin() {
                   publishing={publishing}
                   canManageProducts={canManageProducts}
                   onOpenProductCreate={openProductCreate}
+                  canManageColumns={canManageColumns}
+                  onOpenColumnCreate={openColumnCreate}
                   onOpenPublishModal={openPublishModal}
                 />
+
+                {columnCreateSuccess ? (
+                  <div className="prices-admin-feedback prices-admin-feedback--success">
+                    {columnCreateSuccess}
+                  </div>
+                ) : null}
 
                 {productCreateSuccess ? (
                   <div className="prices-admin-feedback prices-admin-feedback--success">
@@ -2903,6 +3393,16 @@ export default function PricesAdmin() {
                           >
                             {savingCell ? "Saving retail price..." : "Save retail price"}
                           </button>
+                          {selectedColumnIsDraftEditable ? (
+                            <button
+                              type="button"
+                              className="prices-admin-danger-button"
+                              onClick={openArchiveColumnConfirm}
+                              disabled={savingCell || archivingColumn}
+                            >
+                              Archive column
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
                     </form>
