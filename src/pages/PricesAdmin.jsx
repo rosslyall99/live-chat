@@ -239,6 +239,39 @@ function canPublishList(list, isAdmin) {
   return Boolean(isAdmin && list && isDraftList(list) && !list.is_active);
 }
 
+function formatArchivedDeliveryWindow(item) {
+  if (
+    Number.isFinite(item?.delivery_weeks_min) &&
+    Number.isFinite(item?.delivery_weeks_max)
+  ) {
+    return `${item.delivery_weeks_min}-${item.delivery_weeks_max} weeks`;
+  }
+
+  if (Number.isFinite(item?.delivery_weeks_min)) {
+    return `${item.delivery_weeks_min} weeks`;
+  }
+
+  if (Number.isFinite(item?.delivery_weeks_max)) {
+    return `${item.delivery_weeks_max} weeks`;
+  }
+
+  return "";
+}
+
+function formatArchivedColumnMapping(item) {
+  const parts = [];
+
+  if (Number.isFinite(item?.external_weaver_id)) {
+    parts.push(`Weaver ${item.external_weaver_id}`);
+  }
+
+  if (Number.isFinite(item?.external_range_id)) {
+    parts.push(`Range ${item.external_range_id}`);
+  }
+
+  return parts.join(" / ");
+}
+
 function buildAdminMatrixModel(matrixData) {
   const normalized = normalizePricesData(matrixData || {});
   const rawColumns = Array.isArray(matrixData?.columns) ? matrixData.columns : [];
@@ -1058,7 +1091,9 @@ function PriceStatusPanel({
   canManageProducts,
   onOpenProductCreate,
   canManageColumns,
+  canBrowseArchivedItems,
   onOpenColumnCreate,
+  onOpenArchivedItems,
   onOpenPublishModal,
 }) {
   const previewState = React.useMemo(
@@ -1166,6 +1201,16 @@ function PriceStatusPanel({
             Draft structure
           </span>
           <div className="prices-admin-status-panel__action-buttons">
+            {canBrowseArchivedItems ? (
+              <button
+                type="button"
+                className="prices-admin-secondary-button"
+                onClick={onOpenArchivedItems}
+              >
+                Archived items
+              </button>
+            ) : null}
+
             {canManageColumns ? (
               <button
                 type="button"
@@ -1274,6 +1319,16 @@ export default function PricesAdmin() {
   const [creatingColumn, setCreatingColumn] = React.useState(false);
   const [columnCreateError, setColumnCreateError] = React.useState("");
   const [columnCreateSuccess, setColumnCreateSuccess] = React.useState("");
+  const [archivedItemsOpen, setArchivedItemsOpen] = React.useState(false);
+  const [loadingArchivedItems, setLoadingArchivedItems] = React.useState(false);
+  const [archivedItemsError, setArchivedItemsError] = React.useState("");
+  const [archivedItemsData, setArchivedItemsData] = React.useState(null);
+  const [archivedRestoreConfirmOpen, setArchivedRestoreConfirmOpen] = React.useState(false);
+  const [archivedRestoreTarget, setArchivedRestoreTarget] = React.useState(null);
+  const [archivedRestoreReason, setArchivedRestoreReason] = React.useState("");
+  const [restoringArchivedItem, setRestoringArchivedItem] = React.useState(false);
+  const [archivedRestoreError, setArchivedRestoreError] = React.useState("");
+  const [archivedRestoreSuccess, setArchivedRestoreSuccess] = React.useState("");
   const [columnArchiveConfirmOpen, setColumnArchiveConfirmOpen] = React.useState(false);
   const [columnArchiveReason, setColumnArchiveReason] = React.useState("");
   const [archivingColumn, setArchivingColumn] = React.useState(false);
@@ -1303,6 +1358,7 @@ export default function PricesAdmin() {
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
   const loadAuditSeq = React.useRef(0);
+  const loadArchivedSeq = React.useRef(0);
 
   const canView = role === "admin" || role === "manager";
   const isAdmin = role === "admin";
@@ -1334,6 +1390,8 @@ export default function PricesAdmin() {
   const isDraftSelection = Boolean(matrixData && isDraftList(matrixData) && !matrixData?.is_active);
   const canManageProducts = Boolean(isAdmin && isDraftSelection);
   const canManageColumns = Boolean(isAdmin && isDraftSelection);
+  const canBrowseArchivedItems = Boolean(isDraftSelection);
+  const canRestoreArchivedItems = Boolean(isAdmin && isDraftSelection);
   const draftSections = matrixModel.sections || [];
   const selectedColumn = React.useMemo(
     () =>
@@ -1373,6 +1431,12 @@ export default function PricesAdmin() {
     [cellForm],
   );
   const canPublishSelectedList = canPublishList(matrixData || selectedPriceList, isAdmin);
+  const archivedProducts = Array.isArray(archivedItemsData?.products)
+    ? archivedItemsData.products
+    : [];
+  const archivedColumns = Array.isArray(archivedItemsData?.columns)
+    ? archivedItemsData.columns
+    : [];
 
   const loadPriceLists = React.useCallback(
     async ({ preferredSelectionId } = {}) => {
@@ -1536,6 +1600,51 @@ export default function PricesAdmin() {
     loadSelectedAudit();
   }, [loadSelectedAudit]);
 
+  const loadArchivedItems = React.useCallback(
+    async ({ priceListId } = {}) => {
+      const targetPriceListId = priceListId || selectedPriceListId;
+
+      if (!canView || !targetPriceListId) {
+        setLoadingArchivedItems(false);
+        setArchivedItemsError("");
+        setArchivedItemsData(null);
+        return;
+      }
+
+      const seq = ++loadArchivedSeq.current;
+
+      setLoadingArchivedItems(true);
+      setArchivedItemsError("");
+
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_price_archived_structure_admin",
+          {
+            p_price_list_id: targetPriceListId,
+          },
+        );
+
+        if (seq !== loadArchivedSeq.current) return;
+        if (error) throw error;
+
+        setArchivedItemsData(data || null);
+      } catch (error) {
+        console.error("prices admin: failed to load archived items", error);
+        if (seq !== loadArchivedSeq.current) return;
+
+        setArchivedItemsError(
+          error?.message || "Could not load archived items for this draft.",
+        );
+        setArchivedItemsData(null);
+      } finally {
+        if (seq === loadArchivedSeq.current) {
+          setLoadingArchivedItems(false);
+        }
+      }
+    },
+    [canView, selectedPriceListId],
+  );
+
   React.useEffect(() => {
     setSelectedProductId("");
     setSelectedCell(null);
@@ -1555,6 +1664,16 @@ export default function PricesAdmin() {
     setColumnCreateKeyTouched(false);
     setColumnCreateError("");
     setColumnCreateSuccess("");
+    setArchivedItemsOpen(false);
+    setLoadingArchivedItems(false);
+    setArchivedItemsError("");
+    setArchivedItemsData(null);
+    setArchivedRestoreConfirmOpen(false);
+    setArchivedRestoreTarget(null);
+    setArchivedRestoreReason("");
+    setRestoringArchivedItem(false);
+    setArchivedRestoreError("");
+    setArchivedRestoreSuccess("");
     setColumnArchiveConfirmOpen(false);
     setColumnArchiveReason("");
     setColumnArchiveError("");
@@ -1716,6 +1835,23 @@ export default function PricesAdmin() {
     setProductCreateOpen(true);
   }
 
+  function openArchivedItems() {
+    if (!canBrowseArchivedItems || !selectedPriceList) return;
+    setArchivedItemsOpen(true);
+    setArchivedItemsError("");
+    setArchivedRestoreError("");
+    setArchivedRestoreSuccess("");
+    loadArchivedItems({ priceListId: selectedPriceList.id }).catch((error) => {
+      console.error("prices admin: initial archived items load failed", error);
+    });
+  }
+
+  function closeArchivedItems() {
+    if (restoringArchivedItem) return;
+    setArchivedItemsOpen(false);
+    setArchivedItemsError("");
+  }
+
   function openColumnCreate() {
     if (!canManageColumns) return;
     setColumnCreateForm(buildCreateColumnFormState());
@@ -1812,6 +1948,22 @@ export default function PricesAdmin() {
     setColumnArchiveReason("");
     setColumnArchiveError("");
     setColumnArchiveConfirmOpen(true);
+  }
+
+  function openArchivedRestoreConfirm(type, item) {
+    if (!canRestoreArchivedItems || !item?.id || !selectedPriceList) return;
+    setArchivedRestoreTarget({ type, item });
+    setArchivedRestoreReason("");
+    setArchivedRestoreError("");
+    setArchivedRestoreConfirmOpen(true);
+  }
+
+  function closeArchivedRestoreConfirm() {
+    if (restoringArchivedItem) return;
+    setArchivedRestoreConfirmOpen(false);
+    setArchivedRestoreTarget(null);
+    setArchivedRestoreReason("");
+    setArchivedRestoreError("");
   }
 
   function closeArchiveColumnConfirm() {
@@ -2111,6 +2263,71 @@ export default function PricesAdmin() {
       );
     } finally {
       setArchivingColumn(false);
+    }
+  }
+
+  async function restoreArchivedItem(event) {
+    event.preventDefault();
+
+    if (
+      !canRestoreArchivedItems ||
+      restoringArchivedItem ||
+      !selectedPriceList ||
+      !archivedRestoreTarget?.item?.id
+    ) {
+      return;
+    }
+
+    setRestoringArchivedItem(true);
+    setArchivedRestoreError("");
+    setArchivedRestoreSuccess("");
+
+    const isProductRestore = archivedRestoreTarget.type === "product";
+    const rpcName = isProductRestore
+      ? "set_price_product_active_admin"
+      : "set_price_matrix_column_active_admin";
+    const rpcArgs = isProductRestore
+      ? {
+          p_product_id: archivedRestoreTarget.item.id,
+          p_is_active: true,
+          p_reason: toOptionalText(archivedRestoreReason),
+        }
+      : {
+          p_column_id: archivedRestoreTarget.item.id,
+          p_is_active: true,
+          p_reason: toOptionalText(archivedRestoreReason),
+        };
+
+    try {
+      const { error } = await supabase.rpc(rpcName, rpcArgs);
+
+      if (error) throw error;
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+        loadArchivedItems({ priceListId: selectedPriceList.id }),
+      ]);
+      refreshAuditAfterSuccess(selectedPriceList.id);
+
+      setArchivedRestoreConfirmOpen(false);
+      setArchivedRestoreTarget(null);
+      setArchivedRestoreReason("");
+      setArchivedRestoreSuccess(
+        isProductRestore
+          ? "Product restored to this draft."
+          : "Column restored to this draft.",
+      );
+    } catch (error) {
+      console.error("prices admin: failed to restore archived item", error);
+      setArchivedRestoreError(
+        error?.message ||
+          (isProductRestore
+            ? "Could not restore the selected archived product."
+            : "Could not restore the selected archived column."),
+      );
+    } finally {
+      setRestoringArchivedItem(false);
     }
   }
 
@@ -2859,6 +3076,254 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
+                {archivedItemsOpen && selectedPriceList ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeArchivedItems}
+                  >
+                    <div
+                      className="prices-admin-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-archived-items-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="prices-admin-modal__content">
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Archived structure
+                            </span>
+                            <h3 id="prices-admin-archived-items-title">
+                              Archived items
+                            </h3>
+                            <p>
+                              Archived items are hidden from this draft matrix but
+                              kept for history.
+                            </p>
+                            {!isAdmin ? (
+                              <p>
+                                Managers can review archived items but only admins
+                                can restore them.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal__summary">
+                          <div className="prices-admin-summary-card">
+                            <span>Draft</span>
+                            <strong>{selectedPriceList.version || "Selected draft"}</strong>
+                            <small>{selectedPriceList.name || "Unnamed price list"}</small>
+                          </div>
+                          <div className="prices-admin-summary-card">
+                            <span>Archived totals</span>
+                            <strong>
+                              {archivedProducts.length} products / {archivedColumns.length} columns
+                            </strong>
+                            <small>Restore returns items to this draft only.</small>
+                          </div>
+                        </div>
+
+                        {archivedItemsError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {archivedItemsError}
+                          </div>
+                        ) : null}
+
+                        {loadingArchivedItems ? (
+                          <div className="prices-admin-state">
+                            <strong>Loading archived items...</strong>
+                          </div>
+                        ) : null}
+
+                        {!loadingArchivedItems &&
+                        !archivedItemsError &&
+                        archivedProducts.length === 0 &&
+                        archivedColumns.length === 0 ? (
+                          <div className="prices-admin-state">
+                            <strong>No archived products or columns for this draft.</strong>
+                          </div>
+                        ) : null}
+
+                        {!loadingArchivedItems &&
+                        !archivedItemsError &&
+                        (archivedProducts.length > 0 || archivedColumns.length > 0) ? (
+                          <div className="prices-admin-archived-browser">
+                            <section className="prices-admin-archived-browser__section">
+                              <div className="prices-admin-archived-browser__section-header">
+                                <div>
+                                  <span className="prices-admin-panel__eyebrow">
+                                    Archived products
+                                  </span>
+                                  <h4>Products</h4>
+                                </div>
+                                <span className="prices-admin-badge">
+                                  {formatCount(archivedProducts.length, "items")}
+                                </span>
+                              </div>
+
+                              {archivedProducts.length === 0 ? (
+                                <div className="prices-admin-product-detail__helper">
+                                  No archived products for this draft.
+                                </div>
+                              ) : (
+                                <div className="prices-admin-archived-browser__list">
+                                  {archivedProducts.map((product) => {
+                                    const deliveryWindow =
+                                      formatArchivedDeliveryWindow(product);
+
+                                    return (
+                                      <article
+                                        key={`archived-product:${product.id}`}
+                                        className="prices-admin-archived-browser__item"
+                                      >
+                                        <div className="prices-admin-archived-browser__item-copy">
+                                          <div className="prices-admin-archived-browser__item-top">
+                                            <strong>{product.name || "Archived product"}</strong>
+                                            <span>{product.section_name || "Unassigned section"}</span>
+                                          </div>
+                                          <div className="prices-admin-archived-browser__meta">
+                                            <span>Key: {product.matrix_key || product.id}</span>
+                                            <span>
+                                              Sort: {Number.isFinite(product.sort_order) ? product.sort_order : "-"}
+                                            </span>
+                                            {product.cloth_required ? (
+                                              <span>Cloth: {product.cloth_required}</span>
+                                            ) : null}
+                                            {Number.isFinite(Number(product.cmt_price)) ? (
+                                              <span>CMT: {gbp.format(Number(product.cmt_price))}</span>
+                                            ) : null}
+                                            {deliveryWindow ? (
+                                              <span>Delivery: {deliveryWindow}</span>
+                                            ) : null}
+                                            {product.updated_at ? (
+                                              <span>Updated: {formatDateTime(product.updated_at)}</span>
+                                            ) : null}
+                                          </div>
+                                          {product.notes ? (
+                                            <p className="prices-admin-archived-browser__notes">
+                                              {product.notes}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                        <div className="prices-admin-archived-browser__actions">
+                                          <button
+                                            type="button"
+                                            className="prices-admin-secondary-button"
+                                            onClick={() =>
+                                              openArchivedRestoreConfirm("product", product)
+                                            }
+                                            disabled={!canRestoreArchivedItems}
+                                          >
+                                            Restore
+                                          </button>
+                                        </div>
+                                      </article>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </section>
+
+                            <section className="prices-admin-archived-browser__section">
+                              <div className="prices-admin-archived-browser__section-header">
+                                <div>
+                                  <span className="prices-admin-panel__eyebrow">
+                                    Archived columns
+                                  </span>
+                                  <h4>Columns</h4>
+                                </div>
+                                <span className="prices-admin-badge">
+                                  {formatCount(archivedColumns.length, "items")}
+                                </span>
+                              </div>
+
+                              {archivedColumns.length === 0 ? (
+                                <div className="prices-admin-product-detail__helper">
+                                  No archived columns for this draft.
+                                </div>
+                              ) : (
+                                <div className="prices-admin-archived-browser__list">
+                                  {archivedColumns.map((column) => {
+                                    const mappingSummary =
+                                      formatArchivedColumnMapping(column);
+
+                                    return (
+                                      <article
+                                        key={`archived-column:${column.id}`}
+                                        className="prices-admin-archived-browser__item"
+                                      >
+                                        <div className="prices-admin-archived-browser__item-copy">
+                                          <div className="prices-admin-archived-browser__item-top">
+                                            <strong>{column.supplier || "Archived column"}</strong>
+                                            <span>{column.range || "Unnamed range"}</span>
+                                          </div>
+                                          <div className="prices-admin-archived-browser__meta">
+                                            <span>Key: {column.matrix_key || column.id}</span>
+                                            <span>
+                                              Supplier sort: {Number.isFinite(column.supplier_sort_order) ? column.supplier_sort_order : "-"}
+                                            </span>
+                                            <span>
+                                              Column sort: {Number.isFinite(column.sort_order) ? column.sort_order : "-"}
+                                            </span>
+                                            {column.width ? <span>Width: {column.width}</span> : null}
+                                            {column.weight ? <span>Weight: {column.weight}</span> : null}
+                                            {mappingSummary ? (
+                                              <span>Mapping: {mappingSummary}</span>
+                                            ) : null}
+                                            {column.updated_at ? (
+                                              <span>Updated: {formatDateTime(column.updated_at)}</span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                        <div className="prices-admin-archived-browser__actions">
+                                          <button
+                                            type="button"
+                                            className="prices-admin-secondary-button"
+                                            onClick={() =>
+                                              openArchivedRestoreConfirm("column", column)
+                                            }
+                                            disabled={!canRestoreArchivedItems}
+                                          >
+                                            Restore
+                                          </button>
+                                        </div>
+                                      </article>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </section>
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={() =>
+                              loadArchivedItems({ priceListId: selectedPriceList.id })
+                            }
+                            disabled={loadingArchivedItems}
+                          >
+                            {loadingArchivedItems ? "Refreshing..." : "Refresh"}
+                          </button>
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeArchivedItems}
+                            disabled={restoringArchivedItem}
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {columnArchiveConfirmOpen && selectedColumn ? (
                   <div
                     className="prices-admin-modal-backdrop"
@@ -2930,6 +3395,110 @@ export default function PricesAdmin() {
                             disabled={archivingColumn}
                           >
                             {archivingColumn ? "Archiving..." : "Archive column"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
+                {archivedRestoreConfirmOpen && archivedRestoreTarget ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closeArchivedRestoreConfirm}
+                  >
+                    <div
+                      className="prices-admin-modal prices-admin-modal--compact"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-restore-archived-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form
+                        className="prices-admin-modal__content"
+                        onSubmit={restoreArchivedItem}
+                      >
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Restore archived item
+                            </span>
+                            <h3 id="prices-admin-restore-archived-title">
+                              {archivedRestoreTarget.type === "product"
+                                ? "Restore product"
+                                : "Restore column"}
+                            </h3>
+                            <p>
+                              {archivedRestoreTarget.type === "product"
+                                ? "Restoring makes this product visible again in this draft matrix."
+                                : "Restoring makes this column visible again in this draft matrix."}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal__summary">
+                          <div className="prices-admin-summary-card">
+                            <span>
+                              {archivedRestoreTarget.type === "product"
+                                ? "Product"
+                                : "Column"}
+                            </span>
+                            <strong>
+                              {archivedRestoreTarget.type === "product"
+                                ? archivedRestoreTarget.item.name || "Archived product"
+                                : archivedRestoreTarget.item.supplier || "Archived column"}
+                            </strong>
+                            <small>
+                              {archivedRestoreTarget.type === "product"
+                                ? archivedRestoreTarget.item.section_name ||
+                                  "Unassigned section"
+                                : archivedRestoreTarget.item.range || "Unnamed range"}
+                            </small>
+                          </div>
+                          <div className="prices-admin-summary-card">
+                            <span>Matrix key</span>
+                            <strong>
+                              {archivedRestoreTarget.item.matrix_key ||
+                                archivedRestoreTarget.item.id}
+                            </strong>
+                            <small>Restore returns this item to the selected draft only.</small>
+                          </div>
+                        </div>
+
+                        <label className="prices-admin-field prices-admin-field--full">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={3}
+                            value={archivedRestoreReason}
+                            onChange={(event) =>
+                              setArchivedRestoreReason(event.target.value)
+                            }
+                            placeholder="Optional note for why this archived item is being restored."
+                          />
+                        </label>
+
+                        {archivedRestoreError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {archivedRestoreError}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closeArchivedRestoreConfirm}
+                            disabled={restoringArchivedItem}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-primary-button"
+                            disabled={restoringArchivedItem}
+                          >
+                            {restoringArchivedItem ? "Restoring..." : "Restore"}
                           </button>
                         </div>
                       </form>
@@ -3023,8 +3592,14 @@ export default function PricesAdmin() {
                   onSelectCell={handleSelectCell}
                 />
 
-                {(columnCreateSuccess || productCreateSuccess) ? (
+                {(columnCreateSuccess || productCreateSuccess || archivedRestoreSuccess) ? (
                   <div className="prices-admin-feedback-stack">
+                    {archivedRestoreSuccess ? (
+                      <div className="prices-admin-feedback prices-admin-feedback--success">
+                        {archivedRestoreSuccess}
+                      </div>
+                    ) : null}
+
                     {columnCreateSuccess ? (
                       <div className="prices-admin-feedback prices-admin-feedback--success">
                         {columnCreateSuccess}
@@ -3407,7 +3982,9 @@ export default function PricesAdmin() {
                   canManageProducts={canManageProducts}
                   onOpenProductCreate={openProductCreate}
                   canManageColumns={canManageColumns}
+                  canBrowseArchivedItems={canBrowseArchivedItems}
                   onOpenColumnCreate={openColumnCreate}
+                  onOpenArchivedItems={openArchivedItems}
                   onOpenPublishModal={openPublishModal}
                 />
 
