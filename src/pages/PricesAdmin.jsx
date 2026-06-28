@@ -745,6 +745,8 @@ function PriceMatrixPreview({
   matrixData,
   matrixModel,
   selectedCellKey,
+  selectedCellProductId,
+  selectedCellColumnId,
   selectedProductId,
   selectedRangeId,
   onSelectProduct,
@@ -758,6 +760,13 @@ function PriceMatrixPreview({
     () => getPreviewState(matrixData),
     [matrixData],
   );
+  const hasSelectedCell = Boolean(
+    selectedCellKey && selectedCellProductId && selectedCellColumnId,
+  );
+  const hasSelectedProduct = Boolean(selectedProductId);
+  const hasSelectedRange = Boolean(selectedRangeId);
+  const hasActiveSelection =
+    hasSelectedCell || hasSelectedProduct || hasSelectedRange;
   const showStatusBadge =
     formatStatus(matrixData?.status).toLowerCase() !== previewState.label.toLowerCase();
 
@@ -797,7 +806,11 @@ function PriceMatrixPreview({
         </div>
       </div>
 
-      <div className="prices-admin-matrix">
+      <div
+        className={`prices-admin-matrix ${
+          hasActiveSelection ? "prices-admin-matrix--has-selection" : ""
+        } ${hasSelectedCell ? "prices-admin-matrix--cell-selection" : ""}`}
+      >
         <div className="prices-admin-matrix__scroll">
           <table>
             <thead>
@@ -808,21 +821,31 @@ function PriceMatrixPreview({
                     Number.isFinite(column.external_weaver_id) ||
                     Number.isFinite(column.external_range_id);
                   const isSelectedRange = selectedRangeId === column.recordId;
+                  const isRelevantColumn = hasSelectedCell
+                    ? selectedCellColumnId === column.recordId
+                    : hasSelectedRange
+                      ? selectedRangeId === column.recordId
+                      : true;
+                  const isDimmedColumn = hasActiveSelection && !isRelevantColumn;
 
                   return (
                     <th
                       key={column.id}
-                      className={
-                        isSelectedRange
-                          ? "prices-admin-matrix__column-heading--selected"
-                          : ""
-                      }
+                      className={[
+                        isSelectedRange ? "prices-admin-matrix__column-heading--selected" : "",
+                        isRelevantColumn ? "prices-admin-matrix__column-heading--active" : "",
+                        isDimmedColumn ? "prices-admin-matrix__column-heading--dimmed" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                     >
                       <button
                         type="button"
                         className={`prices-admin-matrix__column ${
                           !isMapped ? "prices-admin-matrix__column--unmapped" : ""
-                        } ${isSelectedRange ? "prices-admin-matrix__column--selected" : ""}`}
+                        } ${isSelectedRange ? "prices-admin-matrix__column--selected" : ""} ${
+                          isDimmedColumn ? "prices-admin-matrix__column--dimmed" : ""
+                        }`}
                         onClick={() => onSelectColumn(column.recordId)}
                         title={
                           isMapped ? "Mapped to tartan range" : "No tartan mapping"
@@ -864,13 +887,19 @@ function PriceMatrixPreview({
                   </tr>
                   {(section.products || []).map((product) => {
                     const isSelected = product.recordId === selectedProductId;
+                    const isRelevantRow = hasSelectedCell
+                      ? selectedCellProductId === product.recordId
+                      : hasSelectedProduct
+                        ? selectedProductId === product.recordId
+                        : true;
+                    const isDimmedRow = hasActiveSelection && !isRelevantRow;
 
                     return (
                       <tr
                         key={product.recordId || product.id}
                         className={`prices-admin-matrix__product-row ${
                           isSelected ? "prices-admin-matrix__product-row--selected" : ""
-                        }`}
+                        } ${isDimmedRow ? "prices-admin-matrix__product-row--dimmed" : ""}`}
                         onClick={() => onSelectProduct(product.recordId)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -880,7 +909,11 @@ function PriceMatrixPreview({
                         }}
                         tabIndex={0}
                       >
-                        <th className="prices-admin-matrix__product-cell">
+                        <th
+                          className={`prices-admin-matrix__product-cell ${
+                            isRelevantRow ? "prices-admin-matrix__product-cell--active" : ""
+                          } ${isDimmedRow ? "prices-admin-matrix__product-cell--dimmed" : ""}`}
+                        >
                           <div className="prices-admin-matrix__product-name">
                             {product.name}
                           </div>
@@ -892,6 +925,11 @@ function PriceMatrixPreview({
                             cellMeta?.recordId ||
                             `${product.recordId}:${column.recordId}`;
                           const isSelectedCell = selectedCellKey === cellKey;
+                          const isRelevantCell = hasSelectedCell
+                            ? isSelectedCell
+                            : isRelevantRow &&
+                              (hasSelectedRange ? selectedRangeId === column.recordId : true);
+                          const isDimmedCell = hasActiveSelection && !isRelevantCell;
 
                           return (
                             <td
@@ -899,6 +937,10 @@ function PriceMatrixPreview({
                               className={`prices-admin-matrix__price-cell ${
                                 isSelectedCell
                                   ? "prices-admin-matrix__price-cell--selected"
+                                  : ""
+                              } ${isDimmedCell ? "prices-admin-matrix__price-cell--dimmed" : ""} ${
+                                isRelevantCell
+                                  ? "prices-admin-matrix__price-cell--relevant"
                                   : ""
                               }`}
                               onClick={(event) => {
@@ -3685,6 +3727,8 @@ export default function PricesAdmin() {
                   matrixData={matrixData}
                   matrixModel={matrixModel}
                   selectedCellKey={selectedCellKey}
+                  selectedCellProductId={selectedCell?.productRecordId || ""}
+                  selectedCellColumnId={selectedCell?.columnRecordId || ""}
                   selectedProductId={selectedContext === "product" ? selectedProductId : ""}
                   selectedRangeId={selectedContext === "range" ? selectedRangeId : ""}
                   onSelectProduct={handleSelectProduct}
