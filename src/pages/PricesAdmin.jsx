@@ -221,18 +221,22 @@ function getEditabilityLabel({ list, isAdmin, isDraftSelection }) {
 
 function getCapabilityNote({ list, isAdmin, isDraftSelection }) {
   if (isDraftSelection && isAdmin) {
-    return "Admins can edit draft pricing here. Publishing is not available yet.";
+    return "Admins can edit draft pricing here and publish this draft when ready.";
   }
 
   if (isDraftSelection && !isAdmin) {
-    return "Managers can review draft pricing and audit history, but cannot edit. Publishing is not available yet.";
+    return "Managers can review draft pricing and audit history, but cannot edit or publish.";
   }
 
   if (list?.is_active) {
-    return "Active lists are read-only in the CMS. Create a draft before editing. Publishing is not available yet.";
+    return "Active lists are read-only in the CMS. Create a draft before editing or publishing changes.";
   }
 
-  return "This list is available for review only. Publishing is not available yet.";
+  return "This list is available for review only.";
+}
+
+function canPublishList(list, isAdmin) {
+  return Boolean(isAdmin && list && isDraftList(list) && !list.is_active);
 }
 
 function buildAdminMatrixModel(matrixData) {
@@ -956,6 +960,11 @@ function PriceStatusPanel({
   auditError,
   loadingAudit,
   isAdmin,
+  activePriceList,
+  publishActionError,
+  publishActionSuccess,
+  publishing,
+  onOpenPublishModal,
 }) {
   const previewState = React.useMemo(
     () => getPreviewState(matrixData || selectedList),
@@ -981,6 +990,7 @@ function PriceStatusPanel({
     isAdmin,
     isDraftSelection,
   });
+  const canPublishSelectedList = canPublishList(matrixData || selectedList, isAdmin);
 
   return (
     <section className="prices-admin-status-panel">
@@ -1047,6 +1057,49 @@ function PriceStatusPanel({
           </small>
         </div>
       </div>
+
+      <div className="prices-admin-status-panel__actions">
+        <div className="prices-admin-status-panel__publish-copy">
+          {canPublishSelectedList ? (
+            <p>Publishing will make this draft the live staff Prices matrix.</p>
+          ) : isDraftSelection && !isAdmin ? (
+            <p>Managers can review this draft, but only admins can publish it.</p>
+          ) : (matrixData || selectedList)?.is_active ? (
+            <p>This is already the live staff Prices matrix.</p>
+          ) : selectedList ? (
+            <p>Only draft price lists can be published to live staff Prices.</p>
+          ) : null}
+          {canPublishSelectedList && activePriceList ? (
+            <span>
+              Current live list: {activePriceList.version || "Active list"}
+              {activePriceList.name ? ` - ${activePriceList.name}` : ""}
+            </span>
+          ) : null}
+        </div>
+
+        {canPublishSelectedList ? (
+          <button
+            type="button"
+            className="prices-admin-warning-button"
+            onClick={onOpenPublishModal}
+            disabled={publishing}
+          >
+            {publishing ? "Publishing..." : "Publish draft"}
+          </button>
+        ) : null}
+      </div>
+
+      {publishActionError ? (
+        <div className="prices-admin-feedback prices-admin-feedback--error">
+          {publishActionError}
+        </div>
+      ) : null}
+
+      {publishActionSuccess ? (
+        <div className="prices-admin-feedback prices-admin-feedback--success">
+          {publishActionSuccess}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1084,6 +1137,11 @@ export default function PricesAdmin() {
   const [cellActionSuccess, setCellActionSuccess] = React.useState("");
   const [cellForm, setCellForm] = React.useState(() => buildCellFormState(null));
   const [savingCell, setSavingCell] = React.useState(false);
+  const [publishModalOpen, setPublishModalOpen] = React.useState(false);
+  const [publishReason, setPublishReason] = React.useState("");
+  const [publishing, setPublishing] = React.useState(false);
+  const [publishActionError, setPublishActionError] = React.useState("");
+  const [publishActionSuccess, setPublishActionSuccess] = React.useState("");
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
@@ -1132,6 +1190,7 @@ export default function PricesAdmin() {
     () => getCellValidationHints(cellForm),
     [cellForm],
   );
+  const canPublishSelectedList = canPublishList(matrixData || selectedPriceList, isAdmin);
 
   const loadPriceLists = React.useCallback(
     async ({ preferredSelectionId } = {}) => {
@@ -1304,6 +1363,10 @@ export default function PricesAdmin() {
     setProductForm(buildProductFormState(null));
     setProductActionError("");
     setProductActionSuccess("");
+    setPublishModalOpen(false);
+    setPublishReason("");
+    setPublishActionError("");
+    setPublishActionSuccess("");
   }, [selectedPriceListId]);
 
   const refreshAuditAfterSuccess = React.useCallback(
@@ -1461,6 +1524,71 @@ export default function PricesAdmin() {
 
   function updateCellForm(key, value) {
     setCellForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function openPublishModal() {
+    if (!canPublishSelectedList || publishing) return;
+    setPublishActionError("");
+    setPublishActionSuccess("");
+    setPublishModalOpen(true);
+  }
+
+  function closePublishModal() {
+    if (publishing) return;
+    setPublishModalOpen(false);
+  }
+
+  async function confirmPublishDraft(event) {
+    event.preventDefault();
+
+    if (!isAdmin) {
+      setPublishActionError("Only admins can publish draft price lists.");
+      return;
+    }
+
+    if (!selectedPriceList) {
+      setPublishActionError("Select a draft price list before publishing.");
+      return;
+    }
+
+    if (!isDraftList(selectedPriceList) || selectedPriceList.is_active) {
+      setPublishActionError("Only inactive draft price lists can be published.");
+      return;
+    }
+
+    if (publishing) return;
+
+    setPublishing(true);
+    setPublishActionError("");
+    setPublishActionSuccess("");
+
+    try {
+      const { data, error } = await supabase.rpc("publish_price_list_admin", {
+        p_price_list_id: selectedPriceList.id,
+        p_reason: toOptionalText(publishReason),
+      });
+
+      if (error) throw error;
+
+      const publishedVersion =
+        data?.published?.version || selectedPriceList.version || "Selected draft";
+
+      await Promise.all([
+        loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
+        loadSelectedMatrix(),
+        loadSelectedAudit({ priceListId: selectedPriceList.id }),
+      ]);
+
+      setPublishModalOpen(false);
+      setPublishReason("");
+      setPublishActionError("");
+      setPublishActionSuccess(`${publishedVersion} is now live on staff Prices.`);
+    } catch (error) {
+      console.error("prices admin: failed to publish draft", error);
+      setPublishActionError(error?.message || "Could not publish the selected draft.");
+    } finally {
+      setPublishing(false);
+    }
   }
 
   async function saveSelectedProduct(event) {
@@ -1738,6 +1866,103 @@ export default function PricesAdmin() {
 
             {!loadingMatrix && !matrixError && matrixData ? (
               <>
+                {publishModalOpen && selectedPriceList ? (
+                  <div
+                    className="prices-admin-modal-backdrop"
+                    role="presentation"
+                    onClick={closePublishModal}
+                  >
+                    <div
+                      className="prices-admin-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="prices-admin-publish-title"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <form
+                        className="prices-admin-modal__content"
+                        onSubmit={confirmPublishDraft}
+                      >
+                        <div className="prices-admin-modal__header">
+                          <div>
+                            <span className="prices-admin-panel__eyebrow">
+                              Publish draft
+                            </span>
+                            <h3 id="prices-admin-publish-title">Publish to live Prices</h3>
+                            <p>
+                              This will replace the live staff Prices matrix. Staff
+                              using /prices will see this draft after publishing.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="prices-admin-modal__summary">
+                          <div className="prices-admin-status-card">
+                            <span>Draft version</span>
+                            <strong>{selectedPriceList.version || "No version"}</strong>
+                            <small>{selectedPriceList.name || "Unnamed price list"}</small>
+                          </div>
+
+                          <div className="prices-admin-status-card">
+                            <span>Draft status</span>
+                            <strong>{formatStatus(selectedPriceList.status)}</strong>
+                            <small>
+                              {selectedPriceList.is_active
+                                ? "Already active"
+                                : "Ready to publish"}
+                            </small>
+                          </div>
+
+                          <div className="prices-admin-status-card prices-admin-status-card--full">
+                            <span>Replacing live list</span>
+                            <strong>
+                              {activePriceList?.version || "No active list found"}
+                            </strong>
+                            <small>
+                              {activePriceList?.name || "The current live staff price list"}
+                            </small>
+                          </div>
+                        </div>
+
+                        <label className="prices-admin-field">
+                          <span>Reason / note for audit</span>
+                          <textarea
+                            rows={3}
+                            value={publishReason}
+                            onChange={(event) => setPublishReason(event.target.value)}
+                            placeholder="Optional note for why this draft is going live."
+                            disabled={publishing}
+                          />
+                        </label>
+
+                        {publishActionError ? (
+                          <div className="prices-admin-feedback prices-admin-feedback--error">
+                            {publishActionError}
+                          </div>
+                        ) : null}
+
+                        <div className="prices-admin-modal__footer">
+                          <button
+                            type="button"
+                            className="prices-admin-secondary-button"
+                            onClick={closePublishModal}
+                            disabled={publishing}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="prices-admin-warning-button"
+                            disabled={publishing}
+                          >
+                            {publishing ? "Publishing..." : "Publish to live Prices"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : null}
+
                 <PriceMatrixPreview
                   matrixData={matrixData}
                   matrixModel={matrixModel}
@@ -1755,6 +1980,11 @@ export default function PricesAdmin() {
                   auditError={auditError}
                   loadingAudit={loadingAudit}
                   isAdmin={isAdmin}
+                  activePriceList={activePriceList}
+                  publishActionError={publishActionError}
+                  publishActionSuccess={publishActionSuccess}
+                  publishing={publishing}
+                  onOpenPublishModal={openPublishModal}
                 />
 
                 <PriceAuditPanel
