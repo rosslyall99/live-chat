@@ -23,6 +23,21 @@ function formatDate(value) {
   }).format(date);
 }
 
+function formatDateTime(value) {
+  if (!value) return "Unknown time";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function formatStatus(status) {
   const text = String(status || "unknown").trim();
   if (!text) return "Unknown";
@@ -37,6 +52,17 @@ function formatStatus(status) {
 function formatCount(value, label) {
   const number = Number.isFinite(value) ? value : 0;
   return `${number} ${label}`;
+}
+
+function formatAuditLabel(value) {
+  const text = String(value || "").trim();
+  if (!text) return "Unknown";
+
+  return text
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function toOptionalText(value) {
@@ -257,6 +283,119 @@ function parseOptionalInteger(value) {
   if (!/^-?\d+$/.test(text)) return Number.NaN;
 
   return Number(text);
+}
+
+function formatAuditValue(key, value) {
+  if (value == null || value === "") return "Empty";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+
+  if (
+    (key === "cmt_price" || key === "retail_price") &&
+    Number.isFinite(Number(value))
+  ) {
+    return gbp.format(Number(value));
+  }
+
+  if (
+    key === "effective_from" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(value))
+  ) {
+    return formatDate(String(value));
+  }
+
+  return String(value);
+}
+
+function getAuditSubject(entry) {
+  const beforeData = entry?.before_data || {};
+  const afterData = entry?.after_data || {};
+
+  if (entry?.entity_type === "price_list") {
+    return afterData.version || afterData.name || "Price list";
+  }
+
+  if (entry?.entity_type === "product") {
+    return afterData.name || beforeData.name || "Product";
+  }
+
+  if (entry?.entity_type === "cell") {
+    const productName = afterData.product_name || beforeData.product_name || "Product";
+    const supplier = afterData.column_supplier || beforeData.column_supplier || "";
+    const range = afterData.column_range || beforeData.column_range || "";
+    const columnLabel = [supplier, range].filter(Boolean).join(" / ");
+
+    return columnLabel ? `${productName} / ${columnLabel}` : productName;
+  }
+
+  return formatAuditLabel(entry?.entity_type);
+}
+
+function getAuditSummary(entry) {
+  const subject = getAuditSubject(entry);
+  const beforeData = entry?.before_data || {};
+  const afterData = entry?.after_data || {};
+
+  if (entry?.action === "draft_created") {
+    const sourceVersion = beforeData.source_version || "active list";
+    const draftVersion = afterData.version || subject;
+    return `${draftVersion} created from ${sourceVersion}.`;
+  }
+
+  if (entry?.action === "product_updated") {
+    return `${subject} product details updated.`;
+  }
+
+  if (entry?.action === "cell_updated") {
+    return `${subject} retail price updated.`;
+  }
+
+  return `${subject} ${formatAuditLabel(entry?.action).toLowerCase()}.`;
+}
+
+function getAuditChanges(entry) {
+  const beforeData = entry?.before_data || {};
+  const afterData = entry?.after_data || {};
+
+  if (entry?.action === "draft_created") {
+    return [
+      {
+        label: "Source",
+        before: beforeData.source_version || beforeData.source_name || "Unknown",
+        after: afterData.version || afterData.name || "Draft",
+      },
+      {
+        label: "Status",
+        before: formatAuditValue("status", beforeData.source_status),
+        after: formatAuditValue("status", afterData.status),
+      },
+    ];
+  }
+
+  const fieldsByAction = {
+    product_updated: [
+      ["name", "Name"],
+      ["cloth_required", "Cloth required"],
+      ["cmt_price", "CMT price"],
+      ["delivery_weeks_min", "Delivery weeks min"],
+      ["delivery_weeks_max", "Delivery weeks max"],
+      ["notes", "Notes"],
+    ],
+    cell_updated: [["retail_price", "Retail price"]],
+  };
+
+  const fields = fieldsByAction[entry?.action] || [];
+
+  return fields
+    .filter(([key]) => {
+      const beforeValue = beforeData[key] ?? null;
+      const afterValue = afterData[key] ?? null;
+      return JSON.stringify(beforeValue) !== JSON.stringify(afterValue);
+    })
+    .map(([key, label]) => ({
+      label,
+      before: formatAuditValue(key, beforeData[key]),
+      after: formatAuditValue(key, afterData[key]),
+    }));
 }
 
 function getProductValidationHints(formState) {
@@ -617,6 +756,109 @@ function PriceMatrixPreview({
   );
 }
 
+function PriceAuditPanel({
+  selectedList,
+  loadingAudit,
+  auditError,
+  auditEntries,
+}) {
+  return (
+    <section className="prices-admin-audit-panel">
+      <div className="prices-admin-audit-panel__header">
+        <div>
+          <span className="prices-admin-panel__eyebrow">Selected list audit</span>
+          <h3>History</h3>
+          <p>
+            Read-only admin audit trail for the selected price list, showing the
+            latest recorded changes first.
+          </p>
+        </div>
+        {selectedList ? (
+          <div className="prices-admin-audit-panel__meta">
+            <strong>{selectedList.version || "Selected list"}</strong>
+            <span>{selectedList.name || "Unnamed price list"}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {loadingAudit ? (
+        <div className="prices-admin-state">
+          <strong>Loading audit history</strong>
+          <p>Fetching the latest selected-list audit entries.</p>
+        </div>
+      ) : null}
+
+      {!loadingAudit && auditError ? (
+        <div className="prices-admin-state prices-admin-state--error">
+          <strong>Could not load audit history</strong>
+          <p>{auditError}</p>
+        </div>
+      ) : null}
+
+      {!loadingAudit && !auditError && auditEntries.length === 0 ? (
+        <div className="prices-admin-state">
+          <strong>No audit history yet</strong>
+          <p>No recorded admin audit entries were returned for this price list.</p>
+        </div>
+      ) : null}
+
+      {!loadingAudit && !auditError && auditEntries.length > 0 ? (
+        <div className="prices-admin-audit-log">
+          {auditEntries.map((entry) => {
+            const changes = getAuditChanges(entry);
+
+            return (
+              <article key={entry.id} className="prices-admin-audit-entry">
+                <div className="prices-admin-audit-entry__top">
+                  <div>
+                    <div className="prices-admin-audit-entry__badges">
+                      <span className="prices-admin-badge prices-admin-badge--readonly">
+                        {formatAuditLabel(entry.entity_type)}
+                      </span>
+                      <span className="prices-admin-badge prices-admin-badge--historical">
+                        {formatAuditLabel(entry.action)}
+                      </span>
+                    </div>
+                    <h4>{getAuditSummary(entry)}</h4>
+                  </div>
+                  <time
+                    className="prices-admin-audit-entry__time"
+                    dateTime={entry.created_at || undefined}
+                  >
+                    {formatDateTime(entry.created_at)}
+                  </time>
+                </div>
+
+                <div className="prices-admin-audit-entry__meta">
+                  <span>By {entry.changed_by_name || "Unknown staff user"}</span>
+                  {entry.reason ? <span>Reason: {entry.reason}</span> : null}
+                </div>
+
+                {changes.length > 0 ? (
+                  <dl className="prices-admin-audit-entry__changes">
+                    {changes.map((change) => (
+                      <div
+                        key={`${entry.id}:${change.label}`}
+                        className="prices-admin-audit-entry__change"
+                      >
+                        <dt>{change.label}</dt>
+                        <dd>
+                          <span>{change.before}</span>
+                          <strong>{change.after}</strong>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function PricesAdmin() {
   const [role, setRole] = React.useState("");
   const [loadingLists, setLoadingLists] = React.useState(true);
@@ -626,6 +868,9 @@ export default function PricesAdmin() {
   const [loadingMatrix, setLoadingMatrix] = React.useState(false);
   const [matrixError, setMatrixError] = React.useState("");
   const [matrixData, setMatrixData] = React.useState(null);
+  const [loadingAudit, setLoadingAudit] = React.useState(false);
+  const [auditError, setAuditError] = React.useState("");
+  const [auditEntries, setAuditEntries] = React.useState([]);
   const [draftFormOpen, setDraftFormOpen] = React.useState(false);
   const [draftVersion, setDraftVersion] = React.useState("");
   const [draftName, setDraftName] = React.useState("");
@@ -648,12 +893,17 @@ export default function PricesAdmin() {
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
+  const loadAuditSeq = React.useRef(0);
 
   const canView = role === "admin" || role === "manager";
   const isAdmin = role === "admin";
   const activePriceList = React.useMemo(
     () => priceLists.find((item) => item.is_active) || null,
     [priceLists],
+  );
+  const selectedPriceList = React.useMemo(
+    () => priceLists.find((item) => item.id === selectedPriceListId) || null,
+    [priceLists, selectedPriceListId],
   );
   const matrixModel = React.useMemo(
     () => buildAdminMatrixModel(matrixData),
@@ -790,6 +1040,47 @@ export default function PricesAdmin() {
   React.useEffect(() => {
     loadSelectedMatrix();
   }, [loadSelectedMatrix]);
+
+  const loadSelectedAudit = React.useCallback(async () => {
+    if (!canView || !selectedPriceListId) {
+      setLoadingAudit(false);
+      setAuditError("");
+      setAuditEntries([]);
+      return;
+    }
+
+    const seq = ++loadAuditSeq.current;
+
+    setLoadingAudit(true);
+    setAuditError("");
+
+    try {
+      const { data, error } = await supabase.rpc("get_price_audit_log_admin", {
+        p_price_list_id: selectedPriceListId,
+        p_limit: 50,
+        p_offset: 0,
+      });
+
+      if (seq !== loadAuditSeq.current) return;
+      if (error) throw error;
+
+      setAuditEntries(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("prices admin: failed to load audit history", error);
+      if (seq !== loadAuditSeq.current) return;
+
+      setAuditError(error?.message || "Could not load the selected audit history.");
+      setAuditEntries([]);
+    } finally {
+      if (seq === loadAuditSeq.current) {
+        setLoadingAudit(false);
+      }
+    }
+  }, [canView, selectedPriceListId]);
+
+  React.useEffect(() => {
+    loadSelectedAudit();
+  }, [loadSelectedAudit]);
 
   React.useEffect(() => {
     setSelectedProductId("");
@@ -1229,6 +1520,13 @@ export default function PricesAdmin() {
                   selectedCellKey={selectedCellKey}
                   onSelectProduct={handleSelectProduct}
                   onSelectCell={handleSelectCell}
+                />
+
+                <PriceAuditPanel
+                  selectedList={selectedPriceList}
+                  loadingAudit={loadingAudit}
+                  auditError={auditError}
+                  auditEntries={auditEntries}
                 />
 
                 <section className="prices-admin-product-panel">

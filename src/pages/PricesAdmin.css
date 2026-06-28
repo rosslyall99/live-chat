@@ -745,6 +745,168 @@
   min-height: 0;
 }
 
+.prices-admin-audit-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.035),
+      rgba(255, 255, 255, 0.012)
+    ),
+    rgba(4, 10, 24, 0.7);
+}
+
+.prices-admin-audit-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prices-admin-audit-panel__header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 320;
+}
+
+.prices-admin-audit-panel__header p {
+  margin: 8px 0 0;
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.prices-admin-audit-panel__meta {
+  min-width: 220px;
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 10px;
+  background: rgba(8, 15, 30, 0.4);
+  display: grid;
+  gap: 4px;
+}
+
+.prices-admin-audit-panel__meta strong {
+  color: rgba(241, 245, 249, 0.96);
+  font-size: 14px;
+}
+
+.prices-admin-audit-panel__meta span {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prices-admin-audit-log {
+  display: grid;
+  gap: 12px;
+}
+
+.prices-admin-audit-entry {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 12px;
+  background: rgba(6, 12, 26, 0.58);
+}
+
+.prices-admin-audit-entry__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prices-admin-audit-entry__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.prices-admin-audit-entry h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.prices-admin-audit-entry__time {
+  color: rgba(186, 230, 253, 0.88);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.prices-admin-audit-entry__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: rgba(191, 219, 254, 0.84);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.prices-admin-audit-entry__changes {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.prices-admin-audit-entry__change {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 10px;
+  background: rgba(8, 15, 30, 0.34);
+}
+
+.prices-admin-audit-entry__change dt {
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.prices-admin-audit-entry__change dd {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.prices-admin-audit-entry__change span,
+.prices-admin-audit-entry__change strong {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.prices-admin-audit-entry__change span {
+  border: 1px solid rgba(248, 113, 113, 0.14);
+  background: rgba(127, 29, 29, 0.12);
+  color: rgba(254, 226, 226, 0.94);
+}
+
+.prices-admin-audit-entry__change strong {
+  border: 1px solid rgba(34, 197, 94, 0.14);
+  background: rgba(20, 83, 45, 0.18);
+  color: rgba(220, 252, 231, 0.96);
+  font-weight: 700;
+}
+
 .prices-admin-product-detail {
   display: grid;
   gap: 14px;
@@ -839,6 +1001,8 @@
 
   .prices-admin-header__top,
   .prices-admin-draft-form__header,
+  .prices-admin-audit-panel__header,
+  .prices-admin-audit-entry__top,
   .prices-admin-product-detail__header {
     flex-direction: column;
   }
@@ -857,6 +1021,15 @@
 
   .prices-admin-draft-form__active {
     min-width: 0;
+  }
+
+  .prices-admin-audit-panel__meta {
+    min-width: 0;
+  }
+
+  .prices-admin-audit-entry__time {
+    text-align: left;
+    white-space: normal;
   }
 
   .prices-admin-draft-form__footer,
