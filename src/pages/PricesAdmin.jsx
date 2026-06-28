@@ -765,10 +765,10 @@ function PriceMatrixPreview({
         </div>
 
         <div className="prices-admin-preview__safety-copy">
-          <span className="prices-admin-preview__eyebrow">Admin preview</span>
+          <span className="prices-admin-preview__eyebrow">Working area</span>
           <p>
-            Preview-only screen. No prices, products, sections, or live staff
-            matrix data can be edited from here.
+            Select a product row or retail price cell below to work on this
+            draft. Live staff Prices stay unchanged until publishing.
           </p>
         </div>
 
@@ -778,31 +778,6 @@ function PriceMatrixPreview({
               {item}
             </span>
           ))}
-        </div>
-      </div>
-
-      <div className="prices-admin-summary-grid">
-        <div className="prices-admin-summary-card">
-          <span>Effective</span>
-          <strong>{formatDate(matrixData?.effective_from)}</strong>
-        </div>
-        <div className="prices-admin-summary-card">
-          <span>Structure</span>
-          <strong>
-            {summary.columnCount} columns / {summary.sectionCount} sections
-          </strong>
-        </div>
-        <div className="prices-admin-summary-card">
-          <span>Products</span>
-          <strong>
-            {summary.productCount} products / {summary.cellCount} price cells
-          </strong>
-        </div>
-        <div className="prices-admin-summary-card">
-          <span>External mapping</span>
-          <strong>
-            {summary.mappedColumnCount} of {summary.columnCount} columns linked
-          </strong>
         </div>
       </div>
 
@@ -954,18 +929,11 @@ function PriceAuditPanel({
     <section className="prices-admin-audit-panel">
       <div className="prices-admin-audit-panel__header">
         <div>
-          <span className="prices-admin-panel__eyebrow">Selected list audit</span>
+          <span className="prices-admin-panel__eyebrow">Audit trail</span>
           <h3>History</h3>
           <p>
-            Read-only admin audit trail for the selected price list, showing the
-            latest recorded changes first.
+            Read-only change history for the selected price list, newest first.
           </p>
-          {!isAdmin ? (
-            <p className="prices-admin-audit-panel__manager-note">
-              Managers can review this list and its audit history, but only admins
-              can edit draft pricing.
-            </p>
-          ) : null}
         </div>
         <div className="prices-admin-audit-panel__side">
           {selectedList ? (
@@ -1118,14 +1086,21 @@ function PriceStatusPanel({
     isDraftSelection,
   });
   const canPublishSelectedList = canPublishList(matrixData || selectedList, isAdmin);
+  const showManagerNote = Boolean(isDraftSelection && !isAdmin);
 
   return (
     <section className="prices-admin-status-panel">
       <div className="prices-admin-status-panel__header">
         <div>
-          <span className="prices-admin-panel__eyebrow">Selected list status</span>
-          <h3>List status</h3>
+          <span className="prices-admin-panel__eyebrow">Draft controls</span>
+          <h3>List status and actions</h3>
           <p>{capabilityNote}</p>
+          {showManagerNote ? (
+            <p className="prices-admin-status-panel__manager-note">
+              Manager mode is read-only. Admin-only actions stay visible through
+              audit and status, but remain unavailable here.
+            </p>
+          ) : null}
         </div>
         <div className="prices-admin-status-panel__badges">
           <span
@@ -1186,45 +1161,54 @@ function PriceStatusPanel({
       </div>
 
       <div className="prices-admin-status-panel__actions">
-        <div className="prices-admin-status-panel__publish-copy">
-          {canPublishSelectedList ? (
-            <p>Publishing will make this draft the live staff Prices matrix.</p>
-          ) : isDraftSelection && !isAdmin ? (
-            <p>Managers can review this draft, but only admins can publish it.</p>
-          ) : (matrixData || selectedList)?.is_active ? (
-            <p>This is already the live staff Prices matrix.</p>
-          ) : selectedList ? (
-            <p>Only draft price lists can be published to live staff Prices.</p>
-          ) : null}
-          {canPublishSelectedList && activePriceList ? (
-            <span>
-              Current live list: {activePriceList.version || "Active list"}
-              {activePriceList.name ? ` - ${activePriceList.name}` : ""}
-            </span>
-          ) : null}
+        <div className="prices-admin-status-panel__action-group">
+          <span className="prices-admin-status-panel__action-label">
+            Draft structure
+          </span>
+          <div className="prices-admin-status-panel__action-buttons">
+            {canManageColumns ? (
+              <button
+                type="button"
+                className="prices-admin-secondary-button"
+                onClick={onOpenColumnCreate}
+              >
+                Add column
+              </button>
+            ) : null}
+
+            {canManageProducts ? (
+              <button
+                type="button"
+                className="prices-admin-secondary-button"
+                onClick={onOpenProductCreate}
+              >
+                Add product
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        <div className="prices-admin-status-panel__action-buttons">
-          {canManageColumns ? (
-            <button
-              type="button"
-              className="prices-admin-secondary-button"
-              onClick={onOpenColumnCreate}
-            >
-              Add column
-            </button>
-          ) : null}
-
-          {canManageProducts ? (
-            <button
-              type="button"
-              className="prices-admin-secondary-button"
-              onClick={onOpenProductCreate}
-            >
-              Add product
-            </button>
-          ) : null}
-
+        <div className="prices-admin-status-panel__action-group prices-admin-status-panel__action-group--danger">
+          <span className="prices-admin-status-panel__action-label">
+            Live impact
+          </span>
+          <div className="prices-admin-status-panel__publish-copy">
+            {canPublishSelectedList ? (
+              <p>Publishing will make this draft the live staff Prices matrix.</p>
+            ) : isDraftSelection && !isAdmin ? (
+              <p>Only admins can publish a reviewed draft to live staff Prices.</p>
+            ) : (matrixData || selectedList)?.is_active ? (
+              <p>This is already the live staff Prices matrix.</p>
+            ) : selectedList ? (
+              <p>Only inactive draft price lists can be published live.</p>
+            ) : null}
+            {canPublishSelectedList && activePriceList ? (
+              <span>
+                Current live list: {activePriceList.version || "Active list"}
+                {activePriceList.name ? ` - ${activePriceList.name}` : ""}
+              </span>
+            ) : null}
+          </div>
           {canPublishSelectedList ? (
             <button
               type="button"
@@ -3039,55 +3023,41 @@ export default function PricesAdmin() {
                   onSelectCell={handleSelectCell}
                 />
 
-                <PriceStatusPanel
-                  selectedList={selectedPriceList}
-                  matrixData={matrixData}
-                  matrixModel={matrixModel}
-                  auditEntries={auditEntries}
-                  auditError={auditError}
-                  loadingAudit={loadingAudit}
-                  isAdmin={isAdmin}
-                  activePriceList={activePriceList}
-                  publishActionError={publishActionError}
-                  publishActionSuccess={publishActionSuccess}
-                  publishing={publishing}
-                  canManageProducts={canManageProducts}
-                  onOpenProductCreate={openProductCreate}
-                  canManageColumns={canManageColumns}
-                  onOpenColumnCreate={openColumnCreate}
-                  onOpenPublishModal={openPublishModal}
-                />
+                {(columnCreateSuccess || productCreateSuccess) ? (
+                  <div className="prices-admin-feedback-stack">
+                    {columnCreateSuccess ? (
+                      <div className="prices-admin-feedback prices-admin-feedback--success">
+                        {columnCreateSuccess}
+                      </div>
+                    ) : null}
 
-                {columnCreateSuccess ? (
-                  <div className="prices-admin-feedback prices-admin-feedback--success">
-                    {columnCreateSuccess}
+                    {productCreateSuccess ? (
+                      <div className="prices-admin-feedback prices-admin-feedback--success">
+                        {productCreateSuccess}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
-                {productCreateSuccess ? (
-                  <div className="prices-admin-feedback prices-admin-feedback--success">
-                    {productCreateSuccess}
+                <section className="prices-admin-selection-workspace">
+                  <div className="prices-admin-selection-workspace__header">
+                    <span className="prices-admin-panel__eyebrow">Selection workspace</span>
+                    <h3>Selected product and price cell</h3>
+                    <p>
+                      Work from the current matrix selection here. Product details and
+                      price-cell editing stay separate so draft structure and pricing
+                      context are easier to scan.
+                    </p>
                   </div>
-                ) : null}
 
-                <PriceAuditPanel
-                  selectedList={selectedPriceList}
-                  isAdmin={isAdmin}
-                  loadingAudit={loadingAudit}
-                  refreshingAudit={refreshingAudit}
-                  auditError={auditError}
-                  auditEntries={auditEntries}
-                  lastAuditLoadedAt={lastAuditLoadedAt}
-                  onRefresh={() => loadSelectedAudit({ background: true })}
-                />
-
-                <section className="prices-admin-product-panel">
+                  <div className="prices-admin-selection-grid">
+                    <section className="prices-admin-product-panel">
                   {!selectedProduct ? (
                     <div className="prices-admin-state">
-                      <strong>Select a product</strong>
+                      <strong>Select a product row</strong>
                       <p>
-                        Choose a product row in the matrix preview to inspect its
-                        metadata. Selection here is local to the admin preview only.
+                        Choose a product row in the matrix preview to review its
+                        draft metadata and row-level actions.
                       </p>
                     </div>
                   ) : null}
@@ -3104,13 +3074,10 @@ export default function PricesAdmin() {
                           </span>
                           <h3>{selectedProduct.name}</h3>
                           <p>
-                            {selectedProduct.section || "Unassigned section"}.
-                            {" "}
+                            {selectedProduct.section || "Unassigned section"}.{" "}
                             {selectedProductIsDraftEditable
-                              ? "Draft-only admin editing is enabled for this product."
-                              : isDraftSelection && !isAdmin
-                                ? "Managers can review draft product details but cannot edit them."
-                                : "Only draft price lists can be edited."}
+                              ? "Update draft-only metadata for this row here."
+                              : "Review the current product details for this selection."}
                           </p>
                         </div>
                         <div className="prices-admin-product-detail__badges">
@@ -3221,9 +3188,7 @@ export default function PricesAdmin() {
 
                       {selectedProductIsDraftEditable ? (
                         <div className="prices-admin-product-detail__helper">
-                          Blank optional fields preserve their current values.
-                          Explicit clearing to empty is not available in this first
-                          draft-edit stage.
+                          Optional blank fields preserve their current values.
                         </div>
                       ) : null}
 
@@ -3266,16 +3231,15 @@ export default function PricesAdmin() {
                       ) : null}
                     </form>
                   ) : null}
-                </section>
+                    </section>
 
-                <section className="prices-admin-product-panel">
+                    <section className="prices-admin-product-panel">
                   {!selectedCell ? (
                     <div className="prices-admin-state">
-                      <strong>Select a retail price cell</strong>
+                      <strong>Select a price cell</strong>
                       <p>
-                        Click a retail price cell in the matrix to inspect or edit
-                        that draft value. Cell selection is local to the admin
-                        preview only.
+                        Click a retail price cell in the matrix to review pricing
+                        context or update the selected draft value.
                       </p>
                     </div>
                   ) : null}
@@ -3288,17 +3252,15 @@ export default function PricesAdmin() {
                       <div className="prices-admin-product-detail__header">
                         <div>
                           <span className="prices-admin-panel__eyebrow">
-                            Selected retail price
+                            Selected price cell
                           </span>
                           <h3>
                             {selectedCell.productName} / {selectedCell.columnLabel}
                           </h3>
                           <p>
                             {canEditSelectedCell
-                              ? "Draft-only admin cell editing is enabled for this retail price."
-                              : isDraftSelection && !isAdmin
-                                ? "Managers can review draft retail prices but cannot edit them."
-                                : "Only draft price lists can be edited."}
+                              ? "Review or update the selected draft retail price."
+                              : "Review the current retail price for this matrix intersection."}
                           </p>
                         </div>
                         <div className="prices-admin-product-detail__badges">
@@ -3314,6 +3276,25 @@ export default function PricesAdmin() {
                               READ ONLY
                             </span>
                           )}
+                        </div>
+                      </div>
+
+                      <div className="prices-admin-selection-context">
+                        <div className="prices-admin-selection-context__item">
+                          <span>Selected product</span>
+                          <strong>{selectedCell.productName}</strong>
+                        </div>
+                        <div className="prices-admin-selection-context__item">
+                          <span>Selected column</span>
+                          <strong>{selectedCell.columnLabel}</strong>
+                        </div>
+                        <div className="prices-admin-selection-context__item">
+                          <span>Price state</span>
+                          <strong>
+                            {selectedCell.cellRecordId
+                              ? "Existing price cell"
+                              : "First sparse price"}
+                          </strong>
                         </div>
                       </div>
 
@@ -3361,7 +3342,7 @@ export default function PricesAdmin() {
                       {!selectedCell.cellRecordId ? (
                         <div className="prices-admin-product-detail__helper">
                           {canEditSelectedCell
-                            ? "This draft cell does not exist yet. Saving a retail price here will create the missing draft cell."
+                            ? "Saving here will create the missing draft price cell for this product and column."
                             : "Cell record details are unavailable in this matrix payload, so this selection can only be reviewed read-only."}
                         </div>
                       ) : null}
@@ -3407,7 +3388,39 @@ export default function PricesAdmin() {
                       ) : null}
                     </form>
                   ) : null}
+                    </section>
+                  </div>
                 </section>
+
+                <PriceStatusPanel
+                  selectedList={selectedPriceList}
+                  matrixData={matrixData}
+                  matrixModel={matrixModel}
+                  auditEntries={auditEntries}
+                  auditError={auditError}
+                  loadingAudit={loadingAudit}
+                  isAdmin={isAdmin}
+                  activePriceList={activePriceList}
+                  publishActionError={publishActionError}
+                  publishActionSuccess={publishActionSuccess}
+                  publishing={publishing}
+                  canManageProducts={canManageProducts}
+                  onOpenProductCreate={openProductCreate}
+                  canManageColumns={canManageColumns}
+                  onOpenColumnCreate={openColumnCreate}
+                  onOpenPublishModal={openPublishModal}
+                />
+
+                <PriceAuditPanel
+                  selectedList={selectedPriceList}
+                  isAdmin={isAdmin}
+                  loadingAudit={loadingAudit}
+                  refreshingAudit={refreshingAudit}
+                  auditError={auditError}
+                  auditEntries={auditEntries}
+                  lastAuditLoadedAt={lastAuditLoadedAt}
+                  onRefresh={() => loadSelectedAudit({ background: true })}
+                />
               </>
             ) : null}
           </section>
