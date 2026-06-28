@@ -745,6 +745,85 @@
   min-height: 0;
 }
 
+.prices-admin-status-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.028),
+      rgba(255, 255, 255, 0.01)
+    ),
+    rgba(4, 10, 24, 0.62);
+}
+
+.prices-admin-status-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prices-admin-status-panel__header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 320;
+}
+
+.prices-admin-status-panel__header p {
+  margin: 8px 0 0;
+  color: rgba(203, 213, 225, 0.8);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+.prices-admin-status-panel__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.prices-admin-status-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.prices-admin-status-card {
+  display: grid;
+  gap: 5px;
+  padding: 12px 13px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  border-radius: 10px;
+  background: rgba(8, 15, 30, 0.32);
+}
+
+.prices-admin-status-card span {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.prices-admin-status-card strong {
+  color: rgba(241, 245, 249, 0.96);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.prices-admin-status-card small {
+  color: rgba(191, 219, 254, 0.8);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .prices-admin-audit-panel {
   display: grid;
   gap: 14px;
@@ -1001,6 +1080,7 @@
 
   .prices-admin-header__top,
   .prices-admin-draft-form__header,
+  .prices-admin-status-panel__header,
   .prices-admin-audit-panel__header,
   .prices-admin-audit-entry__top,
   .prices-admin-product-detail__header {
@@ -1016,6 +1096,10 @@
   }
 
   .prices-admin-product-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prices-admin-status-panel__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

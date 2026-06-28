@@ -178,6 +178,63 @@ function getMatrixSummary(matrix) {
   };
 }
 
+function getReadinessMetrics(matrixModel) {
+  const columns = Array.isArray(matrixModel?.columns) ? matrixModel.columns : [];
+  const sections = Array.isArray(matrixModel?.sections) ? matrixModel.sections : [];
+  const products = sections.flatMap((section) => section.products || []);
+  const productCount = products.length;
+  const totalPossibleCells = productCount * columns.length;
+  let pricedCellCount = 0;
+
+  products.forEach((product) => {
+    columns.forEach((column) => {
+      const value = product?.prices?.[column.id];
+      if (Number.isFinite(Number(value))) {
+        pricedCellCount += 1;
+      }
+    });
+  });
+
+  return {
+    productCount,
+    totalPossibleCells,
+    pricedCellCount,
+    blankCellCount: Math.max(totalPossibleCells - pricedCellCount, 0),
+  };
+}
+
+function getEditabilityLabel({ list, isAdmin, isDraftSelection }) {
+  if (isDraftSelection && isAdmin) {
+    return "Draft editable by admin";
+  }
+
+  if (isDraftSelection && !isAdmin) {
+    return "Draft review only for managers";
+  }
+
+  if (list?.is_active) {
+    return "Active list is read only";
+  }
+
+  return "Read-only reference list";
+}
+
+function getCapabilityNote({ list, isAdmin, isDraftSelection }) {
+  if (isDraftSelection && isAdmin) {
+    return "Admins can edit draft pricing here. Publishing is not available yet.";
+  }
+
+  if (isDraftSelection && !isAdmin) {
+    return "Managers can review draft pricing and audit history, but cannot edit. Publishing is not available yet.";
+  }
+
+  if (list?.is_active) {
+    return "Active lists are read-only in the CMS. Create a draft before editing. Publishing is not available yet.";
+  }
+
+  return "This list is available for review only. Publishing is not available yet.";
+}
+
 function buildAdminMatrixModel(matrixData) {
   const normalized = normalizePricesData(matrixData || {});
   const rawColumns = Array.isArray(matrixData?.columns) ? matrixData.columns : [];
@@ -891,6 +948,109 @@ function PriceAuditPanel({
   );
 }
 
+function PriceStatusPanel({
+  selectedList,
+  matrixData,
+  matrixModel,
+  auditEntries,
+  auditError,
+  loadingAudit,
+  isAdmin,
+}) {
+  const previewState = React.useMemo(
+    () => getPreviewState(matrixData || selectedList),
+    [matrixData, selectedList],
+  );
+  const readiness = React.useMemo(
+    () => getReadinessMetrics(matrixModel),
+    [matrixModel],
+  );
+  const latestAuditEntry = Array.isArray(auditEntries) ? auditEntries[0] || null : null;
+  const isDraftSelection = Boolean(
+    (matrixData || selectedList) &&
+      isDraftList(matrixData || selectedList) &&
+      !(matrixData || selectedList)?.is_active,
+  );
+  const capabilityNote = getCapabilityNote({
+    list: matrixData || selectedList,
+    isAdmin,
+    isDraftSelection,
+  });
+  const editabilityLabel = getEditabilityLabel({
+    list: matrixData || selectedList,
+    isAdmin,
+    isDraftSelection,
+  });
+
+  return (
+    <section className="prices-admin-status-panel">
+      <div className="prices-admin-status-panel__header">
+        <div>
+          <span className="prices-admin-panel__eyebrow">Selected list status</span>
+          <h3>List status</h3>
+          <p>{capabilityNote}</p>
+        </div>
+        <div className="prices-admin-status-panel__badges">
+          <span
+            className={`prices-admin-badge prices-admin-badge--${previewState.tone}`}
+          >
+            {previewState.label}
+          </span>
+          <span className="prices-admin-badge">{editabilityLabel}</span>
+        </div>
+      </div>
+
+      <div className="prices-admin-status-panel__grid">
+        <div className="prices-admin-status-card">
+          <span>Selected list</span>
+          <strong>{selectedList?.version || matrixData?.version || "No version"}</strong>
+          <small>{selectedList?.name || matrixData?.name || "Unnamed price list"}</small>
+        </div>
+
+        <div className="prices-admin-status-card">
+          <span>Status</span>
+          <strong>{formatStatus((matrixData || selectedList)?.status)}</strong>
+          <small>
+            {(matrixData || selectedList)?.is_active
+              ? "Current staff-facing list"
+              : "Non-live CMS selection"}
+          </small>
+        </div>
+
+        <div className="prices-admin-status-card">
+          <span>Products and cells</span>
+          <strong>
+            {readiness.productCount} products / {readiness.totalPossibleCells} possible cells
+          </strong>
+          <small>
+            {readiness.pricedCellCount} priced / {readiness.blankCellCount} blank
+          </small>
+        </div>
+
+        <div className="prices-admin-status-card">
+          <span>Audit history</span>
+          <strong>
+            {loadingAudit
+              ? "Loading audit"
+              : auditError
+                ? "Audit unavailable"
+                : latestAuditEntry
+                  ? formatDateTime(latestAuditEntry.created_at)
+                  : "No audit entries"}
+          </strong>
+          <small>
+            {auditError
+              ? "Editing remains available even if audit loading fails."
+              : latestAuditEntry
+                ? formatAuditLabel(latestAuditEntry.action)
+                : "No recorded changes yet"}
+          </small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function PricesAdmin() {
   const [role, setRole] = React.useState("");
   const [loadingLists, setLoadingLists] = React.useState(true);
@@ -1585,6 +1745,16 @@ export default function PricesAdmin() {
                   selectedCellKey={selectedCellKey}
                   onSelectProduct={handleSelectProduct}
                   onSelectCell={handleSelectCell}
+                />
+
+                <PriceStatusPanel
+                  selectedList={selectedPriceList}
+                  matrixData={matrixData}
+                  matrixModel={matrixModel}
+                  auditEntries={auditEntries}
+                  auditError={auditError}
+                  loadingAudit={loadingAudit}
+                  isAdmin={isAdmin}
                 />
 
                 <PriceAuditPanel
