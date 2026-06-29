@@ -2391,9 +2391,12 @@ export default function PricesAdmin() {
       ]);
       refreshAuditAfterSuccess(selectedPriceList.id);
 
+      setArchivedItemsOpen(false);
+      setArchivedItemsError("");
       setArchivedRestoreConfirmOpen(false);
       setArchivedRestoreTarget(null);
       setArchivedRestoreReason("");
+      setArchivedRestoreError("");
       setArchivedRestoreSuccess(
         isProductRestore
           ? "Product restored to this draft."
