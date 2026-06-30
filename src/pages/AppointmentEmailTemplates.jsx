@@ -13,11 +13,10 @@ const SAMPLE_VALUES = {
   staff_name: "Ross",
 };
 
-const TEMPLATE_KIND_OPTIONS = [
+const TEMPLATE_STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
   { value: "all", label: "All" },
-  { value: "confirmation", label: "Confirmation" },
-  { value: "reminder", label: "Reminder" },
-  { value: "feedback", label: "Feedback" },
 ];
 
 const EDITOR_KIND_OPTIONS = [
@@ -36,6 +35,9 @@ const PLACEHOLDERS = [
   "{{staff_name}}",
 ];
 
+const GENERAL_CATEGORY_VALUE = "__general__";
+const GENERAL_SCOPE_LABEL = "General / Default";
+
 function applyPlaceholders(template, replacements) {
   let result = String(template || "");
 
@@ -44,6 +46,24 @@ function applyPlaceholders(template, replacements) {
   }
 
   return result;
+}
+
+function textToHtml(value) {
+  return `<div style="font-family: Arial, sans-serif; white-space: pre-wrap;">${String(
+    value || "",
+  )
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")}</div>`;
+}
+
+function sanitizePreviewHtml(value) {
+  return String(value || "")
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, "")
+    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
 }
 
 function blankDraft() {
@@ -85,10 +105,17 @@ export default function AppointmentEmailTemplates() {
   const [error, setError] = React.useState("");
   const [successMessage, setSuccessMessage] = React.useState("");
   const [templates, setTemplates] = React.useState([]);
+  const [appointmentCategories, setAppointmentCategories] = React.useState([]);
   const [appointmentTypes, setAppointmentTypes] = React.useState([]);
-  const [selectedFilter, setSelectedFilter] = React.useState("all");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = React.useState("all");
+  const [selectedStatusFilter, setSelectedStatusFilter] = React.useState("active");
   const [selectedTemplateId, setSelectedTemplateId] = React.useState("");
   const [draft, setDraft] = React.useState(blankDraft);
+  const [draftCategoryId, setDraftCategoryId] = React.useState(GENERAL_CATEGORY_VALUE);
+  const [activeEditorField, setActiveEditorField] = React.useState("body_html");
+  const subjectInputRef = React.useRef(null);
+  const bodyTextRef = React.useRef(null);
+  const bodyHtmlRef = React.useRef(null);
 
   const isAdmin = role === "admin";
   const canView = role === "admin" || role === "manager";
@@ -109,11 +136,23 @@ export default function AppointmentEmailTemplates() {
     [],
   );
 
+  const appointmentCategoriesById = React.useMemo(() => {
+    const map = new Map();
+    for (const category of appointmentCategories) {
+      map.set(category.id, category);
+    }
+    return map;
+  }, [appointmentCategories]);
+
   const appointmentTypeOptions = React.useMemo(() => {
     const map = new Map();
 
     for (const item of appointmentTypes) {
-      map.set(item.id, { id: item.id, name: item.name });
+      map.set(item.id, {
+        id: item.id,
+        name: item.name,
+        category_id: item.category_id || "",
+      });
     }
 
     for (const template of templates) {
@@ -121,6 +160,9 @@ export default function AppointmentEmailTemplates() {
         map.set(template.appointment_type_id, {
           id: template.appointment_type_id,
           name: template.appointment_type_name,
+          category_id:
+            appointmentTypes.find((item) => item.id === template.appointment_type_id)
+              ?.category_id || "",
         });
       }
     }
@@ -130,10 +172,55 @@ export default function AppointmentEmailTemplates() {
     );
   }, [appointmentTypes, templates]);
 
+  const appointmentTypesById = React.useMemo(() => {
+    const map = new Map();
+    for (const item of appointmentTypeOptions) {
+      map.set(item.id, item);
+    }
+    return map;
+  }, [appointmentTypeOptions]);
+
+  const categoryFilterOptions = React.useMemo(() => {
+    return [
+      { value: "all", label: "All categories" },
+      { value: GENERAL_CATEGORY_VALUE, label: GENERAL_SCOPE_LABEL },
+      ...appointmentCategories.map((category) => ({
+        value: category.id,
+        label: category.name,
+      })),
+    ];
+  }, [appointmentCategories]);
+
+  const filteredAppointmentTypeOptions = React.useMemo(() => {
+    if (draftCategoryId === GENERAL_CATEGORY_VALUE) return [];
+    return appointmentTypeOptions.filter(
+      (item) => item.category_id === draftCategoryId,
+    );
+  }, [appointmentTypeOptions, draftCategoryId]);
+
   const filteredTemplates = React.useMemo(() => {
-    if (selectedFilter === "all") return templates;
-    return templates.filter((item) => item.template_type === selectedFilter);
-  }, [selectedFilter, templates]);
+    const statusFiltered =
+      selectedStatusFilter === "all"
+        ? templates
+        : templates.filter((item) =>
+            selectedStatusFilter === "active" ? item.is_active : !item.is_active,
+          );
+
+    if (selectedCategoryFilter === "all") return statusFiltered;
+    if (selectedCategoryFilter === GENERAL_CATEGORY_VALUE) {
+      return statusFiltered.filter((item) => !item.appointment_type_id);
+    }
+
+    return statusFiltered.filter((item) => {
+      const type = appointmentTypesById.get(item.appointment_type_id);
+      return type?.category_id === selectedCategoryFilter;
+    });
+  }, [
+    appointmentTypesById,
+    selectedCategoryFilter,
+    selectedStatusFilter,
+    templates,
+  ]);
 
   const selectedTemplate = React.useMemo(
     () => templates.find((item) => item.id === selectedTemplateId) || null,
@@ -150,6 +237,13 @@ export default function AppointmentEmailTemplates() {
       applyPlaceholders(draft.body_text, SAMPLE_VALUES) || "No body text set",
     [draft.body_text],
   );
+
+  const previewHtml = React.useMemo(() => {
+    const rawHtml = draft.body_html
+      ? applyPlaceholders(draft.body_html, SAMPLE_VALUES)
+      : textToHtml(previewBody);
+    return sanitizePreviewHtml(rawHtml);
+  }, [draft.body_html, previewBody]);
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);
@@ -179,27 +273,34 @@ export default function AppointmentEmailTemplates() {
 
       if (!["admin", "manager"].includes(nextRole)) {
         setTemplates([]);
+        setAppointmentCategories([]);
         setAppointmentTypes([]);
         setSelectedTemplateId("");
         setDraft(blankDraft());
         return;
       }
 
-      const [templatesRes, typesRes] = await Promise.all([
+      const [templatesRes, categoriesRes, typesRes] = await Promise.all([
         supabase.rpc("get_appointment_email_templates_staff"),
         supabase
+          .from("appointment_categories")
+          .select("id, name, sort_order, is_active")
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true }),
+        supabase
           .from("appointment_types")
-          .select("id, name, is_active, sort_order")
-          .eq("is_active", true)
+          .select("id, name, category_id, is_active, sort_order")
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true }),
       ]);
 
       if (templatesRes.error) throw templatesRes.error;
+      if (categoriesRes.error) throw categoriesRes.error;
       if (typesRes.error) throw typesRes.error;
 
       const nextTemplates = templatesRes.data || [];
       setTemplates(nextTemplates);
+      setAppointmentCategories(categoriesRes.data || []);
       setAppointmentTypes(typesRes.data || []);
 
       setSelectedTemplateId((prev) => {
@@ -211,6 +312,7 @@ export default function AppointmentEmailTemplates() {
       console.error("appointment email templates: load failed", err);
       setError(err?.message || "Could not load appointment email templates.");
       setTemplates([]);
+      setAppointmentCategories([]);
       setAppointmentTypes([]);
       setSelectedTemplateId("");
       setDraft(blankDraft());
@@ -226,19 +328,87 @@ export default function AppointmentEmailTemplates() {
   React.useEffect(() => {
     if (selectedTemplateId === "__new__") {
       setDraft(blankDraft());
+      setDraftCategoryId(GENERAL_CATEGORY_VALUE);
       return;
     }
 
     setDraft(toDraft(selectedTemplate));
-  }, [selectedTemplate, selectedTemplateId]);
+    setDraftCategoryId(
+      selectedTemplate?.appointment_type_id
+        ? appointmentTypesById.get(selectedTemplate.appointment_type_id)
+            ?.category_id || GENERAL_CATEGORY_VALUE
+        : GENERAL_CATEGORY_VALUE,
+    );
+  }, [appointmentTypesById, selectedTemplate, selectedTemplateId]);
+
+  React.useEffect(() => {
+    if (selectedTemplateId === "__new__") return;
+    if (selectedTemplateId && filteredTemplates.some((item) => item.id === selectedTemplateId))
+      return;
+    setSelectedTemplateId(filteredTemplates[0]?.id || "");
+  }, [filteredTemplates, selectedTemplateId]);
 
   function updateDraft(key, value) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateDraftCategory(nextCategoryId) {
+    setDraftCategoryId(nextCategoryId);
+    if (nextCategoryId === GENERAL_CATEGORY_VALUE) {
+      updateDraft("appointment_type_id", "");
+      return;
+    }
+
+    const currentType = appointmentTypesById.get(draft.appointment_type_id);
+    if (currentType?.category_id !== nextCategoryId) {
+      updateDraft("appointment_type_id", "");
+    }
+  }
+
+  function registerEditorFocus(field) {
+    setActiveEditorField(field);
+  }
+
+  function insertPlaceholder(placeholder) {
+    const fallbackField = bodyHtmlRef.current
+      ? "body_html"
+      : bodyTextRef.current
+        ? "body_text"
+        : "subject";
+    const targetField = activeEditorField || fallbackField;
+    const refs = {
+      subject: subjectInputRef,
+      body_text: bodyTextRef,
+      body_html: bodyHtmlRef,
+    };
+    const targetRef = refs[targetField];
+    const element = targetRef?.current;
+
+    if (!element) {
+      updateDraft(targetField, `${draft[targetField] || ""}${placeholder}`);
+      return;
+    }
+
+    const start = element.selectionStart ?? String(draft[targetField] || "").length;
+    const end = element.selectionEnd ?? start;
+    const currentValue = String(draft[targetField] || "");
+    const nextValue =
+      currentValue.slice(0, start) + placeholder + currentValue.slice(end);
+
+    updateDraft(targetField, nextValue);
+    setActiveEditorField(targetField);
+
+    window.requestAnimationFrame(() => {
+      element.focus();
+      const nextCaret = start + placeholder.length;
+      element.setSelectionRange?.(nextCaret, nextCaret);
+    });
+  }
+
   function beginNewTemplate() {
     setSelectedTemplateId("__new__");
     setDraft(blankDraft());
+    setDraftCategoryId(GENERAL_CATEGORY_VALUE);
     setError("");
     setSuccessMessage("");
   }
@@ -250,6 +420,12 @@ export default function AppointmentEmailTemplates() {
       selectedTemplateId === "__new__"
         ? blankDraft()
         : toDraft(selectedTemplate),
+    );
+    setDraftCategoryId(
+      selectedTemplate?.appointment_type_id
+        ? appointmentTypesById.get(selectedTemplate.appointment_type_id)
+            ?.category_id || GENERAL_CATEGORY_VALUE
+        : GENERAL_CATEGORY_VALUE,
     );
   }
 
@@ -275,6 +451,14 @@ export default function AppointmentEmailTemplates() {
 
     if (!draft.body_text.trim()) {
       setError("Template body text is required.");
+      return;
+    }
+
+    if (
+      draftCategoryId !== GENERAL_CATEGORY_VALUE &&
+      !draft.appointment_type_id
+    ) {
+      setError("Choose an appointment type for the selected category.");
       return;
     }
 
@@ -431,13 +615,28 @@ export default function AppointmentEmailTemplates() {
                 <div style={{ fontWeight: 900 }}>Templates</div>
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
-                  Filter
+                  Category
                   <select
-                    value={selectedFilter}
-                    onChange={(e) => setSelectedFilter(e.target.value)}
+                    value={selectedCategoryFilter}
+                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
                     style={{ ...inputStyle, marginTop: 6 }}
                   >
-                    {TEMPLATE_KIND_OPTIONS.map((option) => (
+                    {categoryFilterOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Status
+                  <select
+                    value={selectedStatusFilter}
+                    onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                  >
+                    {TEMPLATE_STATUS_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -526,23 +725,7 @@ export default function AppointmentEmailTemplates() {
                       ? "New template"
                       : draft.name || "Template editor"}
                   </div>
-                  <div style={ui.text.subtitle}>
-                    {isAdmin
-                      ? "Create, edit, and deactivate appointment email templates."
-                      : "Managers can view templates but cannot edit them."}
-                  </div>
                 </div>
-                {!isNewTemplate ? (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: draft.is_active ? ui.colors.text : ui.colors.muted,
-                    }}
-                  >
-                    {draft.is_active ? "Active" : "Inactive"}
-                  </div>
-                ) : null}
               </div>
 
               <div
@@ -581,6 +764,25 @@ export default function AppointmentEmailTemplates() {
                 </label>
 
                 <label style={{ fontSize: 13, fontWeight: 700 }}>
+                  Category
+                  <select
+                    value={draftCategoryId}
+                    onChange={(e) => updateDraftCategory(e.target.value)}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    disabled={!isAdmin}
+                  >
+                    <option value={GENERAL_CATEGORY_VALUE}>
+                      {GENERAL_SCOPE_LABEL}
+                    </option>
+                    {appointmentCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ fontSize: 13, fontWeight: 700 }}>
                   Appointment type scope
                   <select
                     value={draft.appointment_type_id}
@@ -590,8 +792,12 @@ export default function AppointmentEmailTemplates() {
                     style={{ ...inputStyle, marginTop: 6 }}
                     disabled={!isAdmin}
                   >
-                    <option value="">General / default</option>
-                    {appointmentTypeOptions.map((option) => (
+                    <option value="">
+                      {draftCategoryId === GENERAL_CATEGORY_VALUE
+                        ? GENERAL_SCOPE_LABEL
+                        : "Select appointment type"}
+                    </option>
+                    {filteredAppointmentTypeOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
                       </option>
@@ -618,8 +824,10 @@ export default function AppointmentEmailTemplates() {
               <label style={{ fontSize: 13, fontWeight: 700 }}>
                 Subject
                 <input
+                  ref={subjectInputRef}
                   value={draft.subject}
                   onChange={(e) => updateDraft("subject", e.target.value)}
+                  onFocus={() => registerEditorFocus("subject")}
                   style={{ ...inputStyle, marginTop: 6 }}
                   readOnly={!isAdmin}
                 />
@@ -628,9 +836,11 @@ export default function AppointmentEmailTemplates() {
               <label style={{ fontSize: 13, fontWeight: 700 }}>
                 Body text
                 <textarea
+                  ref={bodyTextRef}
                   rows={12}
                   value={draft.body_text}
                   onChange={(e) => updateDraft("body_text", e.target.value)}
+                  onFocus={() => registerEditorFocus("body_text")}
                   style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
                   readOnly={!isAdmin}
                 />
@@ -639,22 +849,17 @@ export default function AppointmentEmailTemplates() {
               <label style={{ fontSize: 13, fontWeight: 700 }}>
                 Body HTML (optional)
                 <textarea
+                  ref={bodyHtmlRef}
                   rows={8}
                   value={draft.body_html}
                   onChange={(e) => updateDraft("body_html", e.target.value)}
+                  onFocus={() => registerEditorFocus("body_html")}
                   style={{ ...inputStyle, marginTop: 6, resize: "vertical" }}
                   readOnly={!isAdmin}
                 />
               </label>
 
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
-                }}
-              >
+              <div className="appointment-email-placeholder-card">
                 <div
                   style={{
                     fontSize: 14,
@@ -663,48 +868,46 @@ export default function AppointmentEmailTemplates() {
                 >
                   Supported placeholders
                 </div>
-                <div
-                  style={{
-                    marginTop: 10,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                  }}
-                >
+                <div className="appointment-email-placeholder-list">
                   {PLACEHOLDERS.map((placeholder) => (
-                    <div
+                    <button
                       key={placeholder}
-                      style={{ color: ui.colors.sidebarText }}
+                      type="button"
+                      className="appointment-email-placeholder-chip"
+                      onClick={() => insertPlaceholder(placeholder)}
+                      disabled={!isAdmin}
                     >
                       {placeholder}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
 
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ui.colors.border}`,
-                  background: "rgba(2, 6, 23, 0.02)",
-                }}
-              >
+              <div className="appointment-email-preview-card">
                 <div style={{ fontSize: 14, fontWeight: 900 }}>Preview</div>
                 <div style={{ marginTop: 10, fontWeight: 800 }}>
                   {previewSubject}
                 </div>
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: 12,
-                    borderRadius: 10,
-                    background: ui.colors.cardBg,
-                    border: `1px solid ${ui.colors.border}`,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {previewBody}
+                <div className="appointment-email-preview-grid">
+                  <div className="appointment-email-preview-pane">
+                    <div className="appointment-email-preview-pane__label">
+                      HTML preview
+                    </div>
+                    <iframe
+                      title="Appointment email HTML preview"
+                      className="appointment-email-preview-frame"
+                      sandbox=""
+                      srcDoc={previewHtml}
+                    />
+                  </div>
+                  <div className="appointment-email-preview-pane">
+                    <div className="appointment-email-preview-pane__label">
+                      Plain text fallback
+                    </div>
+                    <div className="appointment-email-preview-text">
+                      {previewBody}
+                    </div>
+                  </div>
                 </div>
               </div>
 

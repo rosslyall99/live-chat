@@ -218,6 +218,74 @@
   line-height: 1.25;
 }
 
+.appointment-email-placeholder-card,
+.appointment-email-preview-card {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 1);
+  background: rgba(2, 6, 23, 0.02);
+}
+
+.appointment-email-placeholder-list {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appointment-email-placeholder-chip {
+  padding: 7px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.appointment-email-preview-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 12px;
+}
+
+.appointment-email-preview-pane {
+  display: grid;
+  gap: 8px;
+}
+
+.appointment-email-preview-pane__label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.appointment-email-preview-frame,
+.appointment-email-preview-text {
+  min-height: 220px;
+  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 1);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.appointment-email-preview-frame {
+  display: block;
+}
+
+.appointment-email-preview-text {
+  padding: 12px;
+  color: #0f172a;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
 .appointment-email-template-status {
   padding: 3px 7px;
   border: 1px solid rgba(148, 163, 184, 0.28);
