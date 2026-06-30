@@ -300,6 +300,126 @@ function formatArchivedColumnMapping(item) {
   return parts.join(" / ");
 }
 
+function toFiniteNumberOrNull(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+function normalizeAdminMappingRangeLink(link) {
+  if (!link) return null;
+
+  const externalRangeId = toFiniteNumberOrNull(link.external_range_id);
+  if (!Number.isFinite(externalRangeId)) return null;
+
+  return {
+    externalWeaverId: toFiniteNumberOrNull(link.external_weaver_id),
+    externalRangeId,
+    externalRangeLabel: toOptionalText(link.external_range_label),
+    sortOrder: Number.isFinite(Number(link.sort_order)) ? Number(link.sort_order) : 0,
+  };
+}
+
+function normalizeAdminMappingRow(row) {
+  if (!row?.column_id || !row?.matrix_key) return null;
+
+  const externalRanges = Array.isArray(row.external_ranges)
+    ? row.external_ranges
+        .map((link) => normalizeAdminMappingRangeLink(link))
+        .filter(Boolean)
+    : [];
+  const externalMappingCount = Number.isFinite(Number(row.external_mapping_count))
+    ? Number(row.external_mapping_count)
+    : externalRanges.length;
+
+  return {
+    columnId: String(row.column_id),
+    priceListId: row.price_list_id ? String(row.price_list_id) : "",
+    priceListVersion: String(row.price_list_version || ""),
+    matrixKey: String(row.matrix_key),
+    supplier: String(row.supplier || ""),
+    range: String(row.range || ""),
+    width: toOptionalText(row.width),
+    weight: toOptionalText(row.weight),
+    isActive: Boolean(row.is_active),
+    externalWeaverId: toFiniteNumberOrNull(row.external_weaver_id),
+    externalRangeId: toFiniteNumberOrNull(row.external_range_id),
+    externalMappingCount,
+    externalMappingComplete:
+      Boolean(row.external_mapping_complete) || externalMappingCount > 0,
+    externalRanges,
+    updatedAt: row.updated_at ? String(row.updated_at) : "",
+  };
+}
+
+function formatMappingPrimarySummary(item) {
+  const parts = [];
+
+  if (Number.isFinite(item?.externalWeaverId)) {
+    parts.push(`Weaver ${item.externalWeaverId}`);
+  }
+
+  if (Number.isFinite(item?.externalRangeId)) {
+    parts.push(`Range ${item.externalRangeId}`);
+  }
+
+  return parts.join(" / ");
+}
+
+function getColumnMappedState(column, mappingStatus, mappingLookupResolved) {
+  if (mappingLookupResolved) {
+    return Boolean(mappingStatus?.externalMappingComplete);
+  }
+
+  return Boolean(
+    mappingStatus?.externalMappingComplete ||
+      Number.isFinite(column?.external_weaver_id) ||
+      Number.isFinite(column?.external_range_id),
+  );
+}
+
+function removeArchivedColumnFromMatrixData(currentMatrixData, targetColumnRecordId) {
+  if (!currentMatrixData || !targetColumnRecordId) return currentMatrixData;
+
+  const columns = Array.isArray(currentMatrixData.columns) ? currentMatrixData.columns : [];
+  const targetColumn = columns.find(
+    (column) => String(column?.record_id || "") === String(targetColumnRecordId),
+  );
+
+  if (!targetColumn) {
+    return currentMatrixData;
+  }
+
+  const targetColumnKey = String(targetColumn.id || "");
+  const nextColumns = columns.filter(
+    (column) => String(column?.record_id || "") !== String(targetColumnRecordId),
+  );
+  const nextSections = Array.isArray(currentMatrixData.sections)
+    ? currentMatrixData.sections.map((section) => ({
+        ...section,
+        products: Array.isArray(section?.products)
+          ? section.products.map((product) => {
+              const nextPrices = { ...(product?.prices || {}) };
+              const nextPriceCells = { ...(product?.price_cells || {}) };
+
+              delete nextPrices[targetColumnKey];
+              delete nextPriceCells[targetColumnKey];
+
+              return {
+                ...product,
+                prices: nextPrices,
+                price_cells: nextPriceCells,
+              };
+            })
+          : [],
+      }))
+    : [];
+
+  return {
+    ...currentMatrixData,
+    columns: nextColumns,
+    sections: nextSections,
+  };
+}
+
 function buildAdminMatrixModel(matrixData) {
   const normalized = normalizePricesData(matrixData || {});
   const rawColumns = Array.isArray(matrixData?.columns) ? matrixData.columns : [];
@@ -311,6 +431,8 @@ function buildAdminMatrixModel(matrixData) {
   rawColumns.forEach((column) => {
     rawColumnLookup.set(String(column?.id || ""), {
       recordId: column?.record_id ? String(column.record_id) : "",
+      externalWeaverId: toFiniteNumberOrNull(column?.external_weaver_id),
+      externalRangeId: toFiniteNumberOrNull(column?.external_range_id),
     });
   });
 
@@ -348,6 +470,8 @@ function buildAdminMatrixModel(matrixData) {
     ...column,
     publicId: column.id,
     recordId: rawColumnLookup.get(String(column.id))?.recordId || "",
+    external_weaver_id: rawColumnLookup.get(String(column.id))?.externalWeaverId ?? null,
+    external_range_id: rawColumnLookup.get(String(column.id))?.externalRangeId ?? null,
   }));
 
   const sections = (normalized.sections || []).map((section) => ({
@@ -744,6 +868,8 @@ function PriceListCard({ list, isSelected, onSelect, eyebrow, dateLabel, dateVal
 function PriceMatrixPreview({
   matrixData,
   matrixModel,
+  columnMappingLookup,
+  mappingLookupResolved,
   selectedCellKey,
   selectedCellProductId,
   selectedCellColumnId,
@@ -817,9 +943,13 @@ function PriceMatrixPreview({
               <tr>
                 <th className="prices-admin-matrix__product-heading">Product</th>
                 {columns.map((column) => {
-                  const isMapped =
-                    Number.isFinite(column.external_weaver_id) ||
-                    Number.isFinite(column.external_range_id);
+                  const mappingStatus = columnMappingLookup?.get(column.recordId) || null;
+                  const isMapped = getColumnMappedState(
+                    column,
+                    mappingStatus,
+                    mappingLookupResolved,
+                  );
+                  const mappingLabel = isMapped ? "Mapped" : "Unmapped";
                   const isSelectedRange = selectedRangeId === column.recordId;
                   const isRelevantColumn = hasSelectedCell
                     ? selectedCellColumnId === column.recordId
@@ -847,17 +977,18 @@ function PriceMatrixPreview({
                           isDimmedColumn ? "prices-admin-matrix__column--dimmed" : ""
                         }`}
                         onClick={() => onSelectColumn(column.recordId)}
-                        title={
-                          isMapped ? "Mapped to tartan range" : "No tartan mapping"
-                        }
-                        aria-label={
-                          isMapped
-                            ? `${column.supplier} ${column.range} - Mapped to tartan range`
-                            : `${column.supplier} ${column.range} - No tartan mapping`
-                        }
+                        aria-label={`${column.supplier} ${column.range || "Range"} - ${mappingLabel}`}
                       >
                         <strong>{column.supplier}</strong>
-                        <span>{column.range}</span>
+                        <span
+                          className={`prices-admin-matrix__column-range-pill ${
+                            isMapped
+                              ? "prices-admin-matrix__column-range-pill--mapped"
+                              : "prices-admin-matrix__column-range-pill--unmapped"
+                          }`}
+                        >
+                          {column.range || "Range"}
+                        </span>
                         <small>
                           {[column.width, column.weight].filter(Boolean).join(" / ") ||
                             "No spec"}
@@ -868,8 +999,9 @@ function PriceMatrixPreview({
                               ? "prices-admin-matrix__column-marker--mapped"
                               : "prices-admin-matrix__column-marker--unmapped"
                           }`}
-                          title={isMapped ? "Mapped to tartan range" : "No tartan mapping"}
-                          aria-hidden="true"
+                          data-label={mappingLabel}
+                          title={`${mappingLabel} tartan mapping status`}
+                          aria-label={`${mappingLabel} tartan mapping status`}
                         >
                           {isMapped ? "•" : "!"}
                         </span>
@@ -1015,23 +1147,9 @@ function PriceAuditPanel({
   return (
     <section className="prices-admin-audit-panel">
       <div className="prices-admin-audit-panel__header">
-        <button
-          type="button"
-          className="prices-admin-audit-panel__toggle"
-          onClick={onToggleExpanded}
-        >
-          <h3>History</h3>
-          <span
-            className={`prices-admin-audit-panel__chevron ${
-              expanded ? "is-open" : ""
-            }`}
-            aria-hidden="true"
-          >
-            v
-          </span>
-        </button>
+        <h3>History</h3>
         <div className="prices-admin-audit-panel__side">
-          {selectedList ? (
+          {selectedList && expanded ? (
             <button
               type="button"
               className="prices-admin-secondary-button prices-admin-audit-panel__refresh"
@@ -1046,6 +1164,12 @@ function PriceAuditPanel({
               </small>
             </button>
           ) : null}
+          <CollapsiblePanelToggle
+            expanded={expanded}
+            onClick={onToggleExpanded}
+            expandLabel="Expand History"
+            collapseLabel="Collapse History"
+          />
         </div>
       </div>
 
@@ -1135,6 +1259,31 @@ function PriceAuditPanel({
   );
 }
 
+function CollapsiblePanelToggle({
+  expanded,
+  onClick,
+  expandLabel,
+  collapseLabel,
+}) {
+  return (
+    <button
+      type="button"
+      className={`prices-admin-panel-toggle${
+        expanded ? " prices-admin-panel-toggle--open" : ""
+      }`}
+      onClick={onClick}
+      aria-label={expanded ? collapseLabel : expandLabel}
+      aria-expanded={expanded}
+    >
+      <span className="prices-admin-panel-toggle__lines" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    </button>
+  );
+}
+
 function PriceStatusPanel({
   selectedList,
   matrixData,
@@ -1153,6 +1302,8 @@ function PriceStatusPanel({
   onOpenColumnCreate,
   onOpenArchivedItems,
   onOpenPublishModal,
+  expanded,
+  onToggleExpanded,
 }) {
   const readiness = React.useMemo(
     () => getReadinessMetrics(matrixModel),
@@ -1173,105 +1324,278 @@ function PriceStatusPanel({
   return (
     <section className="prices-admin-status-panel">
       <div className="prices-admin-status-panel__header">
-        <div>
-          <span className="prices-admin-panel__eyebrow">Draft controls</span>
-          <h3>Draft controls</h3>
-        </div>
+        <h3>Draft Controls</h3>
         <div className="prices-admin-status-panel__actions-inline">
-          {canBrowseArchivedItems ? (
-            <button
-              type="button"
-              className="prices-admin-secondary-button"
-              onClick={onOpenArchivedItems}
-            >
-              Archived items
-            </button>
+          {expanded ? (
+            <>
+              {canBrowseArchivedItems ? (
+                <button
+                  type="button"
+                  className="prices-admin-secondary-button"
+                  onClick={onOpenArchivedItems}
+                >
+                  Archived items
+                </button>
+              ) : null}
+              {canManageColumns ? (
+                <button
+                  type="button"
+                  className="prices-admin-secondary-button"
+                  onClick={onOpenColumnCreate}
+                >
+                  Add column
+                </button>
+              ) : null}
+              {canManageProducts ? (
+                <button
+                  type="button"
+                  className="prices-admin-secondary-button"
+                  onClick={onOpenProductCreate}
+                >
+                  Add product
+                </button>
+              ) : null}
+              {canPublishSelectedList ? (
+                <button
+                  type="button"
+                  className="prices-admin-warning-button"
+                  onClick={onOpenPublishModal}
+                  disabled={publishing}
+                >
+                  {publishing ? "Publishing..." : "Publish draft"}
+                </button>
+              ) : null}
+            </>
           ) : null}
-          {canManageColumns ? (
-            <button
-              type="button"
-              className="prices-admin-secondary-button"
-              onClick={onOpenColumnCreate}
-            >
-              Add column
-            </button>
-          ) : null}
-          {canManageProducts ? (
-            <button
-              type="button"
-              className="prices-admin-secondary-button"
-              onClick={onOpenProductCreate}
-            >
-              Add product
-            </button>
-          ) : null}
-          {canPublishSelectedList ? (
-            <button
-              type="button"
-              className="prices-admin-warning-button"
-              onClick={onOpenPublishModal}
-              disabled={publishing}
-            >
-              {publishing ? "Publishing..." : "Publish draft"}
-            </button>
-          ) : null}
+          <CollapsiblePanelToggle
+            expanded={expanded}
+            onClick={onToggleExpanded}
+            expandLabel="Expand Draft Controls"
+            collapseLabel="Collapse Draft Controls"
+          />
         </div>
       </div>
 
-      <div className="prices-admin-status-panel__grid">
-        <div className="prices-admin-status-card">
-          <span>Name</span>
-          <strong>{selectedList?.name || matrixData?.name || "Unnamed price list"}</strong>
-          <small>{selectedList?.version || matrixData?.version || "No version"}</small>
-        </div>
+      {expanded ? (
+        <>
+          <div className="prices-admin-status-panel__grid">
+            <div className="prices-admin-status-card">
+              <span>Name</span>
+              <strong>{selectedList?.name || matrixData?.name || "Unnamed price list"}</strong>
+              <small>{selectedList?.version || matrixData?.version || "No version"}</small>
+            </div>
 
-        <div className="prices-admin-status-card">
-          <span>Status</span>
-          <strong>{formatStatus((matrixData || selectedList)?.status)}</strong>
-          <small>{isAdmin ? "Draft editable by admin" : "Draft review only"}</small>
-        </div>
+            <div className="prices-admin-status-card">
+              <span>Status</span>
+              <strong>{formatStatus((matrixData || selectedList)?.status)}</strong>
+              <small>{isAdmin ? "Draft editable by admin" : "Draft review only"}</small>
+            </div>
 
-        <div className="prices-admin-status-card">
-          <span>Products and cells</span>
-          <strong>
-            {readiness.productCount} products / {readiness.totalPossibleCells} possible cells
-          </strong>
-          <small>
-            {readiness.pricedCellCount} priced / {readiness.blankCellCount} blank
-          </small>
-        </div>
+            <div className="prices-admin-status-card">
+              <span>Products and cells</span>
+              <strong>
+                {readiness.productCount} products / {readiness.totalPossibleCells} possible cells
+              </strong>
+              <small>
+                {readiness.pricedCellCount} priced / {readiness.blankCellCount} blank
+              </small>
+            </div>
 
-        <div className="prices-admin-status-card">
-          <span>Audit history</span>
-          <strong>
-            {loadingAudit
-              ? "Loading history"
-              : auditError
-                ? "History unavailable"
-                : latestAuditEntry
-                  ? formatDateTime(latestAuditEntry.created_at)
-                  : "No history entries"}
-          </strong>
-          <small>
-            {auditError
-              ? "History can fail without blocking draft editing."
-              : latestAuditEntry
-                ? formatAuditLabel(latestAuditEntry.action)
-                : "No recorded changes yet"}
-          </small>
-        </div>
-      </div>
+            <div className="prices-admin-status-card">
+              <span>Audit history</span>
+              <strong>
+                {loadingAudit
+                  ? "Loading history"
+                  : auditError
+                    ? "History unavailable"
+                    : latestAuditEntry
+                      ? formatDateTime(latestAuditEntry.created_at)
+                      : "No history entries"}
+              </strong>
+              <small>
+                {auditError
+                  ? "History can fail without blocking draft editing."
+                  : latestAuditEntry
+                    ? formatAuditLabel(latestAuditEntry.action)
+                    : "No recorded changes yet"}
+              </small>
+            </div>
+          </div>
 
-      {publishActionError ? (
-        <div className="prices-admin-feedback prices-admin-feedback--error">
-          {publishActionError}
-        </div>
+          {publishActionError ? (
+            <div className="prices-admin-feedback prices-admin-feedback--error">
+              {publishActionError}
+            </div>
+          ) : null}
+
+          {publishActionSuccess ? (
+            <div className="prices-admin-feedback prices-admin-feedback--success">
+              {publishActionSuccess}
+            </div>
+          ) : null}
+        </>
       ) : null}
+    </section>
+  );
+}
 
-      {publishActionSuccess ? (
-        <div className="prices-admin-feedback prices-admin-feedback--success">
-          {publishActionSuccess}
+function PriceMappingPanel({
+  selectedList,
+  mappingRows,
+  loadingMappings,
+  mappingError,
+  expanded,
+  onToggleExpanded,
+}) {
+  const mappedCount = mappingRows.filter((item) => item.externalMappingComplete).length;
+  const unmappedCount = Math.max(mappingRows.length - mappedCount, 0);
+
+  return (
+    <section className="prices-admin-status-panel prices-admin-mapping-panel">
+      <div className="prices-admin-status-panel__header">
+        <h3>Mapping Status</h3>
+        <div className="prices-admin-status-panel__actions-inline">
+          <CollapsiblePanelToggle
+            expanded={expanded}
+            onClick={onToggleExpanded}
+            expandLabel="Expand Mapping status"
+            collapseLabel="Collapse Mapping status"
+          />
         </div>
+      </div>
+
+      {expanded ? (
+        <>
+          <div className="prices-admin-status-panel__grid">
+            <div className="prices-admin-status-card">
+              <span>Selected list</span>
+              <strong>{selectedList?.name || "Unnamed price list"}</strong>
+              <small>{selectedList?.version || "No version"}</small>
+            </div>
+
+            <div className="prices-admin-status-card">
+              <span>Visible columns</span>
+              <strong>{loadingMappings ? "Loading mapping status" : `${mappingRows.length} columns`}</strong>
+              <small>Read-only mapping coverage for the selected matrix view.</small>
+            </div>
+
+            <div className="prices-admin-status-card">
+              <span>Mapped</span>
+              <strong>{mappedCount} mapped</strong>
+              <small>Columns with a primary external id or bridge-range mapping.</small>
+            </div>
+
+            <div className="prices-admin-status-card">
+              <span>Unmapped</span>
+              <strong>{unmappedCount} unmapped</strong>
+              <small>Columns that still need a tartan range link in a future stage.</small>
+            </div>
+          </div>
+
+          {mappingError ? (
+            <div className="prices-admin-feedback prices-admin-feedback--error">
+              {mappingError}
+            </div>
+          ) : null}
+
+          <div className="prices-admin-mapping-panel__content">
+            {loadingMappings ? (
+              <div className="prices-admin-empty-state">
+                <strong>Loading mapping status...</strong>
+                <p>Fetching HUB mapping coverage for the selected list.</p>
+              </div>
+            ) : null}
+
+            {!loadingMappings && !mappingError && mappingRows.length === 0 ? (
+              <div className="prices-admin-empty-state">
+                <strong>No active columns found for this list.</strong>
+                <p>There are no visible ranges to report mapping status for.</p>
+              </div>
+            ) : null}
+
+            {!loadingMappings && !mappingError && mappingRows.length > 0 ? (
+              <div className="prices-admin-mapping-grid">
+                {mappingRows.map((item) => {
+                  const primarySummary = formatMappingPrimarySummary(item);
+
+                  return (
+                    <article
+                      key={`mapping:${item.columnId}`}
+                      className={`prices-admin-mapping-card ${
+                        item.externalMappingComplete
+                          ? "prices-admin-mapping-card--mapped"
+                          : "prices-admin-mapping-card--unmapped"
+                      }`}
+                    >
+                      <div className="prices-admin-mapping-card__header">
+                        <div>
+                          <strong>{item.supplier || "Unknown supplier"}</strong>
+                          <span>{item.range || "Unnamed range"}</span>
+                        </div>
+                        <span
+                          className={`prices-admin-mapping-chip ${
+                            item.externalMappingComplete
+                              ? "prices-admin-mapping-chip--mapped"
+                              : "prices-admin-mapping-chip--unmapped"
+                          }`}
+                        >
+                          {item.externalMappingComplete ? "Mapped" : "Unmapped"}
+                        </span>
+                      </div>
+
+                      <div className="prices-admin-mapping-card__meta">
+                        <span>Key: {item.matrixKey}</span>
+                        <span>
+                          Spec: {[item.width, item.weight].filter(Boolean).join(" / ") || "No spec"}
+                        </span>
+                        <span>Primary: {primarySummary || "No primary ids"}</span>
+                        <span>
+                          Mapping count: {item.externalMappingCount || 0}
+                        </span>
+                        {item.updatedAt ? (
+                          <span>Updated: {formatDateTime(item.updatedAt)}</span>
+                        ) : null}
+                      </div>
+
+                      {item.externalRanges.length > 0 ? (
+                        <div className="prices-admin-mapping-card__ranges">
+                          {item.externalRanges.map((link) => (
+                            <div
+                              key={`${item.columnId}:${link.externalRangeId}:${link.sortOrder}`}
+                              className="prices-admin-mapping-card__range"
+                            >
+                              <strong>
+                                {link.externalRangeLabel || `Range ${link.externalRangeId}`}
+                              </strong>
+                              <span>
+                                {[
+                                  Number.isFinite(link.externalWeaverId)
+                                    ? `Weaver ${link.externalWeaverId}`
+                                    : null,
+                                  Number.isFinite(link.externalRangeId)
+                                    ? `Range ${link.externalRangeId}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="prices-admin-mapping-card__helper">
+                          {item.externalMappingComplete
+                            ? "No bridge-range rows are stored for this column yet."
+                            : "No tartan mapping is stored for this column yet."}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : null}
     </section>
   );
@@ -1318,6 +1642,9 @@ export default function PricesAdmin() {
   const [loadingArchivedItems, setLoadingArchivedItems] = React.useState(false);
   const [archivedItemsError, setArchivedItemsError] = React.useState("");
   const [archivedItemsData, setArchivedItemsData] = React.useState(null);
+  const [loadingMappings, setLoadingMappings] = React.useState(false);
+  const [mappingError, setMappingError] = React.useState("");
+  const [mappingRows, setMappingRows] = React.useState([]);
   const [archivedRestoreConfirmOpen, setArchivedRestoreConfirmOpen] = React.useState(false);
   const [archivedRestoreTarget, setArchivedRestoreTarget] = React.useState(null);
   const [archivedRestoreReason, setArchivedRestoreReason] = React.useState("");
@@ -1354,11 +1681,14 @@ export default function PricesAdmin() {
   const [publishActionSuccess, setPublishActionSuccess] = React.useState("");
   const [inactiveListsExpanded, setInactiveListsExpanded] = React.useState(false);
   const [historyExpanded, setHistoryExpanded] = React.useState(false);
+  const [mappingPanelExpanded, setMappingPanelExpanded] = React.useState(false);
+  const [draftControlsExpanded, setDraftControlsExpanded] = React.useState(false);
 
   const loadListsSeq = React.useRef(0);
   const loadMatrixSeq = React.useRef(0);
   const loadAuditSeq = React.useRef(0);
   const loadArchivedSeq = React.useRef(0);
+  const loadMappingsSeq = React.useRef(0);
 
   const canView = role === "admin" || role === "manager";
   const isAdmin = role === "admin";
@@ -1470,6 +1800,34 @@ export default function PricesAdmin() {
   const archivedColumns = Array.isArray(archivedItemsData?.columns)
     ? archivedItemsData.columns
     : [];
+  const columnMappingLookup = React.useMemo(
+    () =>
+      new Map(
+        mappingRows
+          .filter((item) => item?.columnId)
+          .map((item) => [item.columnId, item]),
+      ),
+    [mappingRows],
+  );
+  const mappingLookupResolved = Boolean(!loadingMappings && !mappingError);
+  const selectedRangeMapping = React.useMemo(
+    () =>
+      selectedRange?.recordId
+        ? columnMappingLookup.get(selectedRange.recordId) || null
+        : null,
+    [columnMappingLookup, selectedRange?.recordId],
+  );
+  const selectedRangeIsMapped = React.useMemo(
+    () =>
+      selectedRange
+        ? getColumnMappedState(
+            selectedRange,
+            selectedRangeMapping,
+            mappingLookupResolved,
+          )
+        : false,
+    [mappingLookupResolved, selectedRange, selectedRangeMapping],
+  );
 
   const loadPriceLists = React.useCallback(
     async ({ preferredSelectionId } = {}) => {
@@ -1633,6 +1991,58 @@ export default function PricesAdmin() {
     loadSelectedAudit();
   }, [loadSelectedAudit]);
 
+  const loadSelectedMappings = React.useCallback(
+    async ({ priceListId } = {}) => {
+      const targetPriceListId = priceListId || selectedPriceListId;
+
+      if (!canView || !targetPriceListId) {
+        setLoadingMappings(false);
+        setMappingError("");
+        setMappingRows([]);
+        return;
+      }
+
+      const seq = ++loadMappingsSeq.current;
+
+      setLoadingMappings(true);
+      setMappingError("");
+      setMappingRows([]);
+
+      try {
+        const { data, error } = await supabase.rpc(
+          "get_price_column_mapping_status_admin",
+          {
+            p_price_list_id: targetPriceListId,
+          },
+        );
+
+        if (seq !== loadMappingsSeq.current) return;
+        if (error) throw error;
+
+        setMappingRows(
+          Array.isArray(data)
+            ? data.map((row) => normalizeAdminMappingRow(row)).filter(Boolean)
+            : [],
+        );
+      } catch (error) {
+        console.error("prices admin: failed to load mapping status", error);
+        if (seq !== loadMappingsSeq.current) return;
+
+        setMappingError(error?.message || "Could not load mapping status for this list.");
+        setMappingRows([]);
+      } finally {
+        if (seq === loadMappingsSeq.current) {
+          setLoadingMappings(false);
+        }
+      }
+    },
+    [canView, selectedPriceListId],
+  );
+
+  React.useEffect(() => {
+    loadSelectedMappings();
+  }, [loadSelectedMappings]);
+
   const loadArchivedItems = React.useCallback(
     async ({ priceListId } = {}) => {
       const targetPriceListId = priceListId || selectedPriceListId;
@@ -1722,6 +2132,8 @@ export default function PricesAdmin() {
     setPublishActionSuccess("");
     setInactiveListsExpanded(false);
     setHistoryExpanded(false);
+    setMappingPanelExpanded(false);
+    setDraftControlsExpanded(false);
   }, [selectedPriceListId]);
 
   const refreshAuditAfterSuccess = React.useCallback(
@@ -2192,6 +2604,7 @@ export default function PricesAdmin() {
       await Promise.all([
         loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
         loadSelectedMatrix(),
+        loadSelectedMappings({ priceListId: selectedPriceList.id }),
       ]);
       refreshAuditAfterSuccess(selectedPriceList.id);
 
@@ -2239,6 +2652,7 @@ export default function PricesAdmin() {
       await Promise.all([
         loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
         loadSelectedMatrix(),
+        loadSelectedMappings({ priceListId: selectedPriceList.id }),
       ]);
       refreshAuditAfterSuccess(selectedPriceList.id);
 
@@ -2321,6 +2735,7 @@ export default function PricesAdmin() {
 
       if (error) throw error;
 
+      const archivedColumnRecordId = columnArchiveTarget.recordId;
       setColumnArchiveConfirmOpen(false);
       setColumnArchiveTargetId("");
       setColumnArchiveReason("");
@@ -2329,10 +2744,18 @@ export default function PricesAdmin() {
       setSelectedCell(null);
       setSelectedProductId("");
       setCellForm(buildCellFormState(null));
+      setMatrixData((current) =>
+        removeArchivedColumnFromMatrixData(current, archivedColumnRecordId),
+      );
+      setMappingRows((current) =>
+        current.filter((item) => item.columnId !== archivedColumnRecordId),
+      );
 
       await Promise.all([
         loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
         loadSelectedMatrix(),
+        loadSelectedMappings({ priceListId: selectedPriceList.id }),
+        loadArchivedItems({ priceListId: selectedPriceList.id }),
       ]);
       refreshAuditAfterSuccess(selectedPriceList.id);
 
@@ -2388,6 +2811,7 @@ export default function PricesAdmin() {
         loadPriceLists({ preferredSelectionId: selectedPriceList.id }),
         loadSelectedMatrix(),
         loadArchivedItems({ priceListId: selectedPriceList.id }),
+        loadSelectedMappings({ priceListId: selectedPriceList.id }),
       ]);
       refreshAuditAfterSuccess(selectedPriceList.id);
 
@@ -2659,21 +3083,17 @@ export default function PricesAdmin() {
                 </section>
 
                 <section className="prices-admin-list-section">
-                  <button
-                    type="button"
-                    className="prices-admin-list-section__toggle"
-                    onClick={() => setInactiveListsExpanded((current) => !current)}
-                  >
+                  <div className="prices-admin-list-section__header">
                     <h4>Inactive Lists</h4>
-                    <span
-                      className={`prices-admin-list-section__chevron ${
-                        inactiveListsExpanded ? "is-open" : ""
-                      }`}
-                      aria-hidden="true"
-                    >
-                      v
-                    </span>
-                  </button>
+                    <CollapsiblePanelToggle
+                      expanded={inactiveListsExpanded}
+                      onClick={() =>
+                        setInactiveListsExpanded((current) => !current)
+                      }
+                      expandLabel="Expand Inactive Lists"
+                      collapseLabel="Collapse Inactive Lists"
+                    />
+                  </div>
                   {inactiveListsExpanded ? (
                     inactiveLists.length > 0 ? (
                       <div className="prices-admin-list-section__stack">
@@ -3729,6 +4149,8 @@ export default function PricesAdmin() {
                 <PriceMatrixPreview
                   matrixData={matrixData}
                   matrixModel={matrixModel}
+                  columnMappingLookup={columnMappingLookup}
+                  mappingLookupResolved={mappingLookupResolved}
                   selectedCellKey={selectedCellKey}
                   selectedCellProductId={selectedCell?.productRecordId || ""}
                   selectedCellColumnId={selectedCell?.columnRecordId || ""}
@@ -3761,24 +4183,9 @@ export default function PricesAdmin() {
                   </div>
                 ) : null}
 
-                <section className="prices-admin-selection-workspace">
-                  <div className="prices-admin-selection-workspace__header">
-                    <span className="prices-admin-panel__eyebrow">Selection workspace</span>
-                  </div>
-
-                  <div className="prices-admin-selection-grid prices-admin-selection-grid--single">
-                    {selectedContext === "none" ? (
-                      <section className="prices-admin-product-panel">
-                        <div className="prices-admin-state">
-                          <strong>Select item</strong>
-                          <p>
-                            Click a row, price cell, or column header to open the
-                            relevant editor for this selected price list.
-                          </p>
-                        </div>
-                      </section>
-                    ) : null}
-
+                {selectedContext !== "none" ? (
+                  <section className="prices-admin-selection-workspace">
+                    <div className="prices-admin-selection-grid prices-admin-selection-grid--single">
                     {selectedContext === "product" && selectedProduct ? (
                       <section className="prices-admin-product-panel">
                         <form
@@ -3788,7 +4195,7 @@ export default function PricesAdmin() {
                           <div className="prices-admin-product-detail__header">
                             <div>
                               <span className="prices-admin-panel__eyebrow">
-                                Selected product
+                                Selected Product
                               </span>
                               <h3>{selectedProduct.name}</h3>
                             </div>
@@ -3957,7 +4364,7 @@ export default function PricesAdmin() {
                           <div className="prices-admin-product-detail__header">
                             <div>
                               <span className="prices-admin-panel__eyebrow">
-                                Selected price cell
+                                Selected Price Cell
                               </span>
                               <h3>
                                 {selectedCell.productName} / {selectedCell.columnLabel}
@@ -4101,7 +4508,7 @@ export default function PricesAdmin() {
                           <div className="prices-admin-product-detail__header">
                             <div>
                               <span className="prices-admin-panel__eyebrow">
-                                Selected range
+                                Selected Range
                               </span>
                               <h3>{selectedRange.supplier} / {selectedRange.range}</h3>
                             </div>
@@ -4133,10 +4540,7 @@ export default function PricesAdmin() {
                             <div className="prices-admin-selection-context__item">
                               <span>Mapping</span>
                               <strong>
-                                {Number.isFinite(selectedRange.external_weaver_id) ||
-                                Number.isFinite(selectedRange.external_range_id)
-                                  ? "Mapped"
-                                  : "No tartan mapping"}
+                                {selectedRangeIsMapped ? "Mapped" : "No tartan mapping"}
                               </strong>
                             </div>
                           </div>
@@ -4167,8 +4571,9 @@ export default function PricesAdmin() {
                         </div>
                       </section>
                     ) : null}
-                  </div>
-                </section>
+                    </div>
+                  </section>
+                ) : null}
 
                 <PriceStatusPanel
                   selectedList={selectedPriceList}
@@ -4188,6 +4593,21 @@ export default function PricesAdmin() {
                   onOpenColumnCreate={openColumnCreate}
                   onOpenArchivedItems={openArchivedItems}
                   onOpenPublishModal={openPublishModal}
+                  expanded={draftControlsExpanded}
+                  onToggleExpanded={() =>
+                    setDraftControlsExpanded((current) => !current)
+                  }
+                />
+
+                <PriceMappingPanel
+                  selectedList={selectedPriceList}
+                  mappingRows={mappingRows}
+                  loadingMappings={loadingMappings}
+                  mappingError={mappingError}
+                  expanded={mappingPanelExpanded}
+                  onToggleExpanded={() =>
+                    setMappingPanelExpanded((current) => !current)
+                  }
                 />
 
                 <PriceAuditPanel
