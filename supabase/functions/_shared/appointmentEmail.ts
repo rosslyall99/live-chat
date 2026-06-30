@@ -1,5 +1,6 @@
 import { Resend } from "npm:resend";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { renderAppointmentEmailHtml } from "./appointmentEmailLayout.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -247,10 +248,23 @@ async function buildAppointmentEmailContent(
     replacements
   );
 
-  const bodyHtml = applyPlaceholders(
+  const resolvedBodyHtml = applyPlaceholders(
     trimmedValue(selectedTemplate?.body_html) || legacyBodyHtml || textToHtml(bodyText),
     replacements
   );
+  const bodyHtml = renderAppointmentEmailHtml({
+    subject,
+    bodyText,
+    bodyHtml: resolvedBodyHtml,
+    details: {
+      appointmentType: appointmentTypeName,
+      appointmentDate,
+      appointmentTime,
+      siteName,
+      areaName,
+      staffName: senderName,
+    },
+  });
 
   return {
     subject,

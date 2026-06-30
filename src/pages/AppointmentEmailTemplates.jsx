@@ -1,6 +1,7 @@
 import React from "react";
 import { ui } from "../ui/tokens";
 import { supabase } from "../supabaseClient";
+import { renderAppointmentEmailPreviewHtml } from "../utils/appointmentEmailPreview";
 import "./AppointmentTypesAdmin.css";
 
 const SAMPLE_VALUES = {
@@ -239,11 +240,25 @@ export default function AppointmentEmailTemplates() {
   );
 
   const previewHtml = React.useMemo(() => {
-    const rawHtml = draft.body_html
+    const resolvedBodyHtml = draft.body_html
       ? applyPlaceholders(draft.body_html, SAMPLE_VALUES)
       : textToHtml(previewBody);
-    return sanitizePreviewHtml(rawHtml);
-  }, [draft.body_html, previewBody]);
+    return sanitizePreviewHtml(
+      renderAppointmentEmailPreviewHtml({
+        subject: previewSubject,
+        bodyText: previewBody,
+        bodyHtml: resolvedBodyHtml,
+        details: {
+          appointmentType: SAMPLE_VALUES.appointment_type,
+          appointmentDate: SAMPLE_VALUES.appointment_date,
+          appointmentTime: SAMPLE_VALUES.appointment_time,
+          siteName: SAMPLE_VALUES.site_name,
+          areaName: SAMPLE_VALUES.area_name,
+          staffName: SAMPLE_VALUES.staff_name,
+        },
+      }),
+    );
+  }, [draft.body_html, previewBody, previewSubject]);
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);

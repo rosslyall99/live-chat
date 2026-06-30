@@ -33,6 +33,11 @@ export const reminderOptions = {
       "Thanks,",
       "Slanj Kilts",
     ].join("\n"),
+  legacyFields: {
+    subject: "reminder_email_subject" as const,
+    bodyText: "reminder_email_body_text" as const,
+    bodyHtml: "reminder_email_body_html" as const,
+  },
 };
 
 export type PreviewRow = {

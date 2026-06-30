@@ -25,4 +25,9 @@ serveAppointmentEmail({
       "Thanks,",
       "Slanj Kilts",
     ].join("\n"),
+  legacyFields: {
+    subject: "reminder_email_subject",
+    bodyText: "reminder_email_body_text",
+    bodyHtml: "reminder_email_body_html",
+  },
 });
