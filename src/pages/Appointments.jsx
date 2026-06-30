@@ -1602,12 +1602,13 @@ export default function Appointments() {
 
   const isAdmin = role === "admin";
   const isManager = role === "manager";
-  const showSiteSelector = isAdmin || isManager;
   const canManageBlocks = isAdmin || isManager;
   const bookableSites = React.useMemo(
     () => getBookableAppointmentSites(sites),
     [sites],
   );
+  const showCalendarSiteSelector = bookableSites.length > 0;
+  const showSiteSelector = isAdmin || isManager;
   const selectedSiteIsBookable = isBookableAppointmentSite(selectedSiteId);
   const canOpenCreate = selectedSiteIsBookable && appointmentTypes.length > 0;
   const canOpenBlock = canManageBlocks && selectedSiteIsBookable;
@@ -2002,7 +2003,6 @@ export default function Appointments() {
   }, []);
 
   React.useEffect(() => {
-    if (!showSiteSelector) return;
     if (!sites.length) return;
     if (selectedSiteIsBookable) return;
 
@@ -2013,7 +2013,7 @@ export default function Appointments() {
     });
 
     if (fallbackSiteId) setSelectedSiteId(fallbackSiteId);
-  }, [profile?.site_id, selectedSiteIsBookable, showSiteSelector, sites]);
+  }, [profile?.site_id, selectedSiteIsBookable, sites]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2063,14 +2063,11 @@ export default function Appointments() {
               },
             ];
 
-        const preferredSiteId =
-          nextRole === "admin" || nextRole === "manager"
-            ? getDefaultAppointmentSiteId({
-                sites: safeSites,
-                preferredSiteId: ownProfile.site_id,
-                allowFallback: true,
-              })
-            : ownProfile.site_id || "";
+        const preferredSiteId = getDefaultAppointmentSiteId({
+          sites: safeSites,
+          preferredSiteId: appointmentOpenRequest.site || ownProfile.site_id,
+          allowFallback: true,
+        });
 
         setProfile(ownProfile);
         setRole(nextRole);
@@ -2213,7 +2210,7 @@ export default function Appointments() {
 
   React.useEffect(() => {
     if (loading) return;
-    if (!showSiteSelector && !selectedSiteIsBookable) {
+    if (!showCalendarSiteSelector && !selectedSiteIsBookable) {
       showToast(
         "info",
         `Appointments are only available for Duke Street and St Enoch. Your current site is ${visibleSiteName}.`,
@@ -2223,21 +2220,21 @@ export default function Appointments() {
   }, [
     loading,
     selectedSiteIsBookable,
-    showSiteSelector,
+    showCalendarSiteSelector,
     showToast,
     visibleSiteName,
   ]);
 
   React.useEffect(() => {
     if (loading) return;
-    if (showSiteSelector && bookableSites.length === 0) {
+    if (showCalendarSiteSelector && bookableSites.length === 0) {
       showToast(
         "info",
         "No bookable appointment sites are available yet. Seed Duke Street and St Enoch appointment areas first.",
         8000,
       );
     }
-  }, [bookableSites.length, loading, showSiteSelector, showToast]);
+  }, [bookableSites.length, loading, showCalendarSiteSelector, showToast]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2530,7 +2527,7 @@ export default function Appointments() {
     }
     return map;
   }, [blocks, areas]);
-  const selectorSites = showSiteSelector ? bookableSites : sites;
+  const selectorSites = showCalendarSiteSelector ? bookableSites : sites;
   const timeOptions = React.useMemo(
     () => buildTimeOptions(DEFAULT_START_HOUR, DEFAULT_END_HOUR),
     [],
@@ -4736,7 +4733,7 @@ export default function Appointments() {
         </div>
 
         <div className="appointment-calendar-header-right">
-          {showSiteSelector ? (
+          {showCalendarSiteSelector ? (
             <div className="appointment-site-picker-wrap">
               <select
                 className="appointment-site-picker"

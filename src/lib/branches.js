@@ -25,6 +25,8 @@ const BRANCH_SITE_MAP = {
   STE: "sten",
 };
 
+const DEFAULT_APPOINTMENT_SITE_ID = "duke";
+
 export function normalizeSiteId(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -51,6 +53,12 @@ export function canonicalAppointmentSiteId(siteId) {
   return appointmentBranchToSiteId(branchCode) || normalizeSiteId(siteId);
 }
 
+export function resolveDefaultCalendarSite(staffSiteId) {
+  const canonicalSiteId = canonicalAppointmentSiteId(staffSiteId);
+  if (canonicalSiteId === "sten") return "sten";
+  return DEFAULT_APPOINTMENT_SITE_ID;
+}
+
 export function getBookableAppointmentSites(sites = []) {
   return (sites || []).filter((site) => isBookableAppointmentSite(site?.id));
 }
@@ -66,5 +74,11 @@ export function getDefaultAppointmentSiteId({ sites = [], preferredSiteId, allow
   }
 
   if (!allowFallback) return preferredSiteId || "";
-  return bookableSites[0]?.id || "";
+  const resolvedDefaultSiteId = resolveDefaultCalendarSite(preferredSiteId);
+  const resolvedMatch = bookableSites.find(
+    (site) =>
+      canonicalAppointmentSiteId(site?.id) ===
+      canonicalAppointmentSiteId(resolvedDefaultSiteId)
+  );
+  return resolvedMatch?.id || bookableSites[0]?.id || resolvedDefaultSiteId;
 }
