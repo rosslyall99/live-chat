@@ -19,6 +19,27 @@ const LOGIN_GROUP_OPTIONS = [
   { value: "off", label: "Office" },
   { value: "hire", label: "Hire" },
 ];
+const STAFF_FILTER_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "all", label: "All" },
+];
+const STAFF_SORT_OPTIONS = [
+  { value: "az", label: "A-Z" },
+  { value: "za", label: "Z-A" },
+];
+const INVALID_ROTA_NAME_VALUES = new Set([
+  "",
+  "-",
+  "--",
+  "pending approval",
+  "approved",
+  "declined",
+  "cancelled",
+  "canceled",
+  "hol",
+  "holiday",
+]);
 
 function blankProfileDraft() {
   return {
@@ -112,6 +133,50 @@ function statusLabel(isActive) {
   return isActive ? "Active" : "Inactive";
 }
 
+function staffDisplayName(row) {
+  return String(row?.display_name || row?.username || "").trim();
+}
+
+function getStaffBranchKey(row) {
+  const loginGroup = normalizeText(row?.login_group);
+  if (loginGroup) return loginGroup;
+
+  const siteId = normalizeText(row?.site_id);
+  if (siteId === "duk") return "duke";
+  if (siteId === "ste" || siteId === "stenoch") return "sten";
+  if (siteId === "office") return "off";
+  return siteId;
+}
+
+function formatBranchFilterLabel(branchKey, sites) {
+  const key = normalizeText(branchKey);
+  if (!key) return "Unknown";
+  if (key === "duke" || key === "duk") return "Duke Street";
+  if (key === "sten" || key === "ste" || key === "stenoch") return "St Enoch";
+  if (key === "hire") return "Hire";
+  if (key === "off" || key === "office") return "Office";
+
+  const matchedSite = (sites || []).find(
+    (site) => normalizeText(site?.id) === key,
+  );
+  return matchedSite?.name || branchKey;
+}
+
+function compareStaffNames(a, b, direction = "az") {
+  const aName = staffDisplayName(a).toLowerCase();
+  const bName = staffDisplayName(b).toLowerCase();
+  const result = aName.localeCompare(bName);
+  return direction === "za" ? result * -1 : result;
+}
+
+function isValidRotaOptionName(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return false;
+  if (INVALID_ROTA_NAME_VALUES.has(normalized)) return false;
+  if (!/[a-z]/i.test(String(value || ""))) return false;
+  return true;
+}
+
 export default function UsersAdmin() {
   const [rows, setRows] = React.useState([]);
   const [sites, setSites] = React.useState([]);
@@ -131,6 +196,9 @@ export default function UsersAdmin() {
   const [mode, setMode] = React.useState("detail");
   const [selectedUserId, setSelectedUserId] = React.useState("");
   const [selectedDraft, setSelectedDraft] = React.useState(blankProfileDraft);
+  const [staffFilter, setStaffFilter] = React.useState("active");
+  const [branchFilter, setBranchFilter] = React.useState("all");
+  const [staffSort, setStaffSort] = React.useState("az");
 
   const [rotaNamesLoading, setRotaNamesLoading] = React.useState(false);
   const [rotaNames, setRotaNames] = React.useState([]);
@@ -189,13 +257,64 @@ export default function UsersAdmin() {
     setRotaNamesError("");
 
     try {
-      const res = await invokeAdmin("admin_list_rota_staff_names", {});
-      if (res?.error)
+      const [res, latestRunRes] = await Promise.all([
+        invokeAdmin("admin_list_rota_staff_names", {}),
+        supabase
+          .from("rota_sync_runs")
+          .select("id")
+          .eq("status", "complete")
+          .order("completed_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      if (res?.error) {
         throw new Error(
           res.error.message || "admin_list_rota_staff_names failed",
         );
+      }
+      if (latestRunRes.error) {
+        throw new Error(
+          latestRunRes.error.message || "Could not read latest rota sync run.",
+        );
+      }
 
-      setRotaNames(res?.data?.names || []);
+      const mergedNames = new Set(
+        (res?.data?.names || []).filter((name) => isValidRotaOptionName(name)),
+      );
+      const latestRunId = latestRunRes.data?.id || "";
+
+      if (latestRunId) {
+        const [{ data: shiftRows, error: shiftError }, { data: absenceRows, error: absenceError }] =
+          await Promise.all([
+            supabase
+              .from("rota_shifts")
+              .select("staff_name")
+              .eq("sync_run_id", latestRunId)
+              .not("staff_name", "is", null),
+            supabase
+              .from("rota_absences")
+              .select("staff_name")
+              .eq("sync_run_id", latestRunId)
+              .not("staff_name", "is", null),
+          ]);
+
+        if (shiftError) {
+          throw new Error(shiftError.message || "Could not read rota shift names.");
+        }
+        if (absenceError) {
+          throw new Error(
+            absenceError.message || "Could not read rota absence names.",
+          );
+        }
+
+        for (const row of [...(shiftRows || []), ...(absenceRows || [])]) {
+          const name = String(row?.staff_name || "").trim();
+          if (isValidRotaOptionName(name)) mergedNames.add(name);
+        }
+      }
+
+      setRotaNames(Array.from(mergedNames).sort((a, b) => a.localeCompare(b)));
     } catch (e) {
       console.error(e);
       setRotaNamesError(
@@ -221,15 +340,92 @@ export default function UsersAdmin() {
     [rows, selectedUserId],
   );
 
+  const branchFilterOptions = React.useMemo(() => {
+    const options = [{ value: "all", label: "All branches" }];
+    const seen = new Set(["all"]);
+
+    for (const row of rows) {
+      const key = getStaffBranchKey(row);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      options.push({
+        value: key,
+        label: formatBranchFilterLabel(key, sites),
+      });
+    }
+
+    return options.sort((a, b) => {
+      if (a.value === "all") return -1;
+      if (b.value === "all") return 1;
+      return a.label.localeCompare(b.label);
+    });
+  }, [rows, sites]);
+
+  const filteredRows = React.useMemo(() => {
+    const statusFiltered =
+      staffFilter === "all"
+        ? rows
+        : rows.filter((row) =>
+            staffFilter === "active" ? row.is_active : !row.is_active,
+          );
+
+    const branchFiltered =
+      branchFilter === "all"
+        ? statusFiltered
+        : statusFiltered.filter(
+            (row) => getStaffBranchKey(row) === normalizeText(branchFilter),
+          );
+
+    return [...branchFiltered].sort((a, b) => compareStaffNames(a, b, staffSort));
+  }, [branchFilter, rows, staffFilter, staffSort]);
+
+  const assignedRotaNameOwnerByKey = React.useMemo(() => {
+    const next = new Map();
+    for (const row of rows) {
+      const key = normalizeText(row?.rota_match_name);
+      if (!key) continue;
+      next.set(key, row.user_id);
+    }
+    return next;
+  }, [rows]);
+
+  const selectedUserAssignedRotaKey = normalizeText(selectedUser?.rota_match_name);
+
+  const availableRotaNames = React.useMemo(() => {
+    return rotaNames.filter((name) => {
+      const key = normalizeText(name);
+      if (!key) return false;
+      if (!isValidRotaOptionName(name)) return false;
+      const ownerUserId = assignedRotaNameOwnerByKey.get(key);
+      if (!ownerUserId) return true;
+      return ownerUserId === selectedUserId || key === selectedUserAssignedRotaKey;
+    });
+  }, [
+    assignedRotaNameOwnerByKey,
+    rotaNames,
+    selectedUserAssignedRotaKey,
+    selectedUserId,
+  ]);
+
   const selectedRotaOptions = React.useMemo(() => {
     const names = new Set();
     if (selectedUser?.rota_match_name) names.add(selectedUser.rota_match_name);
     if (selectedDraft.rota_match_name) names.add(selectedDraft.rota_match_name);
-    rotaNames.forEach((name) => names.add(name));
+    availableRotaNames.forEach((name) => names.add(name));
     return Array.from(names)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
-  }, [rotaNames, selectedDraft.rota_match_name, selectedUser?.rota_match_name]);
+  }, [
+    availableRotaNames,
+    selectedDraft.rota_match_name,
+    selectedUser?.rota_match_name,
+  ]);
+
+  const newStaffRotaOptions = React.useMemo(() => {
+    const names = new Set(availableRotaNames);
+    if (newRotaName) names.add(newRotaName);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [availableRotaNames, newRotaName]);
 
   const selectedSiteOptions = React.useMemo(() => {
     const options = [...sites];
@@ -284,18 +480,18 @@ export default function UsersAdmin() {
 
   React.useEffect(() => {
     if (mode === "new") return;
-    if (!rows.length) {
+    if (!filteredRows.length) {
       setSelectedUserId("");
       return;
     }
 
     if (
       !selectedUserId ||
-      !rows.some((row) => row.user_id === selectedUserId)
+      !filteredRows.some((row) => row.user_id === selectedUserId)
     ) {
-      setSelectedUserId(rows[0].user_id);
+      setSelectedUserId(filteredRows[0].user_id);
     }
-  }, [mode, rows, selectedUserId]);
+  }, [filteredRows, mode, selectedUserId]);
 
   React.useEffect(() => {
     if (mode === "new") return;
@@ -500,16 +696,53 @@ export default function UsersAdmin() {
         <aside className="users-admin-element users-admin-list-panel">
           <div className="users-admin-panel-heading">
             <span>Staff</span>
-            <span>{rows.length}</span>
+            <div className="users-admin-panel-heading__side">
+              <select
+                className="users-admin-filter-select"
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+              >
+                {branchFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="users-admin-filter-select"
+                value={staffSort}
+                onChange={(e) => setStaffSort(e.target.value)}
+              >
+                {STAFF_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="users-admin-filter-select"
+                value={staffFilter}
+                onChange={(e) => setStaffFilter(e.target.value)}
+              >
+                {STAFF_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span>{filteredRows.length}</span>
+            </div>
           </div>
 
           <div className="users-admin-staff-list">
             {loading ? (
               <div className="users-admin-empty">Loading staff...</div>
-            ) : rows.length === 0 ? (
-              <div className="users-admin-empty">No staff users.</div>
+            ) : filteredRows.length === 0 ? (
+              <div className="users-admin-empty">
+                No staff users match the current filter.
+              </div>
             ) : (
-              rows.map((user) => {
+              filteredRows.map((user) => {
                 const isSelected =
                   mode !== "new" && user.user_id === selectedUserId;
 
@@ -528,10 +761,11 @@ export default function UsersAdmin() {
                   >
                     <span className="users-admin-staff-main">
                       <span className="users-admin-staff-name">
-                        {user.display_name || user.username}
+                        {staffDisplayName(user)}
                       </span>
                       <span className="users-admin-staff-meta">
-                        {formatSite(user.site_id, sites)} / {user.role || "-"}
+                        {formatBranchFilterLabel(getStaffBranchKey(user), sites)} /{" "}
+                        {user.role || "-"}
                       </span>
                     </span>
                     <span
@@ -667,7 +901,7 @@ export default function UsersAdmin() {
                       <option value="">
                         {rotaNamesLoading ? "Loading..." : "No link yet"}
                       </option>
-                      {rotaNames.map((name) => (
+                      {newStaffRotaOptions.map((name) => (
                         <option key={name} value={name}>
                           {name}
                         </option>

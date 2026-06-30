@@ -100,6 +100,8 @@
 .users-admin-page select {
   border: 1px solid rgba(125, 211, 252, 0.2) !important;
   border-radius: 8px !important;
+  min-height: 42px;
+  padding: 11px 14px !important;
   background: rgba(5, 12, 24, 0.72) !important;
   color: rgba(248, 250, 252, 0.92) !important;
   font-weight: 300 !important;
@@ -252,6 +254,22 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.users-admin-panel-heading__side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.users-admin-filter-select {
+  min-height: 30px !important;
+  min-width: 108px;
+  padding: 6px 30px 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
 }
 
 .users-admin-staff-list {
