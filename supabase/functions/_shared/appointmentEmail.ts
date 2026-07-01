@@ -13,6 +13,7 @@ export type AppointmentRow = {
   area_id: string;
   start_at: string;
   end_at: string;
+  arrived_at?: string | null;
   status: string;
   customer_name: string;
   customer_email: string;

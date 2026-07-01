@@ -76,15 +76,17 @@ function summariseRows(rows: FeedbackResultRow[]) {
 }
 
 async function loadCandidateAppointments(adminClient: SupabaseClient, limit: number) {
+  const cutoffIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { data, error } = await adminClient
     .from("appointments")
     .select(
-      "id, branch, area_id, start_at, end_at, status, customer_name, customer_email, appointment_type_id, booked_by_user_id, attendance_status",
+      "id, branch, area_id, start_at, end_at, arrived_at, status, customer_name, customer_email, appointment_type_id, booked_by_user_id, attendance_status",
     )
     .neq("status", "cancelled")
     .in("attendance_status", ["checked_in", "checked_in_late"])
-    .lt("end_at", new Date().toISOString())
-    .order("end_at", { ascending: true })
+    .not("arrived_at", "is", null)
+    .lte("arrived_at", cutoffIso)
+    .order("arrived_at", { ascending: true })
     .limit(limit)
     .returns<AppointmentRow[]>();
 
